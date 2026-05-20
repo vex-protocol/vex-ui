@@ -56,6 +56,13 @@ type VoiceMemoPhase =
     | "starting"
     | "stopping";
 
+interface VoiceMemoRecorderProps {
+    onCancel: () => void;
+    onError?: ((message: string) => void) | undefined;
+    onRecorded: (attachment: PickedAttachment) => void;
+    sending: boolean;
+}
+
 const VOICE_MEMO_RECORDING_OPTIONS: RecordingOptions = {
     ...RecordingPresets.HIGH_QUALITY,
     android: {
@@ -85,22 +92,8 @@ export function MessageInputBar({
     sending = false,
     value,
 }: MessageInputBarProps) {
-    const recorder = useAudioRecorder(VOICE_MEMO_RECORDING_OPTIONS);
-    const recorderState = useAudioRecorderState(recorder, 250);
-    const [recordingPhase, setRecordingPhaseState] =
-        useState<VoiceMemoPhase>("idle");
-    const [recordingActive, setRecordingActive] = useState(false);
-    const mountedRef = useRef(true);
-    const recordingPhaseRef = useRef<VoiceMemoPhase>("idle");
-    const startTokenRef = useRef(0);
-    const recordingInProgress =
-        recordingPhase !== "idle" ||
-        recordingActive ||
-        recorderState.isRecording;
-    const canFinishVoiceMemo =
-        (recordingPhase === "recording" || recorderState.isRecording) &&
-        recordingPhase !== "canceling" &&
-        recordingPhase !== "stopping";
+    const [voiceMemoOpen, setVoiceMemoOpen] = useState(false);
+    const recordingInProgress = voiceMemoOpen;
     const canSend =
         (value.trim().length > 0 || attachment != null) &&
         !sending &&
@@ -110,243 +103,20 @@ export function MessageInputBar({
         attachment == null &&
         !sending &&
         !recordingInProgress;
-    const voiceMemoButtonDisabled =
-        sending ||
-        (recordingInProgress ? !canFinishVoiceMemo : !canRecordVoiceMemo);
+    const voiceMemoButtonDisabled = !canRecordVoiceMemo;
     const inputRef = useRef<TextInput>(null);
 
-    const setRecordingPhase = useCallback((phase: VoiceMemoPhase) => {
-        recordingPhaseRef.current = phase;
-        setRecordingPhaseState(phase);
+    const closeVoiceMemo = useCallback(() => {
+        setVoiceMemoOpen(false);
     }, []);
 
-    const resetAudioMode = useCallback(async () => {
-        await setAudioModeAsync({
-            allowsRecording: false,
-            playsInSilentMode: true,
-        });
-    }, []);
-
-    const isCurrentStart = useCallback((token: number): boolean => {
-        return (
-            mountedRef.current &&
-            startTokenRef.current === token &&
-            recordingPhaseRef.current === "starting"
-        );
-    }, []);
-
-    const startVoiceMemo = useCallback(async () => {
-        if (!canRecordVoiceMemo || recordingPhaseRef.current !== "idle") {
-            return;
-        }
-        const startToken = startTokenRef.current + 1;
-        startTokenRef.current = startToken;
-        setRecordingPhase("starting");
-        onVoiceMemoError?.("");
-        try {
-            const permission = await requestRecordingPermissionsAsync();
-            if (!isCurrentStart(startToken)) {
-                return;
-            }
-            if (!permission.granted) {
-                onVoiceMemoError?.("Microphone permission is required.");
-                haptic("error");
-                return;
-            }
-
-            await setAudioModeAsync({
-                allowsRecording: true,
-                playsInSilentMode: true,
-            });
-            if (!isCurrentStart(startToken)) {
-                await resetAudioMode().catch(() => {
-                    /* ignore */
-                });
-                return;
-            }
-            await recorder.prepareToRecordAsync();
-            if (!isCurrentStart(startToken)) {
-                await resetAudioMode().catch(() => {
-                    /* ignore */
-                });
-                return;
-            }
-            recorder.record();
-            if (!isCurrentStart(startToken)) {
-                await recorder.stop().catch(() => {
-                    /* ignore */
-                });
-                await resetAudioMode().catch(() => {
-                    /* ignore */
-                });
-                return;
-            }
-            setRecordingActive(true);
-            setRecordingPhase("recording");
-            haptic("confirm");
-        } catch (err: unknown) {
-            await resetAudioMode().catch(() => {
-                /* ignore */
-            });
-            if (isCurrentStart(startToken)) {
-                onVoiceMemoError?.(
-                    err instanceof Error
-                        ? err.message
-                        : "Could not start recording.",
-                );
-                haptic("error");
-            }
-        } finally {
-            const phase = recordingPhaseRef.current as VoiceMemoPhase;
-            if (
-                mountedRef.current &&
-                (phase === "starting" || phase === "canceling")
-            ) {
-                setRecordingPhase("idle");
-            }
-        }
-    }, [
-        canRecordVoiceMemo,
-        isCurrentStart,
-        onVoiceMemoError,
-        recorder,
-        resetAudioMode,
-        setRecordingPhase,
-    ]);
-
-    const stopVoiceMemo = useCallback(async () => {
-        if (
-            (!recordingActive && !recorderState.isRecording) ||
-            recordingPhaseRef.current === "canceling" ||
-            recordingPhaseRef.current === "starting" ||
-            recordingPhaseRef.current === "stopping"
-        ) {
-            return;
-        }
-        startTokenRef.current += 1;
-        setRecordingPhase("stopping");
-        onVoiceMemoError?.("");
-        let recordedUri: null | string = null;
-        try {
-            if (recorder.isRecording || recorderState.isRecording) {
-                await recorder.stop();
-            }
-            recordedUri = recorder.uri ?? recorderState.url;
-            await resetAudioMode();
-            if (!recordedUri) {
-                throw new Error("Recording did not produce an audio file.");
-            }
-
-            const voiceMemo =
-                await localVoiceMemoAttachmentFromUri(recordedUri);
-            if (voiceMemo.fileSize <= 0) {
-                throw new Error("Recording did not produce any audio.");
-            }
+    const handleVoiceMemoRecorded = useCallback(
+        (voiceMemo: PickedAttachment) => {
+            setVoiceMemoOpen(false);
             onVoiceMemoRecorded?.(voiceMemo);
-            setRecordingActive(false);
-            haptic("success");
-        } catch (err: unknown) {
-            if (recordedUri) {
-                await FileSystem.deleteAsync(recordedUri, {
-                    idempotent: true,
-                }).catch(() => {
-                    /* ignore */
-                });
-            }
-            await resetAudioMode().catch(() => {
-                /* ignore */
-            });
-            onVoiceMemoError?.(
-                err instanceof Error
-                    ? err.message
-                    : "Could not finish recording.",
-            );
-            haptic("error");
-        } finally {
-            setRecordingActive(false);
-            setRecordingPhase("idle");
-        }
-    }, [
-        onVoiceMemoError,
-        onVoiceMemoRecorded,
-        recorder,
-        recorderState.isRecording,
-        recorderState.url,
-        recordingActive,
-        resetAudioMode,
-        setRecordingPhase,
-    ]);
-
-    const cancelVoiceMemo = useCallback(async () => {
-        if (
-            (!recordingActive &&
-                !recorderState.isRecording &&
-                recordingPhaseRef.current === "idle") ||
-            recordingPhaseRef.current === "canceling" ||
-            recordingPhaseRef.current === "stopping"
-        ) {
-            return;
-        }
-        const phaseAtCancel = recordingPhaseRef.current;
-        startTokenRef.current += 1;
-        setRecordingPhase("canceling");
-        onVoiceMemoError?.("");
-        const previousUri = recorder.uri ?? recorderState.url;
-        try {
-            if (recordingActive || recorderState.isRecording) {
-                await recorder.stop().catch(() => {
-                    /* ignore */
-                });
-            }
-            const recordedUri =
-                recorder.uri ?? recorderState.url ?? previousUri;
-            if (recordedUri) {
-                await FileSystem.deleteAsync(recordedUri, {
-                    idempotent: true,
-                }).catch(() => {
-                    /* ignore */
-                });
-            }
-            await resetAudioMode().catch(() => {
-                /* ignore */
-            });
-            haptic("selection");
-        } finally {
-            setRecordingActive(false);
-            if (mountedRef.current && phaseAtCancel !== "starting") {
-                setRecordingPhase("idle");
-            }
-        }
-    }, [
-        onVoiceMemoError,
-        recorder,
-        recorderState.isRecording,
-        recorderState.url,
-        recordingActive,
-        resetAudioMode,
-        setRecordingPhase,
-    ]);
-
-    useEffect(() => {
-        mountedRef.current = true;
-        return () => {
-            mountedRef.current = false;
-            startTokenRef.current += 1;
-            const shouldStop =
-                recorder.isRecording ||
-                recordingPhaseRef.current === "recording";
-            void (async () => {
-                if (shouldStop) {
-                    await recorder.stop().catch(() => {
-                        /* ignore */
-                    });
-                }
-                await resetAudioMode().catch(() => {
-                    /* ignore */
-                });
-            })();
-        };
-    }, [recorder, resetAudioMode]);
+        },
+        [onVoiceMemoRecorded],
+    );
 
     return (
         <View
@@ -404,53 +174,13 @@ export function MessageInputBar({
                 </View>
             ) : null}
 
-            {recordingInProgress ? (
-                <View style={styles.recordingBar}>
-                    <View style={styles.recordingIndicator} />
-                    <Text style={styles.recordingDuration}>
-                        {formatRecordingStatus(
-                            recordingPhase,
-                            recorderState.durationMillis,
-                        )}
-                    </Text>
-                    <TouchableOpacity
-                        accessibilityLabel="Cancel voice memo"
-                        accessibilityRole="button"
-                        disabled={
-                            sending ||
-                            recordingPhase === "canceling" ||
-                            recordingPhase === "stopping"
-                        }
-                        onPress={() => void cancelVoiceMemo()}
-                        style={[
-                            styles.recordingButton,
-                            (sending ||
-                                recordingPhase === "canceling" ||
-                                recordingPhase === "stopping") &&
-                                styles.actionBtnDisabled,
-                        ]}
-                    >
-                        <Ionicons
-                            color={colors.textSecondary}
-                            name="close"
-                            size={18}
-                        />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        accessibilityLabel="Finish voice memo"
-                        accessibilityRole="button"
-                        disabled={sending || !canFinishVoiceMemo}
-                        onPress={() => void stopVoiceMemo()}
-                        style={[
-                            styles.recordingButton,
-                            styles.recordingStopButton,
-                            (sending || !canFinishVoiceMemo) &&
-                                styles.actionBtnDisabled,
-                        ]}
-                    >
-                        <Ionicons color={colors.text} name="stop" size={16} />
-                    </TouchableOpacity>
-                </View>
+            {voiceMemoOpen && onVoiceMemoRecorded ? (
+                <VoiceMemoRecorder
+                    onCancel={closeVoiceMemo}
+                    onError={onVoiceMemoError}
+                    onRecorded={handleVoiceMemoRecorded}
+                    sending={sending}
+                />
             ) : null}
 
             <View style={styles.inputRow}>
@@ -491,31 +221,22 @@ export function MessageInputBar({
                     <TouchableOpacity
                         accessibilityLabel={
                             recordingInProgress
-                                ? "Finish voice memo"
+                                ? "Voice memo recording"
                                 : "Record voice memo"
                         }
                         accessibilityRole="button"
                         disabled={voiceMemoButtonDisabled}
                         onPress={() => {
-                            if (recordingInProgress) {
-                                void stopVoiceMemo();
-                                return;
-                            }
-                            void startVoiceMemo();
+                            setVoiceMemoOpen(true);
                         }}
                         style={[
                             styles.actionBtn,
-                            recordingInProgress && styles.recordingActiveBtn,
                             voiceMemoButtonDisabled && styles.actionBtnDisabled,
                         ]}
                     >
                         <Ionicons
-                            color={
-                                recordingInProgress
-                                    ? colors.error
-                                    : colors.muted
-                            }
-                            name={recordingInProgress ? "stop" : "mic-outline"}
+                            color={colors.muted}
+                            name="mic-outline"
                             size={20}
                         />
                     </TouchableOpacity>
@@ -534,6 +255,319 @@ export function MessageInputBar({
                     <Ionicons color={colors.text} name="arrow-up" size={18} />
                 </TouchableOpacity>
             </View>
+        </View>
+    );
+}
+
+function VoiceMemoRecorder({
+    onCancel,
+    onError,
+    onRecorded,
+    sending,
+}: VoiceMemoRecorderProps) {
+    const recorder = useAudioRecorder(VOICE_MEMO_RECORDING_OPTIONS);
+    const recorderState = useAudioRecorderState(recorder, 250);
+    const [recordingPhase, setRecordingPhaseState] =
+        useState<VoiceMemoPhase>("starting");
+    const [recordingActive, setRecordingActive] = useState(false);
+    const mountedRef = useRef(true);
+    const recordingPhaseRef = useRef<VoiceMemoPhase>("starting");
+    const startAttemptedRef = useRef(false);
+    const startTokenRef = useRef(0);
+    const canFinishVoiceMemo =
+        (recordingPhase === "recording" || recorderState.isRecording) &&
+        recordingPhase !== "canceling" &&
+        recordingPhase !== "stopping";
+
+    const setRecordingPhase = useCallback((phase: VoiceMemoPhase) => {
+        recordingPhaseRef.current = phase;
+        setRecordingPhaseState(phase);
+    }, []);
+
+    const resetAudioMode = useCallback(async () => {
+        await setAudioModeAsync({
+            allowsRecording: false,
+            playsInSilentMode: true,
+        });
+    }, []);
+
+    const isCurrentStart = useCallback((token: number): boolean => {
+        return (
+            mountedRef.current &&
+            startTokenRef.current === token &&
+            recordingPhaseRef.current === "starting"
+        );
+    }, []);
+
+    const startVoiceMemo = useCallback(async () => {
+        if (recordingPhaseRef.current !== "starting") {
+            return;
+        }
+        const startToken = startTokenRef.current + 1;
+        startTokenRef.current = startToken;
+        onError?.("");
+        try {
+            const permission = await requestRecordingPermissionsAsync();
+            if (!isCurrentStart(startToken)) {
+                return;
+            }
+            if (!permission.granted) {
+                onError?.("Microphone permission is required.");
+                setRecordingPhase("idle");
+                haptic("error");
+                onCancel();
+                return;
+            }
+
+            await setAudioModeAsync({
+                allowsRecording: true,
+                playsInSilentMode: true,
+            });
+            if (!isCurrentStart(startToken)) {
+                await resetAudioMode().catch(() => {
+                    /* ignore */
+                });
+                return;
+            }
+            await recorder.prepareToRecordAsync();
+            if (!isCurrentStart(startToken)) {
+                await resetAudioMode().catch(() => {
+                    /* ignore */
+                });
+                return;
+            }
+            recorder.record();
+            if (!isCurrentStart(startToken)) {
+                await recorder.stop().catch(() => {
+                    /* ignore */
+                });
+                await resetAudioMode().catch(() => {
+                    /* ignore */
+                });
+                return;
+            }
+            setRecordingActive(true);
+            setRecordingPhase("recording");
+            haptic("confirm");
+        } catch (err: unknown) {
+            await resetAudioMode().catch(() => {
+                /* ignore */
+            });
+            if (isCurrentStart(startToken)) {
+                onError?.(
+                    err instanceof Error
+                        ? err.message
+                        : "Could not start recording.",
+                );
+                setRecordingPhase("idle");
+                haptic("error");
+                onCancel();
+            }
+        } finally {
+            const phase = recordingPhaseRef.current as VoiceMemoPhase;
+            if (!mountedRef.current) {
+                return;
+            }
+            if (phase === "canceling") {
+                setRecordingPhase("idle");
+                onCancel();
+                return;
+            }
+            if (phase === "starting") {
+                setRecordingPhase("idle");
+            }
+        }
+    }, [
+        isCurrentStart,
+        onCancel,
+        onError,
+        recorder,
+        resetAudioMode,
+        setRecordingPhase,
+    ]);
+
+    const stopVoiceMemo = useCallback(async () => {
+        if (
+            (!recordingActive && !recorderState.isRecording) ||
+            recordingPhaseRef.current === "canceling" ||
+            recordingPhaseRef.current === "starting" ||
+            recordingPhaseRef.current === "stopping"
+        ) {
+            return;
+        }
+        startTokenRef.current += 1;
+        setRecordingPhase("stopping");
+        onError?.("");
+        let recordedUri: null | string = null;
+        try {
+            if (recorder.isRecording || recorderState.isRecording) {
+                await recorder.stop();
+            }
+            recordedUri = recorder.uri ?? recorderState.url;
+            await resetAudioMode();
+            if (!recordedUri) {
+                throw new Error("Recording did not produce an audio file.");
+            }
+
+            const voiceMemo =
+                await localVoiceMemoAttachmentFromUri(recordedUri);
+            if (voiceMemo.fileSize <= 0) {
+                throw new Error("Recording did not produce any audio.");
+            }
+            onRecorded(voiceMemo);
+            setRecordingActive(false);
+            haptic("success");
+        } catch (err: unknown) {
+            if (recordedUri) {
+                await FileSystem.deleteAsync(recordedUri, {
+                    idempotent: true,
+                }).catch(() => {
+                    /* ignore */
+                });
+            }
+            await resetAudioMode().catch(() => {
+                /* ignore */
+            });
+            onError?.(
+                err instanceof Error
+                    ? err.message
+                    : "Could not finish recording.",
+            );
+            haptic("error");
+        } finally {
+            setRecordingActive(false);
+            setRecordingPhase("idle");
+        }
+    }, [
+        onError,
+        onRecorded,
+        recorder,
+        recorderState.isRecording,
+        recorderState.url,
+        recordingActive,
+        resetAudioMode,
+        setRecordingPhase,
+    ]);
+
+    const cancelVoiceMemo = useCallback(async () => {
+        if (
+            (!recordingActive &&
+                !recorderState.isRecording &&
+                recordingPhaseRef.current === "idle") ||
+            recordingPhaseRef.current === "canceling" ||
+            recordingPhaseRef.current === "stopping"
+        ) {
+            return;
+        }
+        const phaseAtCancel = recordingPhaseRef.current;
+        startTokenRef.current += 1;
+        setRecordingPhase("canceling");
+        onError?.("");
+        const previousUri = recorder.uri ?? recorderState.url;
+        try {
+            if (recordingActive || recorderState.isRecording) {
+                await recorder.stop().catch(() => {
+                    /* ignore */
+                });
+            }
+            const recordedUri =
+                recorder.uri ?? recorderState.url ?? previousUri;
+            if (recordedUri) {
+                await FileSystem.deleteAsync(recordedUri, {
+                    idempotent: true,
+                }).catch(() => {
+                    /* ignore */
+                });
+            }
+            await resetAudioMode().catch(() => {
+                /* ignore */
+            });
+            haptic("selection");
+        } finally {
+            setRecordingActive(false);
+            if (mountedRef.current && phaseAtCancel !== "starting") {
+                setRecordingPhase("idle");
+                onCancel();
+            }
+        }
+    }, [
+        onCancel,
+        onError,
+        recorder,
+        recorderState.isRecording,
+        recorderState.url,
+        recordingActive,
+        resetAudioMode,
+        setRecordingPhase,
+    ]);
+
+    useEffect(() => {
+        mountedRef.current = true;
+        if (!startAttemptedRef.current) {
+            startAttemptedRef.current = true;
+            void startVoiceMemo();
+        }
+        return () => {
+            mountedRef.current = false;
+            startTokenRef.current += 1;
+            const shouldStop =
+                recorder.isRecording ||
+                recordingPhaseRef.current === "recording";
+            void (async () => {
+                if (shouldStop) {
+                    await recorder.stop().catch(() => {
+                        /* ignore */
+                    });
+                }
+                await resetAudioMode().catch(() => {
+                    /* ignore */
+                });
+            })();
+        };
+    }, [recorder, resetAudioMode, startVoiceMemo]);
+
+    return (
+        <View style={styles.recordingBar}>
+            <View style={styles.recordingIndicator} />
+            <Text style={styles.recordingDuration}>
+                {formatRecordingStatus(
+                    recordingPhase,
+                    recorderState.durationMillis,
+                )}
+            </Text>
+            <TouchableOpacity
+                accessibilityLabel="Cancel voice memo"
+                accessibilityRole="button"
+                disabled={
+                    sending ||
+                    recordingPhase === "canceling" ||
+                    recordingPhase === "stopping"
+                }
+                onPress={() => void cancelVoiceMemo()}
+                style={[
+                    styles.recordingButton,
+                    (sending ||
+                        recordingPhase === "canceling" ||
+                        recordingPhase === "stopping") &&
+                        styles.actionBtnDisabled,
+                ]}
+            >
+                <Ionicons color={colors.textSecondary} name="close" size={18} />
+            </TouchableOpacity>
+            <TouchableOpacity
+                accessibilityLabel="Finish voice memo"
+                accessibilityRole="button"
+                disabled={sending || !canFinishVoiceMemo}
+                onPress={() => void stopVoiceMemo()}
+                style={[
+                    styles.recordingButton,
+                    styles.recordingStopButton,
+                    (sending || !canFinishVoiceMemo) &&
+                        styles.actionBtnDisabled,
+                ]}
+            >
+                <Ionicons color={colors.text} name="stop" size={16} />
+            </TouchableOpacity>
         </View>
     );
 }
