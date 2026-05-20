@@ -112,7 +112,6 @@ export function MessageInputBar({
 
     const handleVoiceMemoRecorded = useCallback(
         (voiceMemo: PickedAttachment) => {
-            setVoiceMemoOpen(false);
             onVoiceMemoRecorded?.(voiceMemo);
         },
         [onVoiceMemoRecorded],
@@ -398,6 +397,7 @@ function VoiceMemoRecorder({
         startTokenRef.current += 1;
         setRecordingPhase("stopping");
         onError?.("");
+        let completed = false;
         let recordedUri: null | string = null;
         try {
             if (recorder.isRecording || recorderState.isRecording) {
@@ -415,6 +415,7 @@ function VoiceMemoRecorder({
                 throw new Error("Recording did not produce any audio.");
             }
             onRecorded(voiceMemo);
+            completed = true;
             setRecordingActive(false);
             haptic("success");
         } catch (err: unknown) {
@@ -435,10 +436,16 @@ function VoiceMemoRecorder({
             );
             haptic("error");
         } finally {
-            setRecordingActive(false);
-            setRecordingPhase("idle");
+            if (mountedRef.current) {
+                setRecordingActive(false);
+                setRecordingPhase("idle");
+                if (completed) {
+                    onCancel();
+                }
+            }
         }
     }, [
+        onCancel,
         onError,
         onRecorded,
         recorder,
