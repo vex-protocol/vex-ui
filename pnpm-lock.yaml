@@ -407,7 +407,7 @@ importers:
         specifier: ^10.4.24
         version: 10.5.0(postcss@8.5.13)
       concurrently:
-        specifier: ^9.2.1
+        specifier: ^9.1.0
         version: 9.2.1
       dotenv:
         specifier: ^16.6.1
@@ -419,7 +419,7 @@ importers:
         specifier: ^3.4.19
         version: 3.4.19(tsx@4.21.0)(yaml@2.8.3)
       tsx:
-        specifier: ^4.21.0
+        specifier: ^4.19.0
         version: 4.21.0
       typescript:
         specifier: ~5.9.3
