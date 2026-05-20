@@ -3,7 +3,6 @@
         "name": "Vex",
         "slug": "vex",
         "version": "0.1.0",
-        "orientation": "portrait",
         "scheme": "vex",
         "newArchEnabled": true,
         "platforms": ["ios", "android"],
