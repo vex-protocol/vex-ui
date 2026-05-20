@@ -15,6 +15,8 @@
         "android:release:install-all": "bash ./scripts/release-apk-install-all.sh",
         "android:reset-db": "bash ./scripts/android-reset-db.sh",
         "ios:release:install": "bash ./scripts/install-ios-release.sh",
+        "ios:testflight": "bash ./scripts/ios-testflight-upload.sh",
+        "ios:testflight:archive": "bash ./scripts/ios-testflight-upload.sh --skip-upload",
         "ios": "expo run:ios",
         "dev": "pnpm run android:multi",
         "icons:regen": "bash ./scripts/generate-icons-from-vex-svg.sh",

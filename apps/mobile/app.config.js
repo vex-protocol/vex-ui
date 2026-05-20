@@ -54,6 +54,10 @@ module.exports = ({ config }) => {
     const iosBundleIdentifier =
         process.env.VEX_IOS_BUNDLE_IDENTIFIER ||
         (devMode ? "chat.vex.mobile.dev" : config.ios?.bundleIdentifier);
+    const iosBuildNumber =
+        process.env.VEX_IOS_BUILD_NUMBER || config.ios?.buildNumber;
+    const iosAppleTeamId =
+        process.env.VEX_IOS_APPLE_TEAM_ID || config.ios?.appleTeamId;
     const androidGoogleServicesFile =
         process.env.VEX_ANDROID_GOOGLE_SERVICES_FILE ||
         config.android?.googleServicesFile;
@@ -87,6 +91,8 @@ module.exports = ({ config }) => {
         ios: {
             ...config.ios,
             bundleIdentifier: iosBundleIdentifier,
+            ...(iosBuildNumber ? { buildNumber: iosBuildNumber } : {}),
+            ...(iosAppleTeamId ? { appleTeamId: iosAppleTeamId } : {}),
             associatedDomains: iosCapabilitiesEnabled
                 ? config.ios?.associatedDomains
                 : undefined,
