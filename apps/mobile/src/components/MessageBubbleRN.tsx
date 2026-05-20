@@ -775,15 +775,16 @@ function AudioAttachment({
 }) {
     const player = useAudioPlayer(null, { updateInterval: 250 });
     const status = useAudioPlayerStatus(player);
+    const mountedRef = React.useRef(true);
     const [error, setError] = React.useState("");
     const [loading, setLoading] = React.useState(false);
     const [mediaUri, setMediaUri] = React.useState<null | string>(null);
 
     React.useEffect(() => {
         return () => {
-            player.pause();
+            mountedRef.current = false;
         };
-    }, [player]);
+    }, []);
 
     const loadAudio = React.useCallback(async (): Promise<void> => {
         if (mediaUri) {
@@ -793,15 +794,22 @@ function AudioAttachment({
         setError("");
         try {
             const uri = await writeAttachmentDataToCache(attachment);
+            if (!mountedRef.current) {
+                return;
+            }
             player.replace({ name: attachment.fileName, uri });
             setMediaUri(uri);
         } catch (err: unknown) {
             const message =
                 err instanceof Error ? err.message : "Could not load audio";
-            setError(message);
+            if (mountedRef.current) {
+                setError(message);
+            }
             throw new Error(message);
         } finally {
-            setLoading(false);
+            if (mountedRef.current) {
+                setLoading(false);
+            }
         }
     }, [attachment, mediaUri, player]);
 
@@ -809,10 +817,13 @@ function AudioAttachment({
         if (loading) return;
         try {
             if (status.playing) {
-                player.pause();
+                await Promise.resolve(player.pause());
                 return;
             }
             await loadAudio();
+            if (!mountedRef.current) {
+                return;
+            }
             if (status.didJustFinish) {
                 await player.seekTo(0);
             }
@@ -820,7 +831,9 @@ function AudioAttachment({
         } catch (err: unknown) {
             const message =
                 err instanceof Error ? err.message : "Could not play audio";
-            setError(message);
+            if (mountedRef.current) {
+                setError(message);
+            }
         }
     }, [loadAudio, loading, player, status.didJustFinish, status.playing]);
 
@@ -1219,15 +1232,16 @@ function VideoAttachment({
         videoPlayer.showNowPlayingNotification = false;
         videoPlayer.staysActiveInBackground = false;
     });
+    const mountedRef = React.useRef(true);
     const [error, setError] = React.useState("");
     const [loading, setLoading] = React.useState(false);
     const [mediaUri, setMediaUri] = React.useState<null | string>(null);
 
     React.useEffect(() => {
         return () => {
-            player.pause();
+            mountedRef.current = false;
         };
-    }, [player]);
+    }, []);
 
     const loadVideo = React.useCallback(async (): Promise<void> => {
         if (mediaUri) {
@@ -1238,18 +1252,28 @@ function VideoAttachment({
         setError("");
         try {
             const uri = await writeAttachmentDataToCache(attachment);
+            if (!mountedRef.current) {
+                return;
+            }
             await player.replaceAsync({
                 metadata: { title: attachment.fileName },
                 uri,
             });
+            if (!mountedRef.current) {
+                return;
+            }
             setMediaUri(uri);
             player.play();
         } catch (err: unknown) {
             const message =
                 err instanceof Error ? err.message : "Could not load video";
-            setError(message);
+            if (mountedRef.current) {
+                setError(message);
+            }
         } finally {
-            setLoading(false);
+            if (mountedRef.current) {
+                setLoading(false);
+            }
         }
     }, [attachment, mediaUri, player]);
 
