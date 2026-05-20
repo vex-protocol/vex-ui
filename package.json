@@ -26,6 +26,7 @@
         "android:staging": "pnpm run android:dev",
         "install:android": "pnpm -F mobile run android:release:install-all",
         "install:ios": "pnpm -F mobile run ios:release:install",
+        "website": "pnpm -F @vex-chat/website dev:all",
         "preinstall": "npx only-allow pnpm"
     },
     "packageManager": "pnpm@10.33.0",
