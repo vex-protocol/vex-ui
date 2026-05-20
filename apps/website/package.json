@@ -1,0 +1,49 @@
+{
+    "name": "@vex-chat/website",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "dev": "vite",
+        "dev:api": "tsx scripts/local-api-server.ts",
+        "start:api": "tsx scripts/local-api-server.ts",
+        "dev:all": "concurrently -n site,api -c blue,magenta \"vite\" \"pnpm run dev:api\"",
+        "start": "vite",
+        "build": "vite build",
+        "preview": "vite preview",
+        "check": "pnpm run typecheck",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "lint": "eslint src api scripts --max-warnings=0",
+        "lint:fix": "eslint src api scripts --fix",
+        "test": "vitest --passWithNoTests",
+        "license:check": "npx @onebeyond/license-checker scan --allowOnly MIT ISC BSD-2-Clause BSD-3-Clause Apache-2.0 0BSD MPL-2.0 CC0-1.0 CC-BY-4.0 Unlicense BlueOak-1.0.0 Python-2.0 Zlib PSF-2.0 Artistic-2.0 AGPL-3.0-or-later WTFPL --ignoreRootPackageLicense --disableReport"
+    },
+    "dependencies": {
+        "preact": "^10.27.2"
+    },
+    "browserslist": {
+        "production": [
+            ">0.2%",
+            "not dead",
+            "not op_mini all"
+        ],
+        "development": [
+            "last 1 chrome version",
+            "last 1 firefox version",
+            "last 1 safari version"
+        ]
+    },
+    "devDependencies": {
+        "@types/node": "catalog:",
+        "@vex-chat/eslint-config": "workspace:*",
+        "autoprefixer": "^10.4.24",
+        "concurrently": "^9.2.1",
+        "dotenv": "^16.6.1",
+        "postcss": "^8.5.10",
+        "tailwindcss": "^3.4.19",
+        "tsx": "^4.21.0",
+        "typescript": "catalog:",
+        "vite": "^7.3.2",
+        "vitest": "catalog:"
+    },
+    "license": "AGPL-3.0-or-later"
+}
