@@ -20,7 +20,6 @@ import {
     requestRecordingPermissionsAsync,
     setAudioModeAsync,
     useAudioRecorder,
-    useAudioRecorderState,
 } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -265,16 +264,19 @@ function VoiceMemoRecorder({
     sending,
 }: VoiceMemoRecorderProps) {
     const recorder = useAudioRecorder(VOICE_MEMO_RECORDING_OPTIONS);
-    const recorderState = useAudioRecorderState(recorder, 250);
     const [recordingPhase, setRecordingPhaseState] =
         useState<VoiceMemoPhase>("starting");
     const [recordingActive, setRecordingActive] = useState(false);
+    const [durationMillis, setDurationMillis] = useState(0);
     const mountedRef = useRef(true);
+    const recordingActiveRef = useRef(false);
     const recordingPhaseRef = useRef<VoiceMemoPhase>("starting");
+    const recordingStartedAtRef = useRef(0);
+    const recordedUriRef = useRef<null | string>(null);
     const startAttemptedRef = useRef(false);
     const startTokenRef = useRef(0);
     const canFinishVoiceMemo =
-        (recordingPhase === "recording" || recorderState.isRecording) &&
+        recordingActive &&
         recordingPhase !== "canceling" &&
         recordingPhase !== "stopping";
 
@@ -283,12 +285,35 @@ function VoiceMemoRecorder({
         setRecordingPhaseState(phase);
     }, []);
 
+    const setRecordingActiveState = useCallback((active: boolean) => {
+        recordingActiveRef.current = active;
+        setRecordingActive(active);
+    }, []);
+
     const resetAudioMode = useCallback(async () => {
+        if (Platform.OS !== "ios") {
+            return;
+        }
         await setAudioModeAsync({
             allowsRecording: false,
             playsInSilentMode: true,
         });
     }, []);
+
+    useEffect(() => {
+        if (recordingPhase !== "recording") {
+            return;
+        }
+        const interval = setInterval(() => {
+            const startedAt = recordingStartedAtRef.current;
+            if (startedAt > 0) {
+                setDurationMillis(Date.now() - startedAt);
+            }
+        }, 250);
+        return () => {
+            clearInterval(interval);
+        };
+    }, [recordingPhase]);
 
     const isCurrentStart = useCallback((token: number): boolean => {
         return (
@@ -318,10 +343,12 @@ function VoiceMemoRecorder({
                 return;
             }
 
-            await setAudioModeAsync({
-                allowsRecording: true,
-                playsInSilentMode: true,
-            });
+            if (Platform.OS === "ios") {
+                await setAudioModeAsync({
+                    allowsRecording: true,
+                    playsInSilentMode: true,
+                });
+            }
             if (!isCurrentStart(startToken)) {
                 await resetAudioMode().catch(() => {
                     /* ignore */
@@ -329,6 +356,7 @@ function VoiceMemoRecorder({
                 return;
             }
             await recorder.prepareToRecordAsync();
+            recordedUriRef.current = recorder.uri ?? null;
             if (!isCurrentStart(startToken)) {
                 await resetAudioMode().catch(() => {
                     /* ignore */
@@ -337,7 +365,7 @@ function VoiceMemoRecorder({
             }
             recorder.record();
             if (!isCurrentStart(startToken)) {
-                await recorder.stop().catch(() => {
+                await Promise.resolve(recorder.stop()).catch(() => {
                     /* ignore */
                 });
                 await resetAudioMode().catch(() => {
@@ -345,7 +373,10 @@ function VoiceMemoRecorder({
                 });
                 return;
             }
-            setRecordingActive(true);
+            recordedUriRef.current = recorder.uri ?? recordedUriRef.current;
+            recordingStartedAtRef.current = Date.now();
+            setDurationMillis(0);
+            setRecordingActiveState(true);
             setRecordingPhase("recording");
             haptic("confirm");
         } catch (err: unknown) {
@@ -382,12 +413,13 @@ function VoiceMemoRecorder({
         onError,
         recorder,
         resetAudioMode,
+        setRecordingActiveState,
         setRecordingPhase,
     ]);
 
     const stopVoiceMemo = useCallback(async () => {
         if (
-            (!recordingActive && !recorderState.isRecording) ||
+            !recordingActiveRef.current ||
             recordingPhaseRef.current === "canceling" ||
             recordingPhaseRef.current === "starting" ||
             recordingPhaseRef.current === "stopping"
@@ -396,18 +428,22 @@ function VoiceMemoRecorder({
         }
         startTokenRef.current += 1;
         setRecordingPhase("stopping");
+        setRecordingActiveState(false);
         onError?.("");
         let completed = false;
         let recordedUri: null | string = null;
         try {
-            if (recorder.isRecording || recorderState.isRecording) {
-                await recorder.stop();
-            }
-            recordedUri = recorder.uri ?? recorderState.url;
+            const stopResult = await Promise.resolve(recorder.stop());
+            recordedUri =
+                recordingUriFromStopResult(stopResult) ??
+                recorder.uri ??
+                recordedUriRef.current;
             await resetAudioMode();
             if (!recordedUri) {
                 throw new Error("Recording did not produce an audio file.");
             }
+            recordedUriRef.current = recordedUri;
+            await waitForReadableUri(recordedUri);
 
             const voiceMemo =
                 await localVoiceMemoAttachmentFromUri(recordedUri);
@@ -416,7 +452,6 @@ function VoiceMemoRecorder({
             }
             onRecorded(voiceMemo);
             completed = true;
-            setRecordingActive(false);
             haptic("success");
         } catch (err: unknown) {
             if (recordedUri) {
@@ -437,7 +472,7 @@ function VoiceMemoRecorder({
             haptic("error");
         } finally {
             if (mountedRef.current) {
-                setRecordingActive(false);
+                setRecordingActiveState(false);
                 setRecordingPhase("idle");
                 if (completed) {
                     onCancel();
@@ -449,17 +484,14 @@ function VoiceMemoRecorder({
         onError,
         onRecorded,
         recorder,
-        recorderState.isRecording,
-        recorderState.url,
-        recordingActive,
         resetAudioMode,
+        setRecordingActiveState,
         setRecordingPhase,
     ]);
 
     const cancelVoiceMemo = useCallback(async () => {
         if (
-            (!recordingActive &&
-                !recorderState.isRecording &&
+            (!recordingActiveRef.current &&
                 recordingPhaseRef.current === "idle") ||
             recordingPhaseRef.current === "canceling" ||
             recordingPhaseRef.current === "stopping"
@@ -469,16 +501,16 @@ function VoiceMemoRecorder({
         const phaseAtCancel = recordingPhaseRef.current;
         startTokenRef.current += 1;
         setRecordingPhase("canceling");
+        setRecordingActiveState(false);
         onError?.("");
-        const previousUri = recorder.uri ?? recorderState.url;
+        const previousUri = recorder.uri ?? recordedUriRef.current;
         try {
-            if (recordingActive || recorderState.isRecording) {
-                await recorder.stop().catch(() => {
+            if (recordingActiveRef.current || phaseAtCancel === "recording") {
+                await Promise.resolve(recorder.stop()).catch(() => {
                     /* ignore */
                 });
             }
-            const recordedUri =
-                recorder.uri ?? recorderState.url ?? previousUri;
+            const recordedUri = recorder.uri ?? previousUri;
             if (recordedUri) {
                 await FileSystem.deleteAsync(recordedUri, {
                     idempotent: true,
@@ -491,7 +523,7 @@ function VoiceMemoRecorder({
             });
             haptic("selection");
         } finally {
-            setRecordingActive(false);
+            setRecordingActiveState(false);
             if (mountedRef.current && phaseAtCancel !== "starting") {
                 setRecordingPhase("idle");
                 onCancel();
@@ -501,10 +533,8 @@ function VoiceMemoRecorder({
         onCancel,
         onError,
         recorder,
-        recorderState.isRecording,
-        recorderState.url,
-        recordingActive,
         resetAudioMode,
+        setRecordingActiveState,
         setRecordingPhase,
     ]);
 
@@ -518,11 +548,12 @@ function VoiceMemoRecorder({
             mountedRef.current = false;
             startTokenRef.current += 1;
             const shouldStop =
-                recorder.isRecording ||
+                recordingActiveRef.current ||
                 recordingPhaseRef.current === "recording";
+            recordingActiveRef.current = false;
             void (async () => {
                 if (shouldStop) {
-                    await recorder.stop().catch(() => {
+                    await Promise.resolve(recorder.stop()).catch(() => {
                         /* ignore */
                     });
                 }
@@ -537,10 +568,7 @@ function VoiceMemoRecorder({
         <View style={styles.recordingBar}>
             <View style={styles.recordingIndicator} />
             <Text style={styles.recordingDuration}>
-                {formatRecordingStatus(
-                    recordingPhase,
-                    recorderState.durationMillis,
-                )}
+                {formatRecordingStatus(recordingPhase, durationMillis)}
             </Text>
             <TouchableOpacity
                 accessibilityLabel="Cancel voice memo"
@@ -735,5 +763,23 @@ function formatRecordingStatus(
             return "Preparing...";
         case "stopping":
             return "Finishing...";
+    }
+}
+
+function recordingUriFromStopResult(result: unknown): null | string {
+    if (!result || typeof result !== "object" || !("url" in result)) {
+        return null;
+    }
+    const url = result.url;
+    return typeof url === "string" && url.length > 0 ? url : null;
+}
+
+async function waitForReadableUri(uri: string): Promise<void> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const info = await FileSystem.getInfoAsync(uri).catch(() => null);
+        if (info?.exists && ("size" in info ? info.size > 0 : true)) {
+            return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
     }
 }
