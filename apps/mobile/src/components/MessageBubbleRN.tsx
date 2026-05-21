@@ -2,6 +2,9 @@ import type { Message } from "@vex-chat/libvex";
 import type {
     EncryptedFileAttachment,
     MarkdownInlineSegment,
+    MessageEmbed,
+    MessageEmbedBlock,
+    MessageEmbedMediaItem,
     MessageEmoji,
     MessageMarkdownNode,
     MessageReaction,
@@ -38,6 +41,7 @@ import {
     formatFileSize,
     formatTime,
     isImageType,
+    messageEmbed,
     messageReactions,
     parseMessageMarkdown,
     vexService,
@@ -186,6 +190,13 @@ export function MessageBubbleRN({
         () => parseMessageMarkdown(message.message),
         [message.message],
     );
+    const embed = React.useMemo(() => messageEmbed(message), [message]);
+    const embedConsumesMessage = React.useMemo(
+        () => Boolean(embed?.blocks?.some(usesMessageMarkdownSource)),
+        [embed],
+    );
+    const shouldRenderMessage =
+        !embed || (embed.display !== "replace" && !embedConsumesMessage);
     const reactions = React.useMemo(() => messageReactions(message), [message]);
 
     const menuActions = React.useMemo(
@@ -514,17 +525,25 @@ export function MessageBubbleRN({
                                 </Text>
                             </View>
                         )}
-                        <MarkdownMessage
-                            grouped={!showIdentity}
-                            nodes={markdownNodes}
-                        />
+                        {embed ? (
+                            <MessageEmbedCard
+                                embed={embed}
+                                messageText={message.message}
+                            />
+                        ) : null}
+                        {shouldRenderMessage ? (
+                            <MarkdownMessage
+                                grouped={!showIdentity}
+                                nodes={markdownNodes}
+                            />
+                        ) : null}
                         {inviteID ? (
                             <InvitePreviewCard
                                 inviteID={inviteID}
                                 isOwn={isOwn}
                             />
                         ) : null}
-                        {!inviteID ? (
+                        {!inviteID && !embed?.suppressLinkPreview ? (
                             <LinkPreviewCard content={message.message} />
                         ) : null}
                         {reactions.length > 0 ? (
@@ -999,6 +1018,57 @@ function codeHighlightStyle(
     }
 }
 
+function embedBlockKey(block: MessageEmbedBlock, index: number): string {
+    if ("attachment" in block) {
+        return `${block.type}:${block.attachment.fileID}:${String(index)}`;
+    }
+    return `${block.type}:${String(index)}`;
+}
+
+function embedIconName(
+    icon: string | undefined,
+    kind: string,
+): React.ComponentProps<typeof Ionicons>["name"] {
+    const value = icon ?? kind;
+    if (value.includes("audio") || value.includes("voice")) {
+        return "mic-outline";
+    }
+    if (value.includes("bot") || value.includes("assistant")) {
+        return "sparkles-outline";
+    }
+    if (value.includes("branch") || value.includes("git")) {
+        return "git-branch-outline";
+    }
+    if (value.includes("issue")) {
+        return "alert-circle-outline";
+    }
+    if (value.includes("pull")) {
+        return "git-pull-request-outline";
+    }
+    if (value.includes("release")) {
+        return "pricetag-outline";
+    }
+    if (value.includes("tool")) {
+        return "hammer-outline";
+    }
+    return "information-circle-outline";
+}
+
+function embedToneStyle(tone: MessageEmbed["tone"]) {
+    switch (tone) {
+        case "danger":
+            return styles.embedCardDanger;
+        case "default":
+        case "info":
+        case undefined:
+            return null;
+        case "success":
+            return styles.embedCardSuccess;
+        case "warning":
+            return styles.embedCardWarning;
+    }
+}
+
 function emojiFromInput(value: string): MessageEmoji | null {
     const trimmed = value.trim();
     if (!isSingleEmojiGrapheme(trimmed)) {
@@ -1152,6 +1222,172 @@ function MarkdownText({
     );
 }
 
+function MessageEmbedBlockView({
+    block,
+    messageText,
+}: {
+    block: MessageEmbedBlock;
+    messageText: string;
+}) {
+    switch (block.type) {
+        case "code":
+            return <CodeBlock code={block.code} language={block.language} />;
+        case "divider":
+            return <View style={styles.embedDivider} />;
+        case "file":
+            return (
+                <AttachmentPreview
+                    attachment={block.attachment}
+                    image={false}
+                />
+            );
+        case "gallery":
+            return (
+                <View style={styles.embedGallery}>
+                    {block.items.map((item, index) => (
+                        <MessageEmbedMedia
+                            item={item}
+                            key={`${item.attachment.fileID}-${String(index)}`}
+                        />
+                    ))}
+                </View>
+            );
+        case "markdown":
+            return (
+                <MarkdownMessage
+                    grouped={false}
+                    nodes={parseMessageMarkdown(
+                        block.source === "message"
+                            ? messageText
+                            : (block.text ?? ""),
+                    )}
+                />
+            );
+        case "media":
+            return <MessageEmbedMedia item={block} />;
+    }
+}
+
+function MessageEmbedCard({
+    embed,
+    messageText,
+}: {
+    embed: MessageEmbed;
+    messageText: string;
+}) {
+    return (
+        <View style={[styles.embedCard, embedToneStyle(embed.tone)]}>
+            <View style={styles.embedHeader}>
+                <View style={styles.embedIcon}>
+                    <Ionicons
+                        color={colors.textSecondary}
+                        name={embedIconName(embed.icon, embed.kind)}
+                        size={16}
+                    />
+                </View>
+                <View style={styles.embedHeaderText}>
+                    <Text numberOfLines={2} style={styles.embedTitle}>
+                        {embed.title}
+                    </Text>
+                    {embed.subtitle ? (
+                        <Text numberOfLines={2} style={styles.embedSubtitle}>
+                            {embed.subtitle}
+                        </Text>
+                    ) : null}
+                </View>
+            </View>
+            {embed.fields?.length ? (
+                <View style={styles.embedFields}>
+                    {embed.fields.map((field, index) => (
+                        <View
+                            key={`${field.label}-${String(index)}`}
+                            style={[
+                                styles.embedField,
+                                field.short && styles.embedFieldShort,
+                            ]}
+                        >
+                            <Text style={styles.embedFieldLabel}>
+                                {field.label}
+                            </Text>
+                            <Text
+                                numberOfLines={field.short ? 2 : undefined}
+                                style={[
+                                    styles.embedFieldValue,
+                                    field.mono && styles.embedFieldValueMono,
+                                ]}
+                            >
+                                {field.value}
+                            </Text>
+                        </View>
+                    ))}
+                </View>
+            ) : null}
+            {embed.blocks?.length ? (
+                <View style={styles.embedBlocks}>
+                    {embed.blocks.map((block, index) => (
+                        <MessageEmbedBlockView
+                            block={block}
+                            key={embedBlockKey(block, index)}
+                            messageText={messageText}
+                        />
+                    ))}
+                </View>
+            ) : null}
+            {embed.actions?.length ? (
+                <View style={styles.embedActions}>
+                    {embed.actions.map((action, index) => (
+                        <Pressable
+                            accessibilityRole="link"
+                            key={`${action.url}-${String(index)}`}
+                            onPress={() => {
+                                void Linking.openURL(action.url).catch(() => {
+                                    Alert.alert(
+                                        "Could not open link",
+                                        action.url,
+                                    );
+                                });
+                            }}
+                            style={({ pressed }) => [
+                                styles.embedAction,
+                                pressed && styles.attachmentPressed,
+                            ]}
+                        >
+                            <Text style={styles.embedActionText}>
+                                {action.label}
+                            </Text>
+                            <Ionicons
+                                color="#8AB4FF"
+                                name="open-outline"
+                                size={14}
+                            />
+                        </Pressable>
+                    ))}
+                </View>
+            ) : null}
+        </View>
+    );
+}
+
+function MessageEmbedMedia({ item }: { item: MessageEmbedMediaItem }) {
+    const image =
+        item.mediaType === "image" ||
+        item.mediaType === "svg" ||
+        isImageType(item.attachment.contentType);
+    return (
+        <View style={styles.embedMedia}>
+            {item.title ? (
+                <Text numberOfLines={1} style={styles.embedMediaTitle}>
+                    {item.title}
+                </Text>
+            ) : null}
+            <AttachmentPreview attachment={item.attachment} image={image} />
+            {item.caption ? (
+                <Text style={styles.embedMediaCaption}>{item.caption}</Text>
+            ) : null}
+        </View>
+    );
+}
+
 function pickerEmojiKey(emoji: MessageEmoji, index: number): string {
     return `${emojiReactionKey(emoji)}:${String(index)}`;
 }
@@ -1217,6 +1453,11 @@ function ReactionRow({
             })}
         </View>
     );
+}
+
+function usesMessageMarkdownSource(block: MessageEmbedBlock): boolean {
+    if (block.type !== "markdown") return false;
+    return block.source === "message";
 }
 
 function VideoAttachment({
@@ -1504,6 +1745,134 @@ const styles = StyleSheet.create({
     },
     content: {
         flex: 1,
+    },
+    embedAction: {
+        alignItems: "center",
+        alignSelf: "flex-start",
+        backgroundColor: "rgba(138,180,255,0.11)",
+        borderColor: "rgba(138,180,255,0.28)",
+        borderRadius: 8,
+        borderWidth: 1,
+        flexDirection: "row",
+        gap: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+    },
+    embedActions: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 8,
+        marginTop: 10,
+    },
+    embedActionText: {
+        ...typography.body,
+        color: "#8AB4FF",
+        fontSize: 12,
+        fontWeight: "700",
+    },
+    embedBlocks: {
+        gap: 8,
+        marginTop: 10,
+    },
+    embedCard: {
+        backgroundColor: "rgba(255,255,255,0.04)",
+        borderColor: "rgba(138,180,255,0.22)",
+        borderLeftColor: "#8AB4FF",
+        borderLeftWidth: 3,
+        borderRadius: 8,
+        borderWidth: 1,
+        marginTop: 4,
+        maxWidth: 390,
+        padding: 10,
+    },
+    embedCardDanger: {
+        borderLeftColor: colors.error,
+    },
+    embedCardSuccess: {
+        borderLeftColor: "#59D38C",
+    },
+    embedCardWarning: {
+        borderLeftColor: "#FFD166",
+    },
+    embedDivider: {
+        backgroundColor: "rgba(255,255,255,0.1)",
+        height: 1,
+    },
+    embedField: {
+        flexBasis: "100%",
+        gap: 2,
+    },
+    embedFieldLabel: {
+        ...typography.body,
+        color: colors.muted,
+        fontSize: 10,
+        fontWeight: "700",
+        textTransform: "uppercase",
+    },
+    embedFields: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 10,
+        marginTop: 10,
+    },
+    embedFieldShort: {
+        flexBasis: "47%",
+        flexGrow: 1,
+    },
+    embedFieldValue: {
+        ...typography.body,
+        color: colors.textSecondary,
+        fontSize: 12,
+    },
+    embedFieldValueMono: {
+        fontFamily: fontFamilies.mono,
+    },
+    embedGallery: {
+        gap: 8,
+    },
+    embedHeader: {
+        alignItems: "center",
+        flexDirection: "row",
+        gap: 9,
+    },
+    embedHeaderText: {
+        flex: 1,
+        minWidth: 0,
+    },
+    embedIcon: {
+        alignItems: "center",
+        backgroundColor: "rgba(255,255,255,0.06)",
+        borderColor: "rgba(255,255,255,0.1)",
+        borderRadius: 7,
+        borderWidth: 1,
+        height: 30,
+        justifyContent: "center",
+        width: 30,
+    },
+    embedMedia: {
+        gap: 4,
+    },
+    embedMediaCaption: {
+        ...typography.body,
+        color: colors.muted,
+        fontSize: 11,
+    },
+    embedMediaTitle: {
+        ...typography.body,
+        color: colors.textSecondary,
+        fontSize: 12,
+        fontWeight: "700",
+    },
+    embedSubtitle: {
+        ...typography.body,
+        color: colors.muted,
+        fontSize: 11,
+    },
+    embedTitle: {
+        ...typography.body,
+        color: colors.text,
+        fontSize: 13,
+        fontWeight: "700",
     },
     fileAttachment: {
         alignItems: "center",

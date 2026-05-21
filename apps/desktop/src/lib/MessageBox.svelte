@@ -3,10 +3,13 @@
 
     import { onMount } from "svelte";
 
+    import { messageEmbed, type MessageEmbed } from "@vex-chat/store";
+
     import Avatar from "./Avatar.svelte";
     import { getServerUrl } from "./config.js";
     import LinkPreviewCard from "./LinkPreviewCard.svelte";
     import MessageContent from "./MessageContent.svelte";
+    import MessageEmbedCard from "./MessageEmbedCard.svelte";
     import { user } from "./store/index.js";
     import {
         chunkMessages,
@@ -54,6 +57,15 @@
     onMount(() => {
         scrollToBottom();
     });
+
+    function embedConsumesMessage(embed: MessageEmbed | null): boolean {
+        return Boolean(
+            embed?.blocks?.some(
+                (block) =>
+                    block.type === "markdown" && block.source === "message",
+            ),
+        );
+    }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -93,9 +105,17 @@
             </div>
 
             {#each chunk.messages as msg (msg.mailID)}
+                {@const embed = messageEmbed(msg)}
                 <div class="message">
-                    <MessageContent content={msg.message} />
-                    <LinkPreviewCard content={msg.message} />
+                    {#if embed}
+                        <MessageEmbedCard message={msg} />
+                    {/if}
+                    {#if !embed || (embed.display !== "replace" && !embedConsumesMessage(embed))}
+                        <MessageContent content={msg.message} />
+                    {/if}
+                    {#if !embed?.suppressLinkPreview}
+                        <LinkPreviewCard content={msg.message} />
+                    {/if}
                 </div>
             {/each}
         </div>

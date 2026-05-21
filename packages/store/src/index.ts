@@ -57,6 +57,14 @@ export {
 
 // ── Utilities (pure functions, no state) ────────────────────────────────────
 
+export { createCachedLinkPreviewLoader } from "./link-preview-cache.ts";
+export type {
+    CachedLinkPreviewLoader,
+    LinkPreviewCacheRecord,
+    LinkPreviewCacheSnapshot,
+    LinkPreviewCacheStorage,
+    LinkPreviewLoaderOptions,
+} from "./link-preview-cache.ts";
 export {
     extractLinkPreviewUrl,
     fetchLinkPreviewMetadata,
@@ -83,6 +91,7 @@ export {
     formatFileSize,
     formatTime,
     isImageType,
+    messageEmbed,
     messageReactionEvent,
     messageReactions,
     parseFileExtra,
@@ -97,6 +106,12 @@ export type {
     FileAttachment,
     MarkdownInlineSegment,
     MessageChunk,
+    MessageEmbed,
+    MessageEmbedAction,
+    MessageEmbedBlock,
+    MessageEmbedField,
+    MessageEmbedMediaItem,
+    MessageEmbedSource,
     MessageEmoji,
     MessageExtra,
     MessageMarkdownNode,
