@@ -57,6 +57,14 @@ export {
 
 // ── Utilities (pure functions, no state) ────────────────────────────────────
 
+export { createCachedLinkPreviewLoader } from "./link-preview-cache.ts";
+export type {
+    CachedLinkPreviewLoader,
+    LinkPreviewCacheRecord,
+    LinkPreviewCacheSnapshot,
+    LinkPreviewCacheStorage,
+    LinkPreviewLoaderOptions,
+} from "./link-preview-cache.ts";
 export {
     extractLinkPreviewUrl,
     fetchLinkPreviewMetadata,
