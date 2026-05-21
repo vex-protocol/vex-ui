@@ -37,7 +37,9 @@ interface ComposerAttachment {
 interface MessageInputBarProps {
     attachment?: ComposerAttachment | null | undefined;
     bottomInset?: number;
+    editing?: boolean | undefined;
     onAttachPress?: (() => void) | undefined;
+    onCancelEdit?: (() => void) | undefined;
     onChangeText: (text: string) => void;
     onRemoveAttachment?: (() => void) | undefined;
     onSend: () => void;
@@ -81,7 +83,9 @@ const VOICE_MEMO_RECORDING_OPTIONS: RecordingOptions = {
 export function MessageInputBar({
     attachment = null,
     bottomInset = 0,
+    editing = false,
     onAttachPress,
+    onCancelEdit,
     onChangeText,
     onRemoveAttachment,
     onSend,
@@ -100,6 +104,7 @@ export function MessageInputBar({
     const canRecordVoiceMemo =
         onVoiceMemoRecorded != null &&
         attachment == null &&
+        !editing &&
         !sending &&
         !recordingInProgress;
     const voiceMemoButtonDisabled = !canRecordVoiceMemo;
@@ -172,6 +177,33 @@ export function MessageInputBar({
                 </View>
             ) : null}
 
+            {editing ? (
+                <View style={styles.editingPreview}>
+                    <Ionicons
+                        color={colors.textSecondary}
+                        name="pencil-outline"
+                        size={16}
+                    />
+                    <Text style={styles.editingText}>Editing message</Text>
+                    <TouchableOpacity
+                        accessibilityLabel="Cancel edit"
+                        accessibilityRole="button"
+                        disabled={sending}
+                        onPress={onCancelEdit}
+                        style={[
+                            styles.removeAttachmentBtn,
+                            sending && styles.actionBtnDisabled,
+                        ]}
+                    >
+                        <Ionicons
+                            color={colors.textSecondary}
+                            name="close"
+                            size={18}
+                        />
+                    </TouchableOpacity>
+                </View>
+            ) : null}
+
             {voiceMemoOpen && onVoiceMemoRecorded ? (
                 <VoiceMemoRecorder
                     onCancel={closeVoiceMemo}
@@ -184,14 +216,14 @@ export function MessageInputBar({
             <View style={styles.inputRow}>
                 <TouchableOpacity
                     accessibilityRole="button"
-                    disabled={sending || recordingInProgress}
+                    disabled={sending || recordingInProgress || editing}
                     onPress={() => {
                         haptic("selection");
                         onAttachPress?.();
                     }}
                     style={[
                         styles.actionBtn,
-                        (sending || recordingInProgress) &&
+                        (sending || recordingInProgress || editing) &&
                             styles.actionBtnDisabled,
                     ]}
                 >
@@ -662,6 +694,23 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         gap: 8,
         padding: 8,
+    },
+    editingPreview: {
+        alignItems: "center",
+        backgroundColor: "rgba(255,255,255,0.04)",
+        borderColor: colors.borderSubtle,
+        borderWidth: 1,
+        flexDirection: "row",
+        gap: 8,
+        minHeight: 38,
+        paddingLeft: 12,
+        paddingRight: 4,
+    },
+    editingText: {
+        color: colors.textSecondary,
+        flex: 1,
+        fontSize: 12,
+        fontWeight: "600",
     },
     input: {
         backgroundColor: colors.input,

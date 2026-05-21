@@ -27,6 +27,12 @@ export interface MessageChunk {
     messages: Message[];
 }
 
+export interface MessageDeleteEvent {
+    action: "delete";
+    deletedAt?: string;
+    targetMailID: string;
+}
+
 export interface MessageEmbed {
     actions?: MessageEmbedAction[];
     blocks?: MessageEmbedBlock[];
@@ -101,6 +107,8 @@ export type MessageEmoji =
 export interface MessageExtra {
     [key: string]: unknown;
     embed?: MessageEmbed;
+    messageDeleteEvent?: MessageDeleteEvent;
+    messageUpdateEvent?: MessageUpdateEvent;
     reactionEvent?: MessageReactionEvent;
     reactions?: MessageReaction[];
     version: 1;
@@ -124,6 +132,13 @@ export interface MessageReaction {
 export interface MessageReactionEvent {
     action: "toggle";
     emoji: MessageEmoji;
+    targetMailID: string;
+}
+
+export interface MessageUpdateEvent {
+    action: "update";
+    editedAt?: string;
+    message: string;
     targetMailID: string;
 }
 
@@ -174,6 +189,20 @@ const VEX_FILE_SCHEME = "vex-file://";
 const MESSAGE_EXTRA_VERSION = 1;
 const INLINE_BARE_URL_RE = /^https?:\/\/[^\s<>\[\]{}"']+/i;
 
+export function applyMessageDeleteEvent(
+    messages: Message[],
+    event: MessageDeleteEvent,
+    actorUserID: string,
+): Message[] {
+    const target = messages.find(
+        (message) => message.mailID === event.targetMailID,
+    );
+    if (!target || target.authorID !== actorUserID) {
+        return messages;
+    }
+    return messages.filter((message) => message.mailID !== event.targetMailID);
+}
+
 export function applyMessageReactionEvent(
     messages: Message[],
     event: MessageReactionEvent,
@@ -196,6 +225,43 @@ export function applyMessageReactionEvent(
         } as Message;
     });
     return changed ? nextMessages : messages;
+}
+
+export function applyMessageUpdateEvent(
+    messages: Message[],
+    event: MessageUpdateEvent,
+    actorUserID: string,
+): Message[] {
+    let changed = false;
+    const nextMessages = messages.map((message) => {
+        if (message.mailID !== event.targetMailID) {
+            return message;
+        }
+        if (
+            message.authorID !== actorUserID ||
+            message.message === event.message
+        ) {
+            return message;
+        }
+        changed = true;
+        return {
+            ...message,
+            message: event.message,
+        };
+    });
+    return changed ? nextMessages : messages;
+}
+
+export function createDeleteEventExtra(targetMailID: string): string {
+    return (
+        serializeMessageExtra({
+            messageDeleteEvent: {
+                action: "delete",
+                targetMailID,
+            },
+            version: MESSAGE_EXTRA_VERSION,
+        }) ?? JSON.stringify({ version: MESSAGE_EXTRA_VERSION })
+    );
 }
 
 export function createReactionEventExtra(
@@ -225,6 +291,22 @@ export function createUnicodeReactionEmoji(
     };
 }
 
+export function createUpdateEventExtra(
+    targetMailID: string,
+    message: string,
+): string {
+    return (
+        serializeMessageExtra({
+            messageUpdateEvent: {
+                action: "update",
+                message,
+                targetMailID,
+            },
+            version: MESSAGE_EXTRA_VERSION,
+        }) ?? JSON.stringify({ version: MESSAGE_EXTRA_VERSION })
+    );
+}
+
 export function emojiReactionKey(emoji: MessageEmoji): string {
     if (emoji.kind === "custom") {
         return `custom:${emoji.sourceID ?? emoji.name}`;
@@ -239,21 +321,46 @@ export function emojiReactionLabel(emoji: MessageEmoji): string {
     return emoji.value;
 }
 
-export function foldMessageReactionEvents(messages: Message[]): Message[] {
+export function foldMessageEvents(messages: Message[]): Message[] {
     let visibleMessages: Message[] = [];
     for (const message of messages) {
-        const event = messageReactionEvent(message);
-        if (!event) {
-            visibleMessages.push(message);
+        const deleteEvent = messageDeleteEvent(message);
+        if (deleteEvent) {
+            visibleMessages = applyMessageDeleteEvent(
+                visibleMessages,
+                deleteEvent,
+                message.authorID,
+            );
             continue;
         }
-        visibleMessages = applyMessageReactionEvent(
-            visibleMessages,
-            event,
-            message.authorID,
-        );
+
+        const updateEvent = messageUpdateEvent(message);
+        if (updateEvent) {
+            visibleMessages = applyMessageUpdateEvent(
+                visibleMessages,
+                updateEvent,
+                message.authorID,
+            );
+            continue;
+        }
+
+        const reactionEvent = messageReactionEvent(message);
+        if (reactionEvent) {
+            visibleMessages = applyMessageReactionEvent(
+                visibleMessages,
+                reactionEvent,
+                message.authorID,
+            );
+            continue;
+        }
+
+        visibleMessages.push(message);
     }
     return visibleMessages;
+}
+
+export function foldMessageReactionEvents(messages: Message[]): Message[] {
+    return foldMessageEvents(messages);
 }
 
 export function formatFileAttachmentMarkdown(
@@ -275,6 +382,12 @@ export function formatFileAttachmentMarkdown(
     return `[${label}](${url})`;
 }
 
+export function messageDeleteEvent(
+    message: MessageWithClientExtra,
+): MessageDeleteEvent | null {
+    return parseMessageExtra(message.extra).messageDeleteEvent ?? null;
+}
+
 export function messageEmbed(
     message: MessageWithClientExtra,
 ): MessageEmbed | null {
@@ -291,6 +404,12 @@ export function messageReactions(
     message: MessageWithClientExtra,
 ): MessageReaction[] {
     return parseMessageExtra(message.extra).reactions ?? [];
+}
+
+export function messageUpdateEvent(
+    message: MessageWithClientExtra,
+): MessageUpdateEvent | null {
+    return parseMessageExtra(message.extra).messageUpdateEvent ?? null;
 }
 
 export function parseFileExtra(extra: null | string): FileAttachment | null {
@@ -327,15 +446,25 @@ export function parseMessageExtra(
         }
 
         const embed = parseMessageEmbed(raw["embed"]);
+        const messageDelete = parseMessageDeleteEvent(
+            raw["messageDeleteEvent"],
+        );
+        const messageUpdate = parseMessageUpdateEvent(
+            raw["messageUpdateEvent"],
+        );
         const reactionEvent = parseMessageReactionEvent(raw["reactionEvent"]);
         const rest = { ...raw };
         delete rest["embed"];
+        delete rest["messageDeleteEvent"];
+        delete rest["messageUpdateEvent"];
         delete rest["reactionEvent"];
         delete rest["reactions"];
         delete rest["version"];
         return {
             ...rest,
             ...(embed ? { embed } : {}),
+            ...(messageDelete ? { messageDeleteEvent: messageDelete } : {}),
+            ...(messageUpdate ? { messageUpdateEvent: messageUpdate } : {}),
             ...(reactionEvent ? { reactionEvent } : {}),
             reactions: parseMessageReactions(raw["reactions"]),
             version: MESSAGE_EXTRA_VERSION,
@@ -778,11 +907,27 @@ function normalizeMessageExtra(extra: MessageExtra): MessageExtra {
     };
     const reactions = parseMessageReactions(normalized.reactions);
     const embed = parseMessageEmbed(normalized.embed);
+    const messageDeleteEvent = parseMessageDeleteEvent(
+        normalized.messageDeleteEvent,
+    );
+    const messageUpdateEvent = parseMessageUpdateEvent(
+        normalized.messageUpdateEvent,
+    );
     const reactionEvent = parseMessageReactionEvent(normalized.reactionEvent);
     if (embed) {
         normalized.embed = embed;
     } else {
         delete normalized.embed;
+    }
+    if (messageDeleteEvent) {
+        normalized.messageDeleteEvent = messageDeleteEvent;
+    } else {
+        delete normalized.messageDeleteEvent;
+    }
+    if (messageUpdateEvent) {
+        normalized.messageUpdateEvent = messageUpdateEvent;
+    } else {
+        delete normalized.messageUpdateEvent;
     }
     if (reactionEvent) {
         normalized.reactionEvent = reactionEvent;
@@ -922,6 +1067,27 @@ function parseInlineMarkdown(text: string): MarkdownInlineSegment[] {
         return [{ text, type: "text" }];
     }
     return segments;
+}
+
+function parseMessageDeleteEvent(
+    value: unknown,
+): MessageDeleteEvent | undefined {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    if (
+        value["action"] !== "delete" ||
+        typeof value["targetMailID"] !== "string" ||
+        value["targetMailID"] === ""
+    ) {
+        return undefined;
+    }
+    const event: MessageDeleteEvent = {
+        action: "delete",
+        targetMailID: value["targetMailID"],
+    };
+    copyString(event, value, "deletedAt");
+    return event;
 }
 
 function parseMessageEmbed(value: unknown): MessageEmbed | null {
@@ -1220,6 +1386,29 @@ function parseMessageReactions(value: unknown): MessageReaction[] {
         reactions.push({ emoji, userIDs: uniqueUserIDs });
     }
     return reactions;
+}
+
+function parseMessageUpdateEvent(
+    value: unknown,
+): MessageUpdateEvent | undefined {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    if (
+        value["action"] !== "update" ||
+        typeof value["message"] !== "string" ||
+        typeof value["targetMailID"] !== "string" ||
+        value["targetMailID"] === ""
+    ) {
+        return undefined;
+    }
+    const event: MessageUpdateEvent = {
+        action: "update",
+        message: value["message"],
+        targetMailID: value["targetMailID"],
+    };
+    copyString(event, value, "editedAt");
+    return event;
 }
 
 function pushSegment(

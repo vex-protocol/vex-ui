@@ -1,4 +1,6 @@
 <script lang="ts">
+    import type { Message } from "@vex-chat/libvex";
+
     import { buildMessageBodyWithAttachment } from "../lib/attachments.js";
     import ChatInput from "../lib/ChatInput.svelte";
     // Route: /messaging/:userID
@@ -21,6 +23,8 @@
 
     let sending = $state(false);
     let sendError = $state("");
+    let composerValue = $state("");
+    let editingMessage: Message | null = $state(null);
     let showFingerprint = $state(false);
     let fingerprint = $state("");
     let _theirSignKey = $state("");
@@ -39,6 +43,25 @@
         sending = true;
         sendError = "";
         try {
+            if (editingMessage) {
+                const pendingEdit = editingMessage;
+                const result = await vexService.editMessage(
+                    targetUserID,
+                    pendingEdit.mailID,
+                    false,
+                    content,
+                );
+                if (!result.ok) {
+                    sendError = result.error ?? "Failed to edit message";
+                    composerValue = content;
+                    editingMessage = pendingEdit;
+                    return;
+                }
+                editingMessage = null;
+                composerValue = "";
+                return;
+            }
+
             const body = await buildMessageBodyWithAttachment(
                 vexService,
                 content,
@@ -58,6 +81,22 @@
         } finally {
             sending = false;
         }
+    }
+
+    function handleDeleteMessage(message: Message): void {
+        void vexService
+            .deleteMessageForEveryone(targetUserID, message.mailID, false)
+            .then((result) => {
+                if (!result.ok) {
+                    sendError = result.error ?? "Failed to delete message";
+                }
+            });
+    }
+
+    function handleEditMessage(message: Message): void {
+        sendError = "";
+        editingMessage = message;
+        composerValue = message.message;
     }
 </script>
 
@@ -85,7 +124,12 @@
 
     <!-- TODO: fingerprint verification panel — needs secure storage for verified keys -->
 
-    <MessageBox messages={threadMessages} usernames={usernameMap} />
+    <MessageBox
+        messages={threadMessages}
+        onDeleteMessage={handleDeleteMessage}
+        onEditMessage={handleEditMessage}
+        usernames={usernameMap}
+    />
 
     {#if sendError}
         <div class="dm-pane__error">{sendError}</div>
@@ -93,7 +137,16 @@
 
     <ChatInput
         onSend={handleSend}
+        onChange={(value: string) => {
+            composerValue = value;
+        }}
+        onCancelEdit={() => {
+            editingMessage = null;
+            composerValue = "";
+        }}
+        editing={editingMessage !== null}
         {sending}
+        value={composerValue}
         placeholder="Send a direct message…"
     />
 </div>

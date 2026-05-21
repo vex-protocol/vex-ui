@@ -3,22 +3,39 @@
 
     let {
         disabled,
+        editing,
+        onCancelEdit,
+        onChange,
         onSend,
         placeholder,
         sending,
+        value: controlledValue,
     }: {
         disabled?: boolean;
+        editing?: boolean;
+        onCancelEdit?: () => void;
+        onChange?: (value: string) => void;
         onSend: (content: string, attachment?: File) => Promise<void> | void;
         placeholder?: string;
         sending?: boolean;
+        value?: string;
     } = $props();
 
-    let value = $state("");
+    let draftValue = $state("");
     let textareaEl: HTMLTextAreaElement | null = $state(null);
     let fileInputEl: HTMLInputElement | null = $state(null);
     let attachment: File | null = $state(null);
     let previewUrl: null | string = $state(null);
     let dragActive = $state(false);
+    const value = $derived(controlledValue ?? draftValue);
+
+    function setValue(next: string): void {
+        if (controlledValue !== undefined) {
+            onChange?.(next);
+            return;
+        }
+        draftValue = next;
+    }
 
     function autoResize(): void {
         if (!textareaEl) return;
@@ -38,12 +55,12 @@
         const trimmed = value.trim();
         const pendingAttachment = attachment ?? undefined;
         if ((!trimmed && !pendingAttachment) || disabled || sending) return;
-        value = "";
+        setValue("");
         clearAttachment();
         if (textareaEl) textareaEl.style.height = "auto";
         await tick();
         await waitForNextFrame();
-        void onSend(trimmed, pendingAttachment);
+        await onSend(trimmed, pendingAttachment);
     }
 
     function waitForNextFrame(): Promise<void> {
@@ -102,6 +119,12 @@
         previewUrl = null;
     }
 
+    $effect(() => {
+        if (editing && attachment) {
+            clearAttachment();
+        }
+    });
+
     function formatSize(bytes: number): string {
         if (bytes < 1024) return `${bytes} B`;
         if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -145,6 +168,20 @@
 </script>
 
 <div class="chat-input">
+    {#if editing}
+        <div class="chat-input__editing">
+            <span class="chat-input__editing-icon">✎</span>
+            <span class="chat-input__editing-label">Editing message</span>
+            <button
+                class="chat-input__preview-remove"
+                onclick={onCancelEdit}
+                disabled={disabled || sending}
+                title="Cancel edit"
+                aria-label="Cancel edit">✕</button
+            >
+        </div>
+    {/if}
+
     {#if attachment}
         <div class="chat-input__preview">
             {#if previewUrl}
@@ -185,13 +222,16 @@
     >
         <textarea
             bind:this={textareaEl}
-            bind:value
+            {value}
             rows={1}
             {placeholder}
             {disabled}
             onkeydown={handleKeyDown}
             onpaste={handlePaste}
-            oninput={autoResize}
+            oninput={(event) => {
+                setValue((event.currentTarget as HTMLTextAreaElement).value);
+                autoResize();
+            }}
             class="chat-input__textarea"
             aria-label="Message input"
         ></textarea>
@@ -209,7 +249,7 @@
                 title="Attach file"
                 aria-label="Attach file"
                 onclick={openFilePicker}
-                disabled={disabled || sending}>📎</button
+                disabled={disabled || sending || editing}>📎</button
             >
             <button
                 class="chat-input__icon"
@@ -251,6 +291,31 @@
         background: var(--bg-surface);
         border: 1px solid var(--border);
         border-radius: 6px;
+    }
+
+    .chat-input__editing {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        margin-bottom: 6px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+    }
+
+    .chat-input__editing-icon {
+        color: var(--text-muted);
+        font-size: 13px;
+        line-height: 1;
+    }
+
+    .chat-input__editing-label {
+        flex: 1;
+        min-width: 0;
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 600;
     }
 
     .chat-input__preview-img {

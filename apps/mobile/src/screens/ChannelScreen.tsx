@@ -93,6 +93,7 @@ export function ChannelScreen({
     const insets = useSafeAreaInsets();
     const [text, setText] = useState("");
     const [attachment, setAttachment] = useState<null | PickedAttachment>(null);
+    const [editingMessage, setEditingMessage] = useState<Message | null>(null);
     const [sending, setSending] = useState(false);
     const [sendError, setSendError] = useState("");
     const sendInFlightRef = useRef(false);
@@ -342,7 +343,44 @@ export function ChannelScreen({
 
     const sendMessage = useCallback(async () => {
         const content = text.trim();
+        const pendingEdit = editingMessage;
         const pendingAttachment = attachment;
+        if (pendingEdit) {
+            if (!content || !user || sendInFlightRef.current) {
+                return;
+            }
+            sendInFlightRef.current = true;
+            setSending(true);
+            setSendError("");
+            setText("");
+            setEditingMessage(null);
+            await waitForComposerPaint();
+            try {
+                const result = await vexService.editMessage(
+                    channelID,
+                    pendingEdit.mailID,
+                    true,
+                    content,
+                );
+                if (!result.ok) {
+                    setSendError(result.error ?? "Failed to edit message");
+                    setText((current) => (current === "" ? content : current));
+                    setEditingMessage((current) => current ?? pendingEdit);
+                }
+            } catch (err: unknown) {
+                setSendError(
+                    err instanceof Error
+                        ? err.message
+                        : "Failed to edit message",
+                );
+                setText((current) => (current === "" ? content : current));
+                setEditingMessage((current) => current ?? pendingEdit);
+            } finally {
+                sendInFlightRef.current = false;
+                setSending(false);
+            }
+            return;
+        }
         if (
             (!content && !pendingAttachment) ||
             !user ||
@@ -405,7 +443,7 @@ export function ChannelScreen({
             sendInFlightRef.current = false;
             setSending(false);
         }
-    }, [attachment, text, user, channelID, sendInFlightRef]);
+    }, [attachment, editingMessage, text, user, channelID, sendInFlightRef]);
 
     const handlePickAttachment = useCallback(
         (kind: "file" | "image") => {
@@ -417,6 +455,7 @@ export function ChannelScreen({
                             ? await pickImageAttachment()
                             : await pickFileAttachment();
                     if (picked) {
+                        setEditingMessage(null);
                         setAttachment(picked);
                     }
                 } catch (err: unknown) {
@@ -453,18 +492,25 @@ export function ChannelScreen({
     const deleteMessage = useCallback(
         (message: Message) => {
             void (async () => {
-                const deleted = await vexService.deleteLocalMessage(
+                const result = await vexService.deleteMessageForEveryone(
                     channelID,
                     message.mailID,
                     true,
                 );
-                if (!deleted) {
-                    setSendError("Failed to delete message");
+                if (!result.ok) {
+                    setSendError(result.error ?? "Failed to delete message");
                 }
             })();
         },
         [channelID],
     );
+
+    const editMessage = useCallback((message: Message) => {
+        setSendError("");
+        setAttachment(null);
+        setEditingMessage(message);
+        setText(message.message);
+    }, []);
 
     const toggleReaction = useCallback(
         (message: Message, emoji: MessageEmoji) => {
@@ -499,6 +545,7 @@ export function ChannelScreen({
                 isOwn={isOwn}
                 message={item}
                 onDeleteMessage={deleteMessage}
+                onEditMessage={editMessage}
                 onToggleReaction={toggleReaction}
                 showIdentity={showIdentity}
             />
@@ -612,7 +659,12 @@ export function ChannelScreen({
             <MessageInputBar
                 attachment={attachment}
                 bottomInset={insets.bottom}
+                editing={editingMessage !== null}
                 onAttachPress={openAttachmentMenu}
+                onCancelEdit={() => {
+                    setEditingMessage(null);
+                    setText("");
+                }}
                 onChangeText={setText}
                 onRemoveAttachment={() => {
                     setAttachment(null);
@@ -620,7 +672,9 @@ export function ChannelScreen({
                 onSend={() => void sendMessage()}
                 onVoiceMemoError={setSendError}
                 onVoiceMemoRecorded={setAttachment}
-                placeholder={`Message #${channelName}`}
+                placeholder={
+                    editingMessage ? "Edit message" : `Message #${channelName}`
+                }
                 sending={sending}
                 value={text}
             />

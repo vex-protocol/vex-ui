@@ -21,8 +21,15 @@
 
     let {
         messages,
+        onDeleteMessage,
+        onEditMessage,
         usernames,
-    }: { messages: Message[]; usernames?: Record<string, string> } = $props();
+    }: {
+        messages: Message[];
+        onDeleteMessage?: (message: Message) => void;
+        onEditMessage?: (message: Message) => void;
+        usernames?: Record<string, string>;
+    } = $props();
     // Fallback resolved outside the destructure — eslint --fix
     // silently strips destructure defaults on svelte files.
     const usernameMap = $derived(usernames ?? {});
@@ -106,7 +113,30 @@
 
             {#each chunk.messages as msg (msg.mailID)}
                 {@const embed = messageEmbed(msg)}
-                <div class="message">
+                {@const isOwn = msg.authorID === $user?.userID}
+                <div class="message" class:message--own={isOwn}>
+                    {#if isOwn && (onEditMessage || onDeleteMessage)}
+                        <div class="message__actions">
+                            {#if onEditMessage}
+                                <button
+                                    class="message__action"
+                                    type="button"
+                                    onclick={() => onEditMessage?.(msg)}
+                                    aria-label="Edit message"
+                                    title="Edit message">Edit</button
+                                >
+                            {/if}
+                            {#if onDeleteMessage}
+                                <button
+                                    class="message__action message__action--danger"
+                                    type="button"
+                                    onclick={() => onDeleteMessage?.(msg)}
+                                    aria-label="Delete message"
+                                    title="Delete message">Delete</button
+                                >
+                            {/if}
+                        </div>
+                    {/if}
                     {#if embed}
                         <MessageEmbedCard message={msg} />
                     {/if}
@@ -187,11 +217,49 @@
     }
 
     .message {
+        position: relative;
         padding-left: 46px;
+        padding-right: 76px;
         font-size: 14px;
         line-height: 1.5;
         color: var(--text-secondary);
         word-break: break-word;
+    }
+
+    .message__actions {
+        position: absolute;
+        top: -2px;
+        right: 0;
+        display: none;
+        align-items: center;
+        gap: 4px;
+        padding: 2px;
+        background: var(--bg-primary);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+    }
+
+    .message--own:hover .message__actions,
+    .message--own:focus-within .message__actions {
+        display: flex;
+    }
+
+    .message__action {
+        border: 0;
+        background: transparent;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 11px;
+        line-height: 1;
+        padding: 4px 6px;
+    }
+
+    .message__action:hover {
+        color: var(--text-primary);
+    }
+
+    .message__action--danger:hover {
+        color: #ff7a7a;
     }
 
     /* ── File attachment styles ── */
