@@ -21,7 +21,7 @@
     },
     "dependencies": {
         "@vex-chat/libvex": "catalog:",
-        "@vex-chat/types": "catalog:",
+        "@vex-chat/types": "3.3.1",
         "nanostores": "catalog:",
         "uuid": "catalog:"
     },
