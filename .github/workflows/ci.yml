@@ -23,11 +23,11 @@ jobs:
             root: ${{ steps.changes.outputs.root }}
         steps:
             - name: Harden Runner
-              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3, JavaScript action (Node 24)
               with:
                   egress-policy: audit
-            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-            - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2, JavaScript action (Node 24)
+            - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1, JavaScript action (Node 24)
               id: changes
               with:
                   filters: |
@@ -44,6 +44,7 @@ jobs:
                       lint-config:
                         - 'packages/eslint-config/**'
                       root:
+                        - '.tool-versions'
                         - 'package.json'
                         - 'pnpm-lock.yaml'
                         - 'pnpm-workspace.yaml'
@@ -56,14 +57,14 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Harden Runner
-              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3, JavaScript action (Node 24)
               with:
                   egress-policy: audit
-            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2, JavaScript action (Node 24)
+            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8, JavaScript action (Node 24)
+            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0, JavaScript action (Node 24)
               with:
-                  node-version: 24
+                  node-version-file: .tool-versions
                   cache: pnpm
             - run: pnpm install --frozen-lockfile --ignore-scripts
             - run: pnpm format:check
@@ -82,16 +83,16 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Harden Runner
-              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3, JavaScript action (Node 24)
               with:
                   egress-policy: audit
-            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2, JavaScript action (Node 24)
               with:
                   fetch-depth: 0
-            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8, JavaScript action (Node 24)
+            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0, JavaScript action (Node 24)
               with:
-                  node-version: 24
+                  node-version-file: .tool-versions
                   cache: pnpm
             - run: pnpm install --frozen-lockfile --ignore-scripts
             - name: Sherif — workspace version consistency
@@ -114,14 +115,14 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Harden Runner
-              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3, JavaScript action (Node 24)
               with:
                   egress-policy: audit
-            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2, JavaScript action (Node 24)
+            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8, JavaScript action (Node 24)
+            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0, JavaScript action (Node 24)
               with:
-                  node-version: 24
+                  node-version-file: .tool-versions
                   cache: pnpm
             - run: pnpm install --frozen-lockfile --ignore-scripts
             - name: License check
@@ -136,14 +137,14 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Harden Runner
-              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3, JavaScript action (Node 24)
               with:
                   egress-policy: audit
-            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2, JavaScript action (Node 24)
+            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8, JavaScript action (Node 24)
+            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0, JavaScript action (Node 24)
               with:
-                  node-version: 24
+                  node-version-file: .tool-versions
                   cache: pnpm
             - run: pnpm install --frozen-lockfile --ignore-scripts
             - run: pnpm --filter @vex-chat/store --if-present check
@@ -159,14 +160,14 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Harden Runner
-              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3, JavaScript action (Node 24)
               with:
                   egress-policy: audit
-            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2, JavaScript action (Node 24)
+            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8, JavaScript action (Node 24)
+            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0, JavaScript action (Node 24)
               with:
-                  node-version: 24
+                  node-version-file: .tool-versions
                   cache: pnpm
             - run: pnpm install --frozen-lockfile --ignore-scripts
             - name: Svelte check
@@ -182,14 +183,14 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Harden Runner
-              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3, JavaScript action (Node 24)
               with:
                   egress-policy: audit
-            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2, JavaScript action (Node 24)
+            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8, JavaScript action (Node 24)
+            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0, JavaScript action (Node 24)
               with:
-                  node-version: 24
+                  node-version-file: .tool-versions
                   cache: pnpm
             - run: pnpm install --frozen-lockfile --ignore-scripts
             - run: pnpm --filter @vex-chat/mobile --if-present check
@@ -203,14 +204,14 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Harden Runner
-              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3, JavaScript action (Node 24)
               with:
                   egress-policy: audit
-            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2, JavaScript action (Node 24)
+            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8, JavaScript action (Node 24)
+            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0, JavaScript action (Node 24)
               with:
-                  node-version: 24
+                  node-version-file: .tool-versions
                   cache: pnpm
             - run: pnpm install --frozen-lockfile --ignore-scripts
             - run: pnpm --filter @vex-chat/website --if-present check
@@ -233,13 +234,13 @@ jobs:
             VEX_DISABLE_IOS_CAPABILITIES: "1"
             VEX_IOS_BUNDLE_IDENTIFIER: "chat.vex.mobile.ci"
         steps:
-            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2, JavaScript action (Node 24)
 
-            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8, JavaScript action (Node 24)
 
-            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0, JavaScript action (Node 24)
               with:
-                  node-version: 24
+                  node-version-file: .tool-versions
                   cache: pnpm
 
             - run: pnpm install --frozen-lockfile --ignore-scripts
@@ -258,7 +259,7 @@ jobs:
               run: pnpm -F mobile exec expo prebuild --platform ios --clean --no-install
 
             - name: Cache CocoaPods
-              uses: actions/cache@v4
+              uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5, JavaScript action (Node 24)
               with:
                   path: |
                       apps/mobile/ios/Pods
@@ -273,7 +274,7 @@ jobs:
               run: pod install
 
             - name: Cache Xcode DerivedData
-              uses: actions/cache@v4
+              uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5, JavaScript action (Node 24)
               with:
                   path: apps/mobile/ios/build/DerivedData
                   key: ${{ runner.os }}-xcode-deriveddata-${{ steps.native_tools.outputs.xcode_cache_key }}-${{ hashFiles('pnpm-lock.yaml', 'apps/mobile/package.json', 'apps/mobile/app.json', 'apps/mobile/app.config.js', 'apps/mobile/eas.json', 'apps/mobile/plugins/**', 'apps/mobile/ios/Podfile', 'apps/mobile/ios/Podfile.lock', 'apps/mobile/ios/**/*.h', 'apps/mobile/ios/**/*.pbxproj', 'apps/mobile/ios/**/*.plist', 'apps/mobile/ios/**/*.swift') }}
@@ -304,14 +305,14 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Harden Runner
-              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+              uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3, JavaScript action (Node 24)
               with:
                   egress-policy: audit
-            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
-            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2, JavaScript action (Node 24)
+            - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8, JavaScript action (Node 24)
+            - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0, JavaScript action (Node 24)
               with:
-                  node-version: 24
+                  node-version-file: .tool-versions
                   cache: pnpm
             - run: pnpm install --frozen-lockfile --ignore-scripts
             - run: pnpm --filter @vex-chat/ui build
