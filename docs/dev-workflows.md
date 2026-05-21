@@ -5,7 +5,7 @@ Quick reference for running development tasks in the vex-chat monorepo.
 ## Prerequisites
 
 - **Node.js** 24.x (via [mise](https://mise.jdx.dev/))
-- **pnpm** 10.30.3 (pinned in package.json)
+- **pnpm** 11.1.3 (pinned in package.json)
 - **Rust** 1.77.2+ (desktop only)
 
 ```bash
