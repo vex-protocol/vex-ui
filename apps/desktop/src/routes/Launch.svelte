@@ -3,12 +3,13 @@
     import { push } from "svelte-spa-router";
 
     import { getServerOptions } from "../lib/config.js";
-    import { keyStore } from "../lib/keystore.js";
+    import { keyStore, listKnownAccounts } from "../lib/keystore.js";
     import Loading from "../lib/Loading.svelte";
     import { desktopConfig } from "../lib/platform.js";
     import {
         channels as channelsAtom,
         servers as serversAtom,
+        signedOutIntent,
         user,
         vexService,
     } from "../lib/store/index.js";
@@ -20,8 +21,13 @@
         errorMsg = null;
         loading = true;
         try {
+            if (signedOutIntent.get()) {
+                await routeToAccountEntry();
+                return;
+            }
+
             const result = await Promise.race([
-                vexService.bootstrapAuth(
+                vexService.autoLogin(
                     keyStore,
                     desktopConfig(),
                     getServerOptions(),
@@ -40,9 +46,11 @@
 
             if (!result.ok) {
                 // No creds → expected first-run flow, go to login silently.
-                if (!result.error) {
-                    await tick();
-                    void push("/login");
+                if (
+                    !result.error ||
+                    ("requireReauth" in result && result.requireReauth)
+                ) {
+                    await routeToAccountEntry();
                     return;
                 }
                 // Real failure → surface + let user retry.
@@ -81,6 +89,12 @@
             errorMsg = err instanceof Error ? err.message : "Unknown error.";
             loading = false;
         }
+    }
+
+    async function routeToAccountEntry(): Promise<void> {
+        const accounts = await listKnownAccounts();
+        await tick();
+        void push(accounts.length > 0 ? "/accounts" : "/login");
     }
 
     onMount(() => {

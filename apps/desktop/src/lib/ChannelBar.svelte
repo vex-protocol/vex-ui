@@ -141,6 +141,16 @@
                         Invite People
                     </button>
                     <button
+                        class="channel-bar__menu-item"
+                        role="menuitem"
+                        onclick={() => {
+                            menuOpen = false;
+                            void push(`/server/${serverID ?? ""}/settings`);
+                        }}
+                    >
+                        Server Settings
+                    </button>
+                    <button
                         class="channel-bar__menu-item channel-bar__menu-item--danger"
                         role="menuitem"
                         onclick={() => {

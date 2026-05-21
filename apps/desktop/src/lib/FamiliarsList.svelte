@@ -67,6 +67,10 @@
         void push(`/messaging/${user.userID}`);
     }
 
+    async function deleteThread(userID: string): Promise<void> {
+        await vexService.deleteLocalThread(userID, false);
+    }
+
     const familiarList = $derived(Object.values($familiars));
 </script>
 
@@ -133,6 +137,14 @@
                             >{$unreadCounts[user.userID]}</span
                         >
                     {/if}
+                </button>
+                <button
+                    class="familiars__delete"
+                    title="Delete local conversation"
+                    aria-label={`Delete conversation with ${user.username}`}
+                    onclick={() => void deleteThread(user.userID)}
+                >
+                    ×
                 </button>
             </li>
         {/each}
@@ -247,6 +259,30 @@
     .familiars__item:hover {
         background: var(--bg-hover);
         color: var(--text-primary);
+    }
+
+    .familiars__list li {
+        position: relative;
+    }
+
+    .familiars__delete {
+        display: none;
+        position: absolute;
+        right: 4px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 22px;
+        height: 22px;
+        border-radius: 4px;
+        background: var(--bg-surface);
+        color: var(--danger);
+        border: 1px solid var(--border);
+    }
+
+    .familiars__list li:hover .familiars__delete {
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .familiars__badge {

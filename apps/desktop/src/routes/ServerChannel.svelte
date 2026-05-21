@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { push } from "svelte-spa-router";
+
     import { buildMessageBodyWithAttachment } from "../lib/attachments.js";
     import ChatInput from "../lib/ChatInput.svelte";
     // Route: /server/:serverID/:channelID
@@ -78,13 +80,17 @@
         <div class="channel-pane__actions">
             <button
                 class="channel-pane__action"
-                title="Notification settings"
-                aria-label="Notification settings">🔔</button
+                title="Invite people"
+                aria-label="Invite people"
+                onclick={() => void push(`/server/${serverID}/invites`)}
+                >＋</button
             >
             <button
                 class="channel-pane__action"
-                title="Toggle members"
-                aria-label="Toggle members">👥</button
+                title="Server settings"
+                aria-label="Server settings"
+                onclick={() => void push(`/server/${serverID}/settings`)}
+                >⚙</button
             >
             <button
                 class="channel-pane__action"
@@ -94,7 +100,12 @@
         </div>
     </header>
 
-    <MessageBox messages={channelMessages} {usernames} />
+    <MessageBox
+        messages={channelMessages}
+        {usernames}
+        conversationKey={channelID}
+        isGroup={true}
+    />
 
     {#if sendError}
         <div class="channel-pane__error">{sendError}</div>

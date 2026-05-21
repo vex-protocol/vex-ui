@@ -1,12 +1,15 @@
 <script lang="ts">
     import type { StoredCredentials } from "@vex-chat/libvex";
-    import type { Device } from "@vex-chat/libvex";
 
     import { push } from "svelte-spa-router";
 
     import Avatar from "../lib/Avatar.svelte";
-    import { clearSession, getServerUrl, setServerUrl } from "../lib/config.js";
-    import { keyStore } from "../lib/keystore.js";
+    import { getServerUrl, setServerUrl } from "../lib/config.js";
+    import {
+        clearActiveUsername,
+        clearCredentials,
+        keyStore,
+    } from "../lib/keystore.js";
     import {
         getNotificationsEnabled,
         setNotificationsEnabled,
@@ -16,7 +19,15 @@
         playNotify,
         setSoundsEnabled,
     } from "../lib/sounds.js";
-    import { avatarHash, user, vexService } from "../lib/store/index.js";
+    import {
+        avatarHash,
+        channels,
+        localMessageRetentionDays,
+        servers,
+        setLocalMessageRetentionDaysPreference,
+        user,
+        vexService,
+    } from "../lib/store/index.js";
     import { theme, toggleTheme } from "../lib/stores/theme.js";
     import {
         applyUpdate,
@@ -24,29 +35,71 @@
         type UpdateStatus,
     } from "../lib/updater.js";
 
-    // ── Devices ────────────────────────────────────────────────────────────────
+    let { params = {} }: { params?: Record<string, string> } = $props();
 
-    let devices: Device[] = $state([]);
-    let devicesLoading = $state(false);
-    let devicesError = $state("");
-    let deleteConfirmID: null | string = $state(null);
-    let deleteError = $state("");
+    type Section = "about" | "account" | "data" | "developer" | "notifications";
 
-    // TODO: device management — needs Devices.list() and proper delete API
-    function loadDevices(): void {
-        devicesLoading = false;
-        devicesError = "Device listing not yet supported by SDK";
-    }
+    const section = $derived((params.section ?? "") as "" | Section);
+    const serverCount = $derived(Object.keys($servers).length);
+    const channelCount = $derived(
+        Object.values($channels).reduce(
+            (total, list) => total + list.length,
+            0,
+        ),
+    );
 
-    function handleDeleteDevice(_deviceID: string): void {
-        deleteError = "Device deletion not yet supported by SDK";
-    }
-
-    loadDevices();
-
-    // ── Sounds ──────────────────────────────────────────────────────────────────
-
+    let creds = $state<null | StoredCredentials>(null);
+    let serverUrl = $state(getServerUrl());
+    let serverUrlSaved = $state(false);
     let soundsEnabled = $state(getSoundsEnabled());
+    let notificationsEnabled = $state(getNotificationsEnabled());
+    let avatarInput: HTMLInputElement | undefined = $state();
+    let avatarError = $state("");
+    let avatarNotice = $state("");
+    let avatarUploading = $state(false);
+    let confirmDeleteAll = $state(false);
+    let loggingOut = $state(false);
+    let updateStatus: UpdateStatus = $state({
+        available: false,
+        downloading: false,
+        progress: 0,
+        readyToInstall: false,
+    });
+    let checking = $state(false);
+    let wsDebugEnabled = $state(vexService.getWebsocketDebugEnabled());
+    let wsFrameDebugEnabled = $state(
+        vexService.getWebsocketFrameDebugEnabled(),
+    );
+    let wsStateDebugEnabled = $state(
+        vexService.getWebsocketStateDebugEnabled(),
+    );
+
+    const fingerprint = $derived(
+        creds?.deviceKey
+            ? `${creds.deviceKey.slice(0, 16).toUpperCase()}...`
+            : "N/A",
+    );
+
+    void keyStore.loadActive().then((loaded) => {
+        creds = loaded;
+    });
+
+    function sectionTitle(value: "" | Section): string {
+        switch (value) {
+            case "about":
+                return "About";
+            case "account":
+                return "Account";
+            case "data":
+                return "Data";
+            case "developer":
+                return "Developer";
+            case "notifications":
+                return "Notifications";
+            default:
+                return "Settings";
+        }
+    }
 
     function toggleSounds(): void {
         soundsEnabled = !soundsEnabled;
@@ -54,19 +107,10 @@
         if (soundsEnabled) playNotify();
     }
 
-    // ── Notifications ────────────────────────────────────────────────────────────
-
-    let notificationsEnabled = $state(getNotificationsEnabled());
-
     function toggleNotifications(): void {
         notificationsEnabled = !notificationsEnabled;
         setNotificationsEnabled(notificationsEnabled);
     }
-
-    // ── Server URL ──────────────────────────────────────────────────────────────
-
-    let serverUrl = $state(getServerUrl());
-    let serverUrlSaved = $state(false);
 
     function saveServerUrl(): void {
         setServerUrl(serverUrl.trim());
@@ -76,86 +120,42 @@
         }, 2000);
     }
 
-    // ── Account info ────────────────────────────────────────────────────────────
-
-    let creds: null | StoredCredentials = $state(null);
-    let fingerprint = $derived.by(() => {
-        const key = creds?.deviceKey;
-        return key ? key.slice(0, 16).toUpperCase() : "N/A";
-    });
-
-    // Load credentials from KeyStore on mount
-    void keyStore.loadActive().then((c) => {
-        creds = c;
-    });
-
-    // ── Avatar upload ────────────────────────────────────────────────────────────
-
-    let avatarInput: HTMLInputElement | undefined = $state();
-    let avatarError = $state("");
-    let avatarUploading = $state(false);
-
     async function handleAvatarChange(e: Event): Promise<void> {
         const file = (e.target as HTMLInputElement).files?.[0];
         if (!file) return;
-
         if (file.size > 5 * 1024 * 1024) {
-            avatarError = "Image must be under 5 MB";
+            avatarError = "Image must be under 5 MB.";
             return;
         }
-
-        const userID = $user?.userID;
-        if (!userID) {
-            avatarError = "Not authenticated";
-            return;
-        }
-
-        avatarError = "";
         avatarUploading = true;
+        avatarError = "";
+        avatarNotice = "";
         try {
             const data = new Uint8Array(await file.arrayBuffer());
             const result = await vexService.setAvatar(data);
-            if (!result.ok) throw new Error(result.error ?? "Upload failed");
+            if (!result.ok) throw new Error(result.error ?? "Upload failed.");
+            avatarNotice = "Avatar updated.";
         } catch (err: unknown) {
-            avatarError = err instanceof Error ? err.message : "Upload failed";
+            avatarError = err instanceof Error ? err.message : "Upload failed.";
         } finally {
             avatarUploading = false;
             if (avatarInput) avatarInput.value = "";
         }
     }
 
-    // ── Updates ────────────────────────────────────────────────────────────────
-
-    let updateStatus: UpdateStatus = $state({
-        available: false,
-        downloading: false,
-        progress: 0,
-        readyToInstall: false,
-    });
-    let checking = $state(false);
-
-    async function handleCheckUpdate(): Promise<void> {
-        checking = true;
-        await checkForUpdates((s) => {
-            updateStatus = s;
-        });
-        checking = false;
-    }
-
-    // ── Danger zone ─────────────────────────────────────────────────────────────
-
-    let confirmDeleteAll = $state(false);
-
     async function handleLogout(): Promise<void> {
+        loggingOut = true;
         try {
             await vexService.logout();
-        } catch {
-            /* ignore */
+            const active = await keyStore.loadActive();
+            if (active) {
+                await keyStore.save({ ...active, token: undefined });
+            }
+            await clearActiveUsername();
+        } finally {
+            loggingOut = false;
+            void push("/accounts");
         }
-        // Clear the stored JWT so auto-login won't fire, but keep device keys
-        if (creds) await keyStore.save({ ...creds, token: undefined });
-        clearSession();
-        void push("/login");
     }
 
     async function handleDeleteAllData(): Promise<void> {
@@ -165,582 +165,521 @@
             /* ignore */
         }
         if (creds?.username) {
-            try {
-                await keyStore.clear(creds.username);
-            } catch {
-                /* ignore */
-            }
+            await clearCredentials(creds.username);
         }
-        clearSession();
+        await clearActiveUsername();
         confirmDeleteAll = false;
-        window.location.href = "/";
+        window.location.hash = "#/login";
     }
+
+    async function handleCheckUpdate(): Promise<void> {
+        checking = true;
+        await checkForUpdates((status) => {
+            updateStatus = status;
+        });
+        checking = false;
+    }
+
+    function setRetention(days: number): void {
+        setLocalMessageRetentionDaysPreference(days);
+        vexService.setLocalMessageRetentionDays(days);
+    }
+
+    const settingsRows = [
+        {
+            desc: "Profile, identity, memberships, sign out",
+            href: "/settings/account",
+            label: "Account",
+        },
+        {
+            desc: "Manage signed-in devices",
+            href: "/devices",
+            label: "Devices",
+        },
+        {
+            desc: "Account recovery keys",
+            href: "/passkeys",
+            label: "Passkeys",
+        },
+        {
+            desc: "OS alerts and sound effects",
+            href: "/settings/notifications",
+            label: "Notifications",
+        },
+        {
+            desc: "Unread counters and local retention",
+            href: "/settings/data",
+            label: "Data",
+        },
+        {
+            desc: "Connection and WebSocket diagnostics",
+            href: "/settings/developer",
+            label: "Developer",
+        },
+        {
+            desc: "Version and updates",
+            href: "/settings/about",
+            label: "About",
+        },
+    ];
 </script>
 
-<div class="settings-page">
-    <header class="settings-page__header">
-        <button
-            class="settings-page__back"
-            onclick={() => {
-                if (window.history.length > 1) history.back();
-                else void push("/home");
-            }}
-            aria-label="Go back">←</button
-        >
-        <h1 class="settings-page__title">Settings</h1>
+<div class="desktop-page">
+    <header class="desktop-page__header">
+        <div class="desktop-page__heading">
+            <button
+                class="desktop-page__back"
+                onclick={() => {
+                    if (section) void push("/settings");
+                    else history.back();
+                }}
+                aria-label="Go back">←</button
+            >
+            <div>
+                <h1 class="desktop-page__title">{sectionTitle(section)}</h1>
+                <p class="desktop-page__subtitle">Desktop client settings</p>
+            </div>
+        </div>
     </header>
 
-    <div class="settings-page__body">
-        <!-- ── Appearance ── -->
-        <section class="settings-section">
-            <h2 class="settings-section__title">Appearance</h2>
-            <div class="settings-row">
-                <div class="settings-row__info">
-                    <span class="settings-row__label">Theme</span>
-                    <span class="settings-row__desc"
-                        >Toggle between dark and light mode</span
-                    >
-                </div>
-                <button class="settings-btn" onclick={toggleTheme}>
-                    {$theme === "dark" ? "Switch to Light" : "Switch to Dark"}
-                </button>
-            </div>
-            <div class="settings-row">
-                <div class="settings-row__info">
-                    <span class="settings-row__label">Sound effects</span>
-                    <span class="settings-row__desc"
-                        >Play sounds for login, logout, errors, and
-                        notifications</span
-                    >
-                </div>
-                <button
-                    class="settings-btn settings-btn--toggle {soundsEnabled
-                        ? 'settings-btn--toggle-on'
-                        : ''}"
-                    onclick={toggleSounds}
-                >
-                    {soundsEnabled ? "On" : "Off"}
-                </button>
-            </div>
-            <div class="settings-row">
-                <div class="settings-row__info">
-                    <span class="settings-row__label"
-                        >Desktop notifications</span
-                    >
-                    <span class="settings-row__desc"
-                        >Show OS alerts for incoming messages when the window is
-                        not focused</span
-                    >
-                </div>
-                <button
-                    class="settings-btn settings-btn--toggle {notificationsEnabled
-                        ? 'settings-btn--toggle-on'
-                        : ''}"
-                    onclick={toggleNotifications}
-                >
-                    {notificationsEnabled ? "On" : "Off"}
-                </button>
-            </div>
-        </section>
-
-        <!-- ── Connection ── -->
-        <section class="settings-section">
-            <h2 class="settings-section__title">Connection</h2>
-            <div class="settings-row settings-row--column">
-                <label class="settings-row__label" for="server-url"
-                    >Server URL</label
-                >
-                <span class="settings-row__desc"
-                    >The Vex Chat server this client connects to</span
-                >
-                <div class="settings-row__input-row">
-                    <input
-                        id="server-url"
-                        class="settings-input"
-                        type="url"
-                        bind:value={serverUrl}
-                        placeholder="api.vex.wtf"
-                    />
+    <main class="desktop-page__body">
+        {#if !section}
+            <section class="desktop-section">
+                <h2 class="desktop-section__title">Settings</h2>
+                {#each settingsRows as row (row.href)}
                     <button
-                        class="settings-btn"
-                        onclick={saveServerUrl}
-                        disabled={!serverUrl.trim()}
+                        class="desktop-row settings-link"
+                        onclick={() => void push(row.href)}
                     >
-                        {serverUrlSaved ? "Saved!" : "Save"}
+                        <div class="desktop-row__info">
+                            <span class="desktop-row__label">{row.label}</span>
+                            <span class="desktop-row__desc">{row.desc}</span>
+                        </div>
+                        <span class="settings-link__chevron">›</span>
                     </button>
-                </div>
-            </div>
-        </section>
+                {/each}
+            </section>
+        {/if}
 
-        <!-- ── Updates ── -->
-        <section class="settings-section">
-            <h2 class="settings-section__title">Updates</h2>
-            <div class="settings-row">
-                <div class="settings-row__info">
-                    <span class="settings-row__label">Current version</span>
-                    <span class="settings-row__desc">v0.1.0</span>
-                </div>
-                {#if updateStatus.readyToInstall}
-                    <button
-                        class="settings-btn settings-btn--toggle-on"
-                        onclick={applyUpdate}
-                    >
-                        Restart to update
-                    </button>
-                {:else if updateStatus.downloading}
-                    <span class="settings-row__value"
-                        >Downloading… {Math.round(
-                            updateStatus.progress * 100,
-                        )}%</span
-                    >
-                {:else if updateStatus.available}
-                    <span class="settings-row__value"
-                        >v{updateStatus.version} available</span
-                    >
-                {:else if updateStatus.error}
-                    <span class="settings-row__desc settings-row__desc--error"
-                        >{updateStatus.error}</span
-                    >
-                {:else}
-                    <button
-                        class="settings-btn"
-                        onclick={handleCheckUpdate}
-                        disabled={checking}
-                    >
-                        {checking ? "Checking…" : "Check for updates"}
-                    </button>
-                {/if}
-            </div>
-        </section>
-
-        <!-- ── Account ── -->
-        <section class="settings-section">
-            <h2 class="settings-section__title">Account</h2>
-            <div class="settings-row">
-                <span class="settings-row__label">Username</span>
-                <span class="settings-row__value"
-                    >{$user?.username ?? creds?.username ?? "—"}</span
-                >
-            </div>
-            <div class="settings-row">
-                <span class="settings-row__label">User ID</span>
-                <span class="settings-row__value settings-row__value--mono"
-                    >{$user?.userID.slice(0, 8) ?? "—"}…</span
-                >
-            </div>
-            <div class="settings-row">
-                <span class="settings-row__label">Device fingerprint</span>
-                <span class="settings-row__value settings-row__value--mono"
-                    >{fingerprint}…</span
-                >
-            </div>
-            <div class="settings-row">
-                <div class="settings-row__info">
-                    <span class="settings-row__label">Avatar</span>
-                    {#if avatarError}
-                        <span
-                            class="settings-row__desc settings-row__desc--error"
-                            >{avatarError}</span
+        {#if section === "account"}
+            <section class="desktop-section">
+                <h2 class="desktop-section__title">Profile</h2>
+                <div class="desktop-row">
+                    <div class="desktop-row__info">
+                        <span class="desktop-row__label">Avatar</span>
+                        <span class="desktop-row__desc">
+                            Upload JPG, PNG, GIF, or WebP, max 5 MB.
+                        </span>
+                    </div>
+                    <div class="desktop-actions">
+                        {#if $user?.userID}
+                            <Avatar
+                                userID={$user.userID}
+                                {serverUrl}
+                                version={$avatarHash}
+                                size={40}
+                                name={$user.username}
+                            />
+                        {/if}
+                        <button
+                            class="desktop-button"
+                            onclick={() => avatarInput?.click()}
+                            disabled={avatarUploading}
                         >
-                    {:else}
-                        <span class="settings-row__desc"
-                            >Upload a profile picture (JPG, PNG, GIF, or WebP,
-                            max 5 MB)</span
-                        >
-                    {/if}
-                </div>
-                <div class="settings-avatar-actions">
-                    {#if $user?.userID}
-                        <Avatar
-                            userID={$user.userID}
-                            {serverUrl}
-                            version={$avatarHash}
-                            size={40}
-                            name={$user.username}
+                            {avatarUploading ? "Uploading..." : "Change"}
+                        </button>
+                        <input
+                            bind:this={avatarInput}
+                            type="file"
+                            accept="image/jpeg,image/png,image/gif,image/webp"
+                            style="display:none"
+                            onchange={handleAvatarChange}
                         />
-                    {/if}
-                    <button
-                        class="settings-btn"
-                        onclick={() => avatarInput?.click()}
-                        disabled={avatarUploading}
-                    >
-                        {avatarUploading ? "Uploading…" : "Change"}
-                    </button>
-                    <input
-                        bind:this={avatarInput}
-                        type="file"
-                        accept="image/jpeg,image/png,image/gif,image/webp"
-                        style="display:none"
-                        onchange={handleAvatarChange}
-                    />
+                    </div>
                 </div>
-            </div>
-        </section>
+                {#if avatarError}
+                    <div class="desktop-row">
+                        <span class="desktop-status desktop-status--error">
+                            {avatarError}
+                        </span>
+                    </div>
+                {:else if avatarNotice}
+                    <div class="desktop-row">
+                        <span class="desktop-status desktop-status--success">
+                            {avatarNotice}
+                        </span>
+                    </div>
+                {/if}
+                <div class="desktop-row">
+                    <span class="desktop-row__label">Username</span>
+                    <span class="desktop-value"
+                        >{$user?.username ?? creds?.username ?? "-"}</span
+                    >
+                </div>
+                <div class="desktop-row desktop-row--column">
+                    <span class="desktop-row__label">User ID</span>
+                    <span class="desktop-value desktop-mono"
+                        >{$user?.userID ?? "-"}</span
+                    >
+                </div>
+                <div class="desktop-row">
+                    <span class="desktop-row__label">Device fingerprint</span>
+                    <span class="desktop-value desktop-mono">{fingerprint}</span
+                    >
+                </div>
+            </section>
 
-        <!-- ── Devices ── -->
-        <section class="settings-section">
-            <h2 class="settings-section__title">Devices</h2>
-            {#if devicesLoading}
-                <div class="settings-row">
-                    <span class="settings-row__desc">Loading devices…</span>
+            <section class="desktop-section">
+                <h2 class="desktop-section__title">Memberships</h2>
+                <div class="desktop-row">
+                    <span class="desktop-row__label">Groups</span>
+                    <span class="desktop-value">{serverCount}</span>
                 </div>
-            {:else if devicesError}
-                <div class="settings-row">
-                    <span class="settings-row__desc settings-row__desc--error"
-                        >{devicesError}</span
-                    >
-                    <button class="settings-btn" onclick={loadDevices}
-                        >Retry</button
-                    >
+                <div class="desktop-row">
+                    <span class="desktop-row__label">Channels</span>
+                    <span class="desktop-value">{channelCount}</span>
                 </div>
-            {:else}
-                {#each devices as device (device.deviceID)}
-                    {@const isCurrent = creds?.deviceID === device.deviceID}
-                    <div class="settings-row settings-row--device">
-                        <div class="settings-row__info">
-                            <span class="settings-row__label">
-                                {device.name || "Unnamed device"}
-                                {#if isCurrent}
-                                    <span class="device-badge">current</span>
-                                {/if}
-                            </span>
-                            <span
-                                class="settings-row__desc settings-row__value--mono"
-                            >
-                                {device.signKey.slice(0, 16)}…
-                            </span>
-                            <span class="settings-row__desc">
-                                {device.lastLogin
-                                    ? `Last login: ${new Date(device.lastLogin).toLocaleString()}`
-                                    : "Never logged in"}
+                <div class="desktop-row">
+                    <span class="desktop-row__label">Session</span>
+                    <button
+                        class="desktop-button"
+                        onclick={() => void push("/session")}
+                    >
+                        View details
+                    </button>
+                </div>
+            </section>
+
+            <section class="desktop-section">
+                <h2 class="desktop-section__title">Account</h2>
+                <div class="desktop-row">
+                    <div class="desktop-row__info">
+                        <span class="desktop-row__label">Sign out</span>
+                        <span class="desktop-row__desc">
+                            Return to the account picker.
+                        </span>
+                    </div>
+                    <button
+                        class="desktop-button desktop-button--danger"
+                        onclick={() => void handleLogout()}
+                        disabled={loggingOut}
+                    >
+                        {loggingOut ? "Signing out..." : "Sign out"}
+                    </button>
+                </div>
+            </section>
+        {/if}
+
+        {#if section === "notifications"}
+            <section class="desktop-section">
+                <h2 class="desktop-section__title">Notifications</h2>
+                <div class="desktop-row">
+                    <div class="desktop-row__info">
+                        <span class="desktop-row__label"
+                            >Desktop notifications</span
+                        >
+                        <span class="desktop-row__desc">
+                            Show OS alerts for incoming messages when Vex is not
+                            focused.
+                        </span>
+                    </div>
+                    <button
+                        class="desktop-button {notificationsEnabled
+                            ? 'desktop-button--primary'
+                            : ''}"
+                        onclick={toggleNotifications}
+                    >
+                        {notificationsEnabled ? "On" : "Off"}
+                    </button>
+                </div>
+                <div class="desktop-row">
+                    <div class="desktop-row__info">
+                        <span class="desktop-row__label">Sound effects</span>
+                        <span class="desktop-row__desc">
+                            Play local sounds for app events and messages.
+                        </span>
+                    </div>
+                    <button
+                        class="desktop-button {soundsEnabled
+                            ? 'desktop-button--primary'
+                            : ''}"
+                        onclick={toggleSounds}
+                    >
+                        {soundsEnabled ? "On" : "Off"}
+                    </button>
+                </div>
+            </section>
+
+            <section class="desktop-section">
+                <h2 class="desktop-section__title">Appearance</h2>
+                <div class="desktop-row">
+                    <div class="desktop-row__info">
+                        <span class="desktop-row__label">Theme</span>
+                        <span class="desktop-row__desc">
+                            Toggle between dark and light mode.
+                        </span>
+                    </div>
+                    <button class="desktop-button" onclick={toggleTheme}>
+                        {$theme === "dark"
+                            ? "Switch to Light"
+                            : "Switch to Dark"}
+                    </button>
+                </div>
+            </section>
+        {/if}
+
+        {#if section === "data"}
+            <section class="desktop-section">
+                <h2 class="desktop-section__title">Local message history</h2>
+                {#each [7, 14, 21, 30] as days (days)}
+                    <div class="desktop-row">
+                        <div class="desktop-row__info">
+                            <span class="desktop-row__label">{days} days</span>
+                            <span class="desktop-row__desc">
+                                {days === $localMessageRetentionDays
+                                    ? "Currently selected"
+                                    : `Keep decrypted messages up to ${days} days`}
                             </span>
                         </div>
-                        {#if !isCurrent}
-                            {#if deleteConfirmID === device.deviceID}
-                                <div class="settings-confirm">
-                                    <span class="settings-confirm__msg"
-                                        >Delete?</span
-                                    >
-                                    <button
-                                        class="settings-btn settings-btn--danger"
-                                        onclick={() =>
-                                            handleDeleteDevice(device.deviceID)}
-                                        >Yes</button
-                                    >
-                                    <button
-                                        class="settings-btn"
-                                        onclick={() => {
-                                            deleteConfirmID = null;
-                                            deleteError = "";
-                                        }}>No</button
-                                    >
-                                </div>
-                            {:else}
-                                <button
-                                    class="settings-btn settings-btn--danger"
-                                    onclick={() => {
-                                        deleteConfirmID = device.deviceID;
-                                        deleteError = "";
-                                    }}
-                                    disabled={devices.length <= 1}
-                                    title={devices.length <= 1
-                                        ? "Cannot delete your last device"
-                                        : "Remove this device"}
-                                >
-                                    Delete
-                                </button>
-                            {/if}
-                        {/if}
+                        <button
+                            class="desktop-button {days ===
+                            $localMessageRetentionDays
+                                ? 'desktop-button--primary'
+                                : ''}"
+                            onclick={() => setRetention(days)}
+                        >
+                            {days === $localMessageRetentionDays
+                                ? "Selected"
+                                : "Select"}
+                        </button>
                     </div>
                 {/each}
-                {#if deleteError}
-                    <div class="settings-row">
-                        <span
-                            class="settings-row__desc settings-row__desc--error"
-                            >{deleteError}</span
+            </section>
+
+            <section class="desktop-section">
+                <h2 class="desktop-section__title">Local data</h2>
+                <div class="desktop-row">
+                    <div class="desktop-row__info">
+                        <span class="desktop-row__label"
+                            >Reset unread counters</span
                         >
+                        <span class="desktop-row__desc">
+                            Clears local unread badges on this desktop.
+                        </span>
                     </div>
-                {/if}
-            {/if}
-        </section>
-
-        <!-- ── Danger zone ── -->
-        <section class="settings-section settings-section--danger">
-            <h2 class="settings-section__title">Danger Zone</h2>
-
-            <div class="settings-row">
-                <div class="settings-row__info">
-                    <span class="settings-row__label">Sign out</span>
-                    <span class="settings-row__desc"
-                        >Disconnect and return to the login screen</span
-                    >
-                </div>
-                <button
-                    class="settings-btn settings-btn--danger"
-                    onclick={handleLogout}>Sign out</button
-                >
-            </div>
-
-            <div class="settings-row">
-                <div class="settings-row__info">
-                    <span class="settings-row__label">Delete all data</span>
-                    <span class="settings-row__desc"
-                        >Delete message history, encryption sessions, device
-                        keys, and credentials from this device. The app will
-                        restart fresh.</span
-                    >
-                </div>
-                {#if confirmDeleteAll}
-                    <div class="settings-confirm">
-                        <span class="settings-confirm__msg"
-                            >This cannot be undone.</span
-                        >
-                        <button
-                            class="settings-btn settings-btn--danger"
-                            onclick={handleDeleteAllData}
-                            >Delete everything</button
-                        >
-                        <button
-                            class="settings-btn"
-                            onclick={() => {
-                                confirmDeleteAll = false;
-                            }}>Cancel</button
-                        >
-                    </div>
-                {:else}
                     <button
-                        class="settings-btn settings-btn--danger"
-                        onclick={() => {
-                            confirmDeleteAll = true;
-                        }}>Delete all data</button
+                        class="desktop-button desktop-button--danger"
+                        onclick={() => vexService.resetAllUnread()}
                     >
-                {/if}
-            </div>
-        </section>
-    </div>
+                        Reset
+                    </button>
+                </div>
+                <div class="desktop-row">
+                    <div class="desktop-row__info">
+                        <span class="desktop-row__label">Delete all data</span>
+                        <span class="desktop-row__desc">
+                            Deletes local history, sessions, keys, and saved
+                            credentials for this account.
+                        </span>
+                    </div>
+                    {#if confirmDeleteAll}
+                        <div class="desktop-actions">
+                            <button
+                                class="desktop-button desktop-button--danger"
+                                onclick={() => void handleDeleteAllData()}
+                            >
+                                Delete everything
+                            </button>
+                            <button
+                                class="desktop-button"
+                                onclick={() => {
+                                    confirmDeleteAll = false;
+                                }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    {:else}
+                        <button
+                            class="desktop-button desktop-button--danger"
+                            onclick={() => {
+                                confirmDeleteAll = true;
+                            }}
+                        >
+                            Delete all data
+                        </button>
+                    {/if}
+                </div>
+            </section>
+        {/if}
+
+        {#if section === "developer"}
+            <section class="desktop-section">
+                <h2 class="desktop-section__title">Connection</h2>
+                <div class="desktop-row desktop-row--column">
+                    <label class="desktop-row__label" for="server-url">
+                        Server URL
+                    </label>
+                    <span class="desktop-row__desc">
+                        The Vex server this desktop client connects to.
+                    </span>
+                    <div class="desktop-input-row">
+                        <input
+                            id="server-url"
+                            type="url"
+                            bind:value={serverUrl}
+                            placeholder="api.vex.wtf"
+                        />
+                        <button
+                            class="desktop-button"
+                            onclick={saveServerUrl}
+                            disabled={!serverUrl.trim()}
+                        >
+                            {serverUrlSaved ? "Saved" : "Save"}
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="desktop-section">
+                <h2 class="desktop-section__title">WebSocket debug</h2>
+                <div class="desktop-row">
+                    <div class="desktop-row__info">
+                        <span class="desktop-row__label">Debug logs</span>
+                        <span class="desktop-row__desc">
+                            Print inbound and outbound frame summaries.
+                        </span>
+                    </div>
+                    <button
+                        class="desktop-button {wsDebugEnabled
+                            ? 'desktop-button--primary'
+                            : ''}"
+                        onclick={() => {
+                            wsDebugEnabled = !wsDebugEnabled;
+                            vexService.setWebsocketDebug(wsDebugEnabled);
+                        }}
+                    >
+                        {wsDebugEnabled ? "On" : "Off"}
+                    </button>
+                </div>
+                <div class="desktop-row">
+                    <div class="desktop-row__info">
+                        <span class="desktop-row__label"
+                            >Frame payload logs</span
+                        >
+                        <span class="desktop-row__desc">
+                            Print raw frame payloads.
+                        </span>
+                    </div>
+                    <button
+                        class="desktop-button {wsFrameDebugEnabled
+                            ? 'desktop-button--primary'
+                            : ''}"
+                        onclick={() => {
+                            wsFrameDebugEnabled = !wsFrameDebugEnabled;
+                            vexService.setWebsocketFrameDebug(
+                                wsFrameDebugEnabled,
+                            );
+                        }}
+                    >
+                        {wsFrameDebugEnabled ? "On" : "Off"}
+                    </button>
+                </div>
+                <div class="desktop-row">
+                    <div class="desktop-row__info">
+                        <span class="desktop-row__label"
+                            >State transition logs</span
+                        >
+                        <span class="desktop-row__desc">
+                            Print connect, disconnect, and recovery lifecycle.
+                        </span>
+                    </div>
+                    <button
+                        class="desktop-button {wsStateDebugEnabled
+                            ? 'desktop-button--primary'
+                            : ''}"
+                        onclick={() => {
+                            wsStateDebugEnabled = !wsStateDebugEnabled;
+                            vexService.setWebsocketStateDebug(
+                                wsStateDebugEnabled,
+                            );
+                        }}
+                    >
+                        {wsStateDebugEnabled ? "On" : "Off"}
+                    </button>
+                </div>
+            </section>
+        {/if}
+
+        {#if section === "about"}
+            <section class="desktop-section">
+                <h2 class="desktop-section__title">App</h2>
+                <div class="desktop-row">
+                    <span class="desktop-row__label">Version</span>
+                    <span class="desktop-value desktop-mono">0.1.0</span>
+                </div>
+                <div class="desktop-row">
+                    <div class="desktop-row__info">
+                        <span class="desktop-row__label">Software update</span>
+                        <span class="desktop-row__desc">
+                            {updateStatus.readyToInstall
+                                ? "Update is ready to install."
+                                : updateStatus.available
+                                  ? `Version ${updateStatus.version} available.`
+                                  : updateStatus.error
+                                    ? updateStatus.error
+                                    : "Check for a desktop update."}
+                        </span>
+                    </div>
+                    {#if updateStatus.readyToInstall}
+                        <button
+                            class="desktop-button desktop-button--primary"
+                            onclick={applyUpdate}
+                        >
+                            Restart to update
+                        </button>
+                    {:else if updateStatus.downloading}
+                        <span class="desktop-value">
+                            Downloading {Math.round(
+                                updateStatus.progress * 100,
+                            )}%
+                        </span>
+                    {:else}
+                        <button
+                            class="desktop-button"
+                            onclick={() => void handleCheckUpdate()}
+                            disabled={checking}
+                        >
+                            {checking ? "Checking..." : "Check for updates"}
+                        </button>
+                    {/if}
+                </div>
+                <div class="desktop-row">
+                    <span class="desktop-row__label">Homeserver</span>
+                    <span class="desktop-value desktop-mono"
+                        >{getServerUrl()}</span
+                    >
+                </div>
+            </section>
+        {/if}
+    </main>
 </div>
 
 <style>
-    .settings-page {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        background: var(--bg-primary);
-    }
-
-    .settings-page__header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 12px 20px;
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-    }
-
-    .settings-page__back {
-        font-size: 18px;
-        color: var(--text-secondary);
-        padding: 4px 8px;
-        border-radius: 4px;
-    }
-
-    .settings-page__back:hover {
-        color: var(--text-primary);
-        background: var(--bg-hover);
-    }
-
-    .settings-page__title {
-        font-size: 16px;
-        font-weight: 700;
-        color: var(--text-primary);
-    }
-
-    .settings-page__body {
-        flex: 1;
-        overflow-y: auto;
-        padding: 24px;
-        display: flex;
-        flex-direction: column;
-        gap: 24px;
-        max-width: 560px;
-    }
-
-    .settings-section {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        background: var(--bg-secondary);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        overflow: hidden;
-    }
-
-    .settings-section--danger {
-        border-color: color-mix(in srgb, var(--danger) 40%, transparent);
-    }
-
-    .settings-section__title {
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--text-muted);
-        padding: 10px 16px 6px;
-        border-bottom: 1px solid var(--border);
-    }
-
-    .settings-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 12px 16px;
-        gap: 12px;
-        border-bottom: 1px solid var(--border);
-    }
-
-    .settings-row:last-child {
-        border-bottom: none;
-    }
-
-    .settings-row--column {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .settings-row__info {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        flex: 1;
-        min-width: 0;
-    }
-
-    .settings-row__label {
-        font-size: 14px;
-        font-weight: 600;
-        color: var(--text-primary);
-    }
-
-    .settings-row__desc {
-        font-size: 12px;
-        color: var(--text-muted);
-    }
-
-    .settings-row__value {
-        font-size: 13px;
-        color: var(--text-secondary);
-    }
-
-    .settings-row__value--mono {
-        font-family: monospace;
-        font-size: 12px;
-    }
-
-    .settings-row__input-row {
-        display: flex;
-        gap: 8px;
+    .settings-link {
         width: 100%;
-        margin-top: 6px;
+        color: inherit;
+        text-align: left;
+        background: transparent;
     }
 
-    .settings-input {
-        flex: 1;
-        padding: 7px 10px;
-        background: var(--bg-surface);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        color: var(--text-primary);
-        font-size: 13px;
-        min-width: 0;
-    }
-
-    .settings-input:focus {
-        outline: none;
-        border-color: var(--accent);
-    }
-
-    .settings-btn {
-        padding: 6px 14px;
-        border-radius: 4px;
-        font-size: 13px;
-        font-weight: 600;
-        white-space: nowrap;
-        background: var(--bg-surface);
-        color: var(--text-primary);
-        border: 1px solid var(--border);
-        flex-shrink: 0;
-    }
-
-    .settings-btn:hover:not(:disabled) {
+    .settings-link:hover {
         background: var(--bg-hover);
     }
 
-    .settings-btn:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-    }
-
-    .settings-btn--toggle {
-        min-width: 48px;
-    }
-
-    .settings-btn--toggle-on {
-        background: var(--accent);
-        color: #fff;
-        border-color: var(--accent);
-    }
-
-    .settings-btn--danger {
-        background: transparent;
-        color: var(--danger);
-        border-color: color-mix(in srgb, var(--danger) 50%, transparent);
-    }
-
-    .settings-btn--danger:hover:not(:disabled) {
-        background: var(--danger);
-        color: #fff;
-    }
-
-    .settings-row__desc--error {
-        color: var(--danger);
-    }
-
-    .settings-avatar-actions {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-shrink: 0;
-    }
-
-    .settings-confirm {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-shrink: 0;
-    }
-
-    .settings-confirm__msg {
-        font-size: 13px;
-        color: var(--danger);
-        font-weight: 600;
-    }
-
-    .device-badge {
-        display: inline-block;
-        font-size: 10px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        padding: 1px 6px;
-        margin-left: 6px;
-        border-radius: 3px;
-        background: var(--accent);
-        color: #fff;
-        vertical-align: middle;
-    }
-
-    .settings-row--device {
-        align-items: flex-start;
+    .settings-link__chevron {
+        color: var(--text-muted);
+        font-size: 22px;
+        line-height: 1;
     }
 </style>

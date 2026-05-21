@@ -1,10 +1,8 @@
 <script lang="ts">
     import { push } from "svelte-spa-router";
 
-    import { validate as uuidValidate } from "uuid";
-
     import CreateServerModal from "../lib/CreateServerModal.svelte";
-    import { channels, servers, vexService } from "../lib/store/index.js";
+    import { parseInviteID, vexService } from "../lib/store/index.js";
 
     let showCreate = $state(false);
     let inviteInput = $state("");
@@ -13,10 +11,8 @@
 
     async function joinViaInvite(e: Event): Promise<void> {
         e.preventDefault();
-        const raw = inviteInput.trim();
-        // Accept full URLs or bare UUIDs
-        const inviteID = raw.split("/").pop() ?? "";
-        if (!inviteID || !uuidValidate(inviteID)) {
+        const inviteID = parseInviteID(inviteInput);
+        if (!inviteID) {
             joinError = "Please enter a valid invite link or code";
             return;
         }
@@ -28,18 +24,10 @@
                 joinError = result.error ?? "Failed to join server";
                 return;
             }
-            // VexService updates $servers and $channels atoms internally.
-            // Find the newly added server to navigate to it.
-            const allServers = Object.values(servers.get());
-            const last = allServers[allServers.length - 1];
-            if (last) {
-                const chs = channels.get()[last.serverID] ?? [];
-                const first = chs[0];
-                void push(
-                    first
-                        ? `/server/${last.serverID}/${first.channelID}`
-                        : "/home",
-                );
+            if (result.serverID && result.channelID) {
+                void push(`/server/${result.serverID}/${result.channelID}`);
+            } else if (result.serverID) {
+                void push(`/server/${result.serverID}`);
             } else {
                 void push("/home");
             }

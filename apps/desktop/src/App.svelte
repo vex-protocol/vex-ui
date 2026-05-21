@@ -15,35 +15,79 @@
         user,
     } from "./lib/store/index.js";
     import UserMenu from "./lib/UserMenu.svelte";
+    import AccountSelector from "./routes/AccountSelector.svelte";
+    import AddServer from "./routes/AddServer.svelte";
+    import Authenticate from "./routes/Authenticate.svelte";
+    import DeviceDetails from "./routes/DeviceDetails.svelte";
+    import DeviceManager from "./routes/DeviceManager.svelte";
+    import DeviceRequests from "./routes/DeviceRequests.svelte";
     import Home from "./routes/Home.svelte";
+    import InviteManager from "./routes/InviteManager.svelte";
+    import InvitePreview from "./routes/InvitePreview.svelte";
+    import JoinGroup from "./routes/JoinGroup.svelte";
     import Launch from "./routes/Launch.svelte";
     import Login from "./routes/Login.svelte";
     import Messaging from "./routes/Messaging.svelte";
+    import Passkeys from "./routes/Passkeys.svelte";
     import Register from "./routes/Register.svelte";
     import ServerChannel from "./routes/ServerChannel.svelte";
+    import ServerOverview from "./routes/ServerOverview.svelte";
+    import ServerSettings from "./routes/ServerSettings.svelte";
+    import SessionDetails from "./routes/SessionDetails.svelte";
     import Settings from "./routes/Settings.svelte";
+    import ShareComposer from "./routes/ShareComposer.svelte";
 
+    /* eslint-disable perfectionist/sort-objects -- Route order is semantic for overlapping dynamic paths. */
     const routes = {
         "/": Launch,
+        "/accounts": AccountSelector,
+        "/add-server": AddServer,
+        "/authenticate/:requestID": Authenticate,
+        "/authenticate/:requestID/:signKey": Authenticate,
+        "/device-requests": DeviceRequests,
+        "/device/:deviceID": DeviceDetails,
+        "/devices": DeviceManager,
         "/home": Home,
+        "/invite/:inviteID": InvitePreview,
+        "/join": JoinGroup,
+        "/join/:inviteID": JoinGroup,
         "/launch": Launch,
         "/login": Login,
         "/messaging/:userID": Messaging,
+        "/passkeys": Passkeys,
         "/register": Register,
+        "/server/:serverID/invites": InviteManager,
+        "/server/:serverID/settings": ServerSettings,
         "/server/:serverID/:channelID": ServerChannel,
+        "/server/:serverID": ServerOverview,
+        "/session": SessionDetails,
+        "/settings/:section": Settings,
         "/settings": Settings,
+        "/share": ShareComposer,
     };
+    /* eslint-enable perfectionist/sort-objects */
 
     // Auth routes show no sidebars
-    const AUTH_ROUTES = ["/", "/login", "/register", "/launch"];
-    const isAuthRoute = $derived(AUTH_ROUTES.some((p) => $location === p));
+    const AUTH_ROUTES = ["/", "/accounts", "/login", "/register", "/launch"];
+    const isAuthRoute = $derived(
+        AUTH_ROUTES.some((p) => $location === p) ||
+            $location.startsWith("/authenticate/"),
+    );
 
     // Derive active server/channel from URL
+    const routeParts = $derived($location.split("/"));
     const activeServerID = $derived(
-        $location.startsWith("/server/") ? ($location.split("/")[2] ?? "") : "",
+        $location.startsWith("/server/") ? (routeParts[2] ?? "") : "",
+    );
+    const serverSubRoute = $derived(routeParts[3] ?? "");
+    const isServerUtilityRoute = $derived(
+        serverSubRoute === "settings" || serverSubRoute === "invites",
+    );
+    const isBareServerRoute = $derived(
+        Boolean(activeServerID) && !serverSubRoute,
     );
     const activeChannelID = $derived(
-        $location.startsWith("/server/") ? ($location.split("/")[3] ?? "") : "",
+        activeServerID && !isServerUtilityRoute ? serverSubRoute : "",
     );
 
     // Derive server list and channel list from atoms
@@ -104,7 +148,7 @@
 
     // When navigating to a server without a channel, redirect to the first channel
     $effect(() => {
-        if (activeServerID && !activeChannelID) {
+        if (isBareServerRoute && !activeChannelID) {
             const first = activeChannels[0];
             if (first) {
                 void push(`/server/${activeServerID}/${first.channelID}`);
@@ -139,7 +183,7 @@
         </div>
 
         {#if !isAuthRoute}
-            {#if activeServerID}
+            {#if activeServerID && activeChannelID}
                 <MembersPanel
                     channelID={activeChannelID}
                     serverID={activeServerID}

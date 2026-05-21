@@ -7,7 +7,14 @@
     import { getServerUrl } from "./config.js";
     import LinkPreviewCard from "./LinkPreviewCard.svelte";
     import MessageContent from "./MessageContent.svelte";
-    import { user } from "./store/index.js";
+    import {
+        createUnicodeReactionEmoji,
+        emojiReactionKey,
+        emojiReactionLabel,
+        messageReactions,
+        user,
+        vexService,
+    } from "./store/index.js";
     import {
         chunkMessages,
         formatTime,
@@ -17,9 +24,16 @@
     const serverUrl = getServerUrl();
 
     let {
+        conversationKey,
+        isGroup = false,
         messages,
         usernames,
-    }: { messages: Message[]; usernames?: Record<string, string> } = $props();
+    }: {
+        conversationKey?: string;
+        isGroup?: boolean;
+        messages: Message[];
+        usernames?: Record<string, string>;
+    } = $props();
     // Fallback resolved outside the destructure — eslint --fix
     // silently strips destructure defaults on svelte files.
     const usernameMap = $derived(usernames ?? {});
@@ -27,7 +41,14 @@
     const chunks = $derived(chunkMessages(messages));
 
     let containerEl: HTMLDivElement | null = $state(null);
+    let actionError = $state("");
     let autoScroll = true;
+    const quickReactions = [
+        createUnicodeReactionEmoji("👍", "thumbsup"),
+        createUnicodeReactionEmoji("🤍", "white_heart"),
+        createUnicodeReactionEmoji("🎉", "tada"),
+        createUnicodeReactionEmoji("💯", "100"),
+    ];
 
     function scrollToBottom(): void {
         if (containerEl && autoScroll) {
@@ -54,6 +75,41 @@
     onMount(() => {
         scrollToBottom();
     });
+
+    async function copyMessage(message: Message): Promise<void> {
+        actionError = "";
+        await navigator.clipboard.writeText(message.message);
+    }
+
+    async function deleteMessage(message: Message): Promise<void> {
+        if (!conversationKey) return;
+        actionError = "";
+        const deleted = await vexService.deleteLocalMessage(
+            conversationKey,
+            message.mailID,
+            isGroup,
+        );
+        if (!deleted) {
+            actionError = "Could not delete local message.";
+        }
+    }
+
+    async function toggleReaction(
+        message: Message,
+        emoji: (typeof quickReactions)[number],
+    ): Promise<void> {
+        if (!conversationKey) return;
+        actionError = "";
+        const result = await vexService.toggleMessageReaction(
+            conversationKey,
+            message.mailID,
+            isGroup,
+            emoji,
+        );
+        if (!result.ok) {
+            actionError = result.error ?? "Could not update reaction.";
+        }
+    }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -69,6 +125,10 @@
 >
     {#if chunks.length === 0}
         <div class="message-box__empty">No messages yet.</div>
+    {/if}
+
+    {#if actionError}
+        <div class="message-box__action-error">{actionError}</div>
     {/if}
 
     {#each chunks as chunk (chunk.messages[0]?.mailID ?? chunk.firstTime + chunk.authorID)}
@@ -94,8 +154,65 @@
 
             {#each chunk.messages as msg (msg.mailID)}
                 <div class="message">
-                    <MessageContent content={msg.message} />
-                    <LinkPreviewCard content={msg.message} />
+                    <div class="message__body">
+                        <MessageContent content={msg.message} />
+                        <LinkPreviewCard content={msg.message} />
+                    </div>
+                    {#if messageReactions(msg).length > 0}
+                        <div class="message__reactions">
+                            {#each messageReactions(msg) as reaction (emojiReactionKey(reaction.emoji))}
+                                {@const selected = reaction.userIDs.includes(
+                                    $user?.userID ?? "",
+                                )}
+                                <button
+                                    class="message__reaction {selected
+                                        ? 'message__reaction--selected'
+                                        : ''}"
+                                    title={`${emojiReactionLabel(
+                                        reaction.emoji,
+                                    )} ${reaction.userIDs.length}`}
+                                    onclick={() =>
+                                        void toggleReaction(
+                                            msg,
+                                            reaction.emoji,
+                                        )}
+                                >
+                                    <span
+                                        >{emojiReactionLabel(
+                                            reaction.emoji,
+                                        )}</span
+                                    >
+                                    <span>{reaction.userIDs.length}</span>
+                                </button>
+                            {/each}
+                        </div>
+                    {/if}
+                    {#if conversationKey}
+                        <div class="message__actions">
+                            {#each quickReactions as emoji (emojiReactionKey(emoji))}
+                                <button
+                                    class="message__action"
+                                    title={`React ${emojiReactionLabel(emoji)}`}
+                                    onclick={() =>
+                                        void toggleReaction(msg, emoji)}
+                                >
+                                    {emojiReactionLabel(emoji)}
+                                </button>
+                            {/each}
+                            <button
+                                class="message__action"
+                                onclick={() => void copyMessage(msg)}
+                            >
+                                Copy
+                            </button>
+                            <button
+                                class="message__action message__action--danger"
+                                onclick={() => void deleteMessage(msg)}
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    {/if}
                 </div>
             {/each}
         </div>
@@ -172,6 +289,87 @@
         line-height: 1.5;
         color: var(--text-secondary);
         word-break: break-word;
+        position: relative;
+        padding-top: 1px;
+        padding-bottom: 1px;
+    }
+
+    .message:hover {
+        background: color-mix(in srgb, var(--bg-hover) 36%, transparent);
+    }
+
+    .message__body {
+        min-height: 20px;
+    }
+
+    .message__actions {
+        display: none;
+        position: absolute;
+        top: -16px;
+        right: 4px;
+        z-index: 2;
+        align-items: center;
+        gap: 2px;
+        padding: 3px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: var(--bg-surface);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.24);
+    }
+
+    .message:hover .message__actions {
+        display: flex;
+    }
+
+    .message__action {
+        padding: 3px 6px;
+        border-radius: 3px;
+        color: var(--text-secondary);
+        font-size: 12px;
+    }
+
+    .message__action:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+
+    .message__action--danger {
+        color: var(--danger);
+    }
+
+    .message__reactions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 3px;
+    }
+
+    .message__reaction {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 7px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--bg-surface);
+        color: var(--text-secondary);
+        font-size: 12px;
+    }
+
+    .message__reaction--selected {
+        border-color: var(--accent);
+        color: var(--text-primary);
+        background: color-mix(in srgb, var(--accent) 18%, transparent);
+    }
+
+    .message-box__action-error {
+        margin: 4px 0;
+        padding: 7px 10px;
+        border: 1px solid color-mix(in srgb, var(--danger) 50%, var(--border));
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--danger) 12%, transparent);
+        color: var(--danger);
+        font-size: 12px;
     }
 
     /* ── File attachment styles ── */

@@ -8,20 +8,15 @@
     import { user as userAtom, vexService } from "../lib/store/index.js";
 
     let username = $state("");
-    let password = $state("");
-    let confirm = $state("");
     let errors: Record<string, string> = $state({});
     let loading = $state(false);
 
-    const USERNAME_RE = /^\w+$/;
-    const LEADING_TRAILING_RE = /^[-_]|[-_]$/;
+    const HANDLE_PATTERN = /^[A-Za-z0-9_]{3,19}$/;
 
     function validateUsername(value: string): null | string {
-        if (value.length < 3) return "Username must be at least 3 characters";
-        if (!USERNAME_RE.test(value))
-            return "Username can only contain letters, numbers, hyphens, and underscores";
-        if (LEADING_TRAILING_RE.test(value))
-            return "Username cannot start or end with a hyphen or underscore";
+        if (!HANDLE_PATTERN.test(value)) {
+            return "Handles are 3-19 letters, digits, or underscores.";
+        }
         return null;
     }
 
@@ -39,27 +34,19 @@
             errors = { username: usernameError };
             return;
         }
-        if (password.length < 6) {
-            errors = { password: "Password must be at least 6 characters" };
-            return;
-        }
-        if (password !== confirm) {
-            errors = { confirm: "Passwords do not match" };
-            return;
-        }
 
         loading = true;
 
         const result = await vexService.register(
             normalizedUsername,
-            password,
+            "",
             desktopConfig(),
             getServerOptions(),
             keyStore,
         );
 
         if (!result.ok) {
-            if (result.pendingDeviceApproval) {
+            if (result.pendingDeviceApproval && result.pendingRequestID) {
                 const published =
                     await vexService.publishDeferredDeviceApprovalAndStartWatching(
                         keyStore,
@@ -75,13 +62,10 @@
                     loading = false;
                     return;
                 }
-                errors = {
-                    form:
-                        result.error ??
-                        "Check your other signed-in device to approve this one.",
-                };
-                playError();
-                loading = false;
+                const signKey = result.pendingSignKey ?? "_";
+                void push(
+                    `/authenticate/${result.pendingRequestID}/${signKey}`,
+                );
                 return;
             }
             errors = { form: result.error ?? "Registration failed" };
@@ -106,7 +90,7 @@
 <div class="auth-page">
     <div class="auth-card">
         <h1 class="auth-card__title">Create account</h1>
-        <p class="auth-card__subtitle">Join Vex Chat</p>
+        <p class="auth-card__subtitle">Choose a handle for Vex Chat.</p>
 
         {#if errors.form}
             <p class="auth-card__error">{errors.form}</p>
@@ -114,12 +98,12 @@
 
         <form class="auth-form" onsubmit={handleRegister}>
             <div class="auth-form__field">
-                <label for="username">Username</label>
+                <label for="username">Handle</label>
                 <input
                     id="username"
                     type="text"
                     autocomplete="username"
-                    placeholder="pick a username"
+                    placeholder="pick a handle"
                     bind:value={username}
                     disabled={loading}
                     required
@@ -129,42 +113,15 @@
                     >{/if}
             </div>
 
-            <div class="auth-form__field">
-                <label for="password">Password</label>
-                <input
-                    id="password"
-                    type="password"
-                    autocomplete="new-password"
-                    placeholder="••••••••"
-                    bind:value={password}
-                    disabled={loading}
-                    required
-                />
-                {#if errors.password}<span class="field-error"
-                        >{errors.password}</span
-                    >{/if}
-            </div>
-
-            <div class="auth-form__field">
-                <label for="confirm">Confirm Password</label>
-                <input
-                    id="confirm"
-                    type="password"
-                    autocomplete="new-password"
-                    placeholder="••••••••"
-                    bind:value={confirm}
-                    disabled={loading}
-                    required
-                />
-                {#if errors.confirm}<span class="field-error"
-                        >{errors.confirm}</span
-                    >{/if}
-            </div>
-
             <button class="auth-form__submit" type="submit" disabled={loading}>
                 {loading ? "Creating account..." : "Create account"}
             </button>
         </form>
+
+        <p class="auth-card__hint">
+            We'll create an account if this handle is new, or connect this
+            desktop if it already belongs to you.
+        </p>
 
         <p class="auth-card__footer">
             Already have an account?
@@ -248,6 +205,12 @@
     .auth-card__footer {
         font-size: 13px;
         color: var(--text-secondary);
+        text-align: center;
+    }
+    .auth-card__hint {
+        color: var(--text-secondary);
+        font-size: 12px;
+        line-height: 1.45;
         text-align: center;
     }
     .auth-card__link {

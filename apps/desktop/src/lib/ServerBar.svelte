@@ -3,7 +3,6 @@
 
     import { push } from "svelte-spa-router";
 
-    import CreateServerModal from "./CreateServerModal.svelte";
     import { totalDmUnread } from "./store/index.js";
 
     let {
@@ -25,8 +24,6 @@
             void push(`/server/${serverID}/`);
         }
     }
-
-    let showCreate = $state(false);
 </script>
 
 <nav class="server-bar" aria-label="Servers">
@@ -71,25 +68,15 @@
         <li>
             <button
                 class="server-bar__item server-bar__item--add"
-                title="Create Server"
-                aria-label="Create server"
-                onclick={() => {
-                    showCreate = true;
-                }}
+                title="Add Server"
+                aria-label="Add server"
+                onclick={() => void push("/add-server")}
             >
                 +
             </button>
         </li>
     </ul>
 </nav>
-
-{#if showCreate}
-    <CreateServerModal
-        onclose={() => {
-            showCreate = false;
-        }}
-    />
-{/if}
 
 <style>
     .server-bar {

@@ -85,7 +85,12 @@
 
     <!-- TODO: fingerprint verification panel — needs secure storage for verified keys -->
 
-    <MessageBox messages={threadMessages} usernames={usernameMap} />
+    <MessageBox
+        messages={threadMessages}
+        usernames={usernameMap}
+        conversationKey={targetUserID}
+        isGroup={false}
+    />
 
     {#if sendError}
         <div class="dm-pane__error">{sendError}</div>

@@ -13,48 +13,120 @@
     } from "../lib/store/index.js";
 
     let username = $state("");
-    let password = $state("");
     let error = $state("");
     let loading = $state(false);
 
-    async function handleLogin(e: SubmitEvent) {
-        e.preventDefault();
-        loading = true;
-        error = "";
+    const HANDLE_PATTERN = /^[A-Za-z0-9_]{3,19}$/;
 
-        const result = await vexService.login(
+    function validateHandle(value: string): null | string {
+        if (!HANDLE_PATTERN.test(value)) {
+            return "Handles are 3-19 letters, digits, or underscores.";
+        }
+        return null;
+    }
+
+    function registerHandle(username: string) {
+        return vexService.register(
             username,
-            password,
+            "",
             desktopConfig(),
             getServerOptions(),
             keyStore,
         );
+    }
 
-        if (!result.ok) {
-            error = result.error ?? "Login failed";
+    async function authenticateHandle(username: string) {
+        const savedCredentials = await keyStore.load(username);
+        if (!savedCredentials) {
+            return registerHandle(username);
+        }
+
+        const result = await vexService.login(
+            username,
+            "",
+            desktopConfig(),
+            getServerOptions(),
+            keyStore,
+        );
+        if (!result.ok && "requireReauth" in result && result.requireReauth) {
+            return registerHandle(username);
+        }
+        return result;
+    }
+
+    async function handleLogin(e: SubmitEvent) {
+        e.preventDefault();
+        error = "";
+
+        const enteredHandle = username.trim();
+        const validationError = validateHandle(enteredHandle);
+        if (validationError) {
+            error = validationError;
             playError();
-            loading = false;
             return;
         }
 
-        if (userAtom.get()) {
-            playUnlock();
-            const serverList = Object.values(serversAtom.get());
-            const firstServer = serverList[0];
-            if (firstServer) {
-                const sid = firstServer.serverID;
-                const chs = channelsAtom.get()[sid] ?? [];
-                const firstChannel = chs[0];
-                if (firstChannel) {
-                    void push(`/server/${sid}/${firstChannel.channelID}`);
+        loading = true;
+        try {
+            const result = await authenticateHandle(
+                enteredHandle.toLowerCase(),
+            );
+
+            if (
+                !result.ok &&
+                result.pendingDeviceApproval &&
+                result.pendingRequestID
+            ) {
+                const published =
+                    await vexService.publishDeferredDeviceApprovalAndStartWatching(
+                        keyStore,
+                    );
+                if (!published.ok) {
+                    error =
+                        published.error ??
+                        result.error ??
+                        "Could not start device approval.";
+                    playError();
+                    loading = false;
+                    return;
+                }
+                const signKey = result.pendingSignKey ?? "_";
+                void push(
+                    `/authenticate/${result.pendingRequestID}/${signKey}`,
+                );
+                return;
+            }
+
+            if (!result.ok) {
+                error = result.error ?? "Sign in failed";
+                playError();
+                loading = false;
+                return;
+            }
+
+            if (userAtom.get()) {
+                playUnlock();
+                const serverList = Object.values(serversAtom.get());
+                const firstServer = serverList[0];
+                if (firstServer) {
+                    const sid = firstServer.serverID;
+                    const chs = channelsAtom.get()[sid] ?? [];
+                    const firstChannel = chs[0];
+                    if (firstChannel) {
+                        void push(`/server/${sid}/${firstChannel.channelID}`);
+                    } else {
+                        void push("/home");
+                    }
                 } else {
                     void push("/home");
                 }
             } else {
-                void push("/home");
+                error = "Could not verify credentials after sign in";
+                playError();
+                loading = false;
             }
-        } else {
-            error = "Could not verify credentials after login";
+        } catch (err: unknown) {
+            error = err instanceof Error ? err.message : "Sign in failed";
             playError();
             loading = false;
         }
@@ -64,7 +136,9 @@
 <div class="auth-page">
     <div class="auth-card">
         <h1 class="auth-card__title">Welcome back</h1>
-        <p class="auth-card__subtitle">Sign in to Vex Chat</p>
+        <p class="auth-card__subtitle">
+            Enter your handle to connect this desktop.
+        </p>
 
         {#if error}
             <p class="auth-card__error">{error}</p>
@@ -72,26 +146,13 @@
 
         <form class="auth-form" onsubmit={handleLogin}>
             <div class="auth-form__field">
-                <label for="username">Username</label>
+                <label for="username">Handle</label>
                 <input
                     id="username"
                     type="text"
                     autocomplete="username"
-                    placeholder="your username"
+                    placeholder="your handle"
                     bind:value={username}
-                    disabled={loading}
-                    required
-                />
-            </div>
-
-            <div class="auth-form__field">
-                <label for="password">Password</label>
-                <input
-                    id="password"
-                    type="password"
-                    autocomplete="current-password"
-                    placeholder="••••••••"
-                    bind:value={password}
                     disabled={loading}
                     required
                 />
@@ -101,6 +162,11 @@
                 {loading ? "Signing in..." : "Sign in"}
             </button>
         </form>
+
+        <p class="auth-card__hint">
+            If this is a new desktop for an existing account, Vex will ask one
+            of your signed-in devices to approve it.
+        </p>
 
         <p class="auth-card__footer">
             Don't have an account?
@@ -184,6 +250,12 @@
     .auth-card__footer {
         font-size: 13px;
         color: var(--text-secondary);
+        text-align: center;
+    }
+    .auth-card__hint {
+        color: var(--text-secondary);
+        font-size: 12px;
+        line-height: 1.45;
         text-align: center;
     }
     .auth-card__link {

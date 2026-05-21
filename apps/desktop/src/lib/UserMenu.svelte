@@ -2,8 +2,8 @@
     import { push } from "svelte-spa-router";
 
     import Avatar from "./Avatar.svelte";
-    import { clearSession, getServerUrl } from "./config.js";
-    import { keyStore } from "./keystore.js";
+    import { getServerUrl } from "./config.js";
+    import { clearActiveUsername, keyStore } from "./keystore.js";
     import { playLock } from "./sounds.js";
     import { avatarHash, vexService } from "./store/index.js";
 
@@ -22,10 +22,10 @@
         // Clear JWT so auto-login won't fire, but keep device keys
         const creds = await keyStore.loadActive();
         if (creds) await keyStore.save({ ...creds, token: undefined });
+        await clearActiveUsername();
         // VexService.logout() resets all state internally.
         // SQLite storage is per-device-key; no manual clear needed on logout
-        clearSession();
-        void push("/login");
+        void push("/accounts");
     }
 
     function openSettings(): void {
@@ -79,6 +79,26 @@
                 onclick={openSettings}
             >
                 Settings
+            </button>
+            <button
+                class="user-menu__item"
+                role="menuitem"
+                onclick={() => {
+                    menuOpen = false;
+                    void push("/devices");
+                }}
+            >
+                Devices
+            </button>
+            <button
+                class="user-menu__item"
+                role="menuitem"
+                onclick={() => {
+                    menuOpen = false;
+                    void push("/share");
+                }}
+            >
+                Share Composer
             </button>
             <div class="user-menu__divider" role="separator"></div>
             <button
