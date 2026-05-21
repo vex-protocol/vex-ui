@@ -15,6 +15,7 @@ import {
     formatFileSize,
     formatTime,
     isImageType,
+    messageEmbed,
     messageReactionEvent,
     messageReactions,
     parseFileExtra,
@@ -152,6 +153,58 @@ describe("parseFileExtra", () => {
             fileName: "photo.png",
             fileSize: 2048,
         });
+    });
+});
+
+describe("message embeds", () => {
+    test("parses encrypted media embed metadata", () => {
+        const extra = JSON.stringify({
+            embed: {
+                blocks: [
+                    {
+                        attachment: {
+                            contentType: "image/svg+xml",
+                            fileID: "file-1",
+                            fileName: "summary.svg",
+                            fileSize: 2048,
+                            key: "secret",
+                        },
+                        mediaType: "svg",
+                        title: "Summary",
+                        type: "media",
+                    },
+                    {
+                        source: "message",
+                        type: "markdown",
+                    },
+                ],
+                display: "decorate",
+                kind: "git.push",
+                title: "Push to master",
+                version: 1,
+            },
+            version: 1,
+        });
+        const embed = messageEmbed(makeMessage({ extra } as Partial<Message>));
+
+        expect(embed?.kind).toBe("git.push");
+        expect(embed?.blocks?.[0]).toMatchObject({
+            mediaType: "svg",
+            title: "Summary",
+            type: "media",
+        });
+    });
+
+    test("drops malformed embed metadata", () => {
+        const extra = JSON.stringify({
+            embed: {
+                display: "replace",
+                kind: 123,
+            },
+            version: 1,
+        });
+
+        expect(parseMessageExtra(extra).embed).toBeUndefined();
     });
 });
 
