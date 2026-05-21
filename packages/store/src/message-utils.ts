@@ -27,6 +27,64 @@ export interface MessageChunk {
     messages: Message[];
 }
 
+export interface MessageEmbed {
+    actions?: MessageEmbedAction[];
+    blocks?: MessageEmbedBlock[];
+    display: "decorate" | "replace";
+    fields?: MessageEmbedField[];
+    icon?: string;
+    kind: string;
+    source?: MessageEmbedSource;
+    subtitle?: string;
+    suppressLinkPreview?: boolean;
+    timestamp?: string;
+    title: string;
+    tone?: "danger" | "default" | "info" | "success" | "warning";
+    version: 1;
+}
+
+export interface MessageEmbedAction {
+    label: string;
+    type: "link";
+    url: string;
+}
+
+export type MessageEmbedBlock =
+    | (MessageEmbedMediaItem & { type: "media" })
+    | {
+          attachment: EncryptedFileAttachment;
+          role?: string;
+          type: "file";
+      }
+    | { code: string; language?: string; type: "code" }
+    | { items: MessageEmbedMediaItem[]; type: "gallery" }
+    | { maxLines?: number; source?: "message"; text?: string; type: "markdown" }
+    | { type: "divider" };
+
+export interface MessageEmbedField {
+    label: string;
+    mono?: boolean;
+    short?: boolean;
+    value: string;
+}
+
+export interface MessageEmbedMediaItem {
+    alt?: string;
+    aspectRatio?: number;
+    attachment: EncryptedFileAttachment;
+    caption?: string;
+    mediaType: "audio" | "file" | "image" | "svg" | "video";
+    thumbnail?: EncryptedFileAttachment;
+    title?: string;
+}
+
+export interface MessageEmbedSource {
+    id?: string;
+    mailID?: string;
+    provider?: string;
+    url?: string;
+}
+
 export type MessageEmoji =
     | {
           imageUrl?: string;
@@ -42,6 +100,7 @@ export type MessageEmoji =
 
 export interface MessageExtra {
     [key: string]: unknown;
+    embed?: MessageEmbed;
     reactionEvent?: MessageReactionEvent;
     reactions?: MessageReaction[];
     version: 1;
@@ -216,6 +275,12 @@ export function formatFileAttachmentMarkdown(
     return `[${label}](${url})`;
 }
 
+export function messageEmbed(
+    message: MessageWithClientExtra,
+): MessageEmbed | null {
+    return parseMessageExtra(message.extra).embed ?? null;
+}
+
 export function messageReactionEvent(
     message: MessageWithClientExtra,
 ): MessageReactionEvent | null {
@@ -261,13 +326,16 @@ export function parseMessageExtra(
             return { version: MESSAGE_EXTRA_VERSION };
         }
 
+        const embed = parseMessageEmbed(raw["embed"]);
         const reactionEvent = parseMessageReactionEvent(raw["reactionEvent"]);
         const rest = { ...raw };
+        delete rest["embed"];
         delete rest["reactionEvent"];
         delete rest["reactions"];
         delete rest["version"];
         return {
             ...rest,
+            ...(embed ? { embed } : {}),
             ...(reactionEvent ? { reactionEvent } : {}),
             reactions: parseMessageReactions(raw["reactions"]),
             version: MESSAGE_EXTRA_VERSION,
@@ -419,6 +487,39 @@ export function toggleMessageReactionExtra(
         delete nextExtra.reactions;
     }
     return serializeMessageExtra(nextExtra);
+}
+
+function copyBoolean(
+    target: object,
+    source: Record<string, unknown>,
+    key: string,
+): void {
+    const value = source[key];
+    if (typeof value === "boolean") {
+        Reflect.set(target, key, value);
+    }
+}
+
+function copyNumber(
+    target: object,
+    source: Record<string, unknown>,
+    key: string,
+): void {
+    const value = source[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+        Reflect.set(target, key, value);
+    }
+}
+
+function copyString(
+    target: object,
+    source: Record<string, unknown>,
+    key: string,
+): void {
+    const value = source[key];
+    if (typeof value === "string") {
+        Reflect.set(target, key, value);
+    }
 }
 
 function escapeMarkdownLabel(value: string): string {
@@ -618,8 +719,32 @@ function hasBalancedParens(value: string): boolean {
     return balance === 0;
 }
 
+function isEmbedTone(
+    value: unknown,
+): value is NonNullable<MessageEmbed["tone"]> {
+    return (
+        value === "danger" ||
+        value === "default" ||
+        value === "info" ||
+        value === "success" ||
+        value === "warning"
+    );
+}
+
 function isFenceLinePrefix(value: string): boolean {
     return /^[ \t]{0,3}$/.test(value);
+}
+
+function isMessageEmbedMediaType(
+    value: unknown,
+): value is MessageEmbedMediaItem["mediaType"] {
+    return (
+        value === "audio" ||
+        value === "file" ||
+        value === "image" ||
+        value === "svg" ||
+        value === "video"
+    );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -652,7 +777,13 @@ function normalizeMessageExtra(extra: MessageExtra): MessageExtra {
         version: MESSAGE_EXTRA_VERSION,
     };
     const reactions = parseMessageReactions(normalized.reactions);
+    const embed = parseMessageEmbed(normalized.embed);
     const reactionEvent = parseMessageReactionEvent(normalized.reactionEvent);
+    if (embed) {
+        normalized.embed = embed;
+    } else {
+        delete normalized.embed;
+    }
     if (reactionEvent) {
         normalized.reactionEvent = reactionEvent;
     } else {
@@ -664,6 +795,28 @@ function normalizeMessageExtra(extra: MessageExtra): MessageExtra {
         delete normalized.reactions;
     }
     return normalized;
+}
+
+function parseAttachmentExtra(value: unknown): EncryptedFileAttachment | null {
+    if (!isRecord(value)) return null;
+    const { contentType, fileID, fileName, fileSize, key } = value;
+    if (
+        typeof contentType !== "string" ||
+        typeof fileID !== "string" ||
+        typeof fileName !== "string" ||
+        typeof fileSize !== "number" ||
+        !Number.isFinite(fileSize) ||
+        typeof key !== "string"
+    ) {
+        return null;
+    }
+    return {
+        contentType,
+        fileID,
+        fileName,
+        fileSize: Math.max(0, Math.round(fileSize)),
+        key,
+    };
 }
 
 function parseInlineMarkdown(text: string): MarkdownInlineSegment[] {
@@ -769,6 +922,213 @@ function parseInlineMarkdown(text: string): MarkdownInlineSegment[] {
         return [{ text, type: "text" }];
     }
     return segments;
+}
+
+function parseMessageEmbed(value: unknown): MessageEmbed | null {
+    if (!isRecord(value)) return null;
+    const display = value["display"];
+    const kind = value["kind"];
+    const title = value["title"];
+    if (
+        (display !== "decorate" && display !== "replace") ||
+        typeof kind !== "string" ||
+        typeof title !== "string"
+    ) {
+        return null;
+    }
+    const embed: MessageEmbed = {
+        display,
+        kind,
+        title,
+        version: MESSAGE_EXTRA_VERSION,
+    };
+    copyString(embed, value, "icon");
+    copyString(embed, value, "subtitle");
+    copyBoolean(embed, value, "suppressLinkPreview");
+    copyString(embed, value, "timestamp");
+    if (isEmbedTone(value["tone"])) {
+        embed.tone = value["tone"];
+    }
+    const actions = parseMessageEmbedActions(value["actions"]);
+    if (actions.length > 0) embed.actions = actions;
+    const blocks = parseMessageEmbedBlocks(value["blocks"]);
+    if (blocks.length > 0) embed.blocks = blocks;
+    const fields = parseMessageEmbedFields(value["fields"]);
+    if (fields.length > 0) embed.fields = fields;
+    const source = parseMessageEmbedSource(value["source"]);
+    if (source) embed.source = source;
+    return embed;
+}
+
+function parseMessageEmbedAction(value: unknown): MessageEmbedAction | null {
+    if (
+        !isRecord(value) ||
+        value["type"] !== "link" ||
+        typeof value["label"] !== "string" ||
+        typeof value["url"] !== "string"
+    ) {
+        return null;
+    }
+    return {
+        label: value["label"],
+        type: "link",
+        url: value["url"],
+    };
+}
+
+function parseMessageEmbedActions(value: unknown): MessageEmbedAction[] {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((item) => {
+        const action = parseMessageEmbedAction(item);
+        return action ? [action] : [];
+    });
+}
+
+function parseMessageEmbedBlock(value: unknown): MessageEmbedBlock | null {
+    if (!isRecord(value)) return null;
+    switch (value["type"]) {
+        case "code":
+            return parseMessageEmbedCodeBlock(value);
+        case "divider":
+            return { type: "divider" };
+        case "file":
+            return parseMessageEmbedFileBlock(value);
+        case "gallery":
+            return parseMessageEmbedGalleryBlock(value);
+        case "markdown":
+            return parseMessageEmbedMarkdownBlock(value);
+        case "media":
+            return parseMessageEmbedMediaBlock(value);
+        default:
+            return null;
+    }
+}
+
+function parseMessageEmbedBlocks(value: unknown): MessageEmbedBlock[] {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((item) => {
+        const block = parseMessageEmbedBlock(item);
+        return block ? [block] : [];
+    });
+}
+
+function parseMessageEmbedCodeBlock(
+    value: Record<string, unknown>,
+): MessageEmbedBlock | null {
+    if (typeof value["code"] !== "string") return null;
+    const block: MessageEmbedBlock = {
+        code: value["code"],
+        type: "code",
+    };
+    copyString(block, value, "language");
+    return block;
+}
+
+function parseMessageEmbedField(value: unknown): MessageEmbedField | null {
+    if (
+        !isRecord(value) ||
+        typeof value["label"] !== "string" ||
+        typeof value["value"] !== "string"
+    ) {
+        return null;
+    }
+    const field: MessageEmbedField = {
+        label: value["label"],
+        value: value["value"],
+    };
+    copyBoolean(field, value, "mono");
+    copyBoolean(field, value, "short");
+    return field;
+}
+
+function parseMessageEmbedFields(value: unknown): MessageEmbedField[] {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((item) => {
+        const field = parseMessageEmbedField(item);
+        return field ? [field] : [];
+    });
+}
+
+function parseMessageEmbedFileBlock(
+    value: Record<string, unknown>,
+): MessageEmbedBlock | null {
+    const attachment = parseAttachmentExtra(value["attachment"]);
+    if (!attachment) return null;
+    const block: MessageEmbedBlock = {
+        attachment,
+        type: "file",
+    };
+    copyString(block, value, "role");
+    return block;
+}
+
+function parseMessageEmbedGalleryBlock(
+    value: Record<string, unknown>,
+): MessageEmbedBlock | null {
+    if (!Array.isArray(value["items"])) return null;
+    const items = value["items"].flatMap((item) => {
+        const media = parseMessageEmbedMediaItem(item);
+        return media ? [media] : [];
+    });
+    return items.length > 0 ? { items, type: "gallery" } : null;
+}
+
+function parseMessageEmbedMarkdownBlock(
+    value: Record<string, unknown>,
+): MessageEmbedBlock | null {
+    const text = value["text"];
+    const source = value["source"];
+    if (
+        text !== undefined &&
+        typeof text !== "string" &&
+        source !== "message"
+    ) {
+        return null;
+    }
+    if (text === undefined && source !== "message") return null;
+    const block: MessageEmbedBlock = { type: "markdown" };
+    copyNumber(block, value, "maxLines");
+    if (source === "message") block.source = "message";
+    if (typeof text === "string") block.text = text;
+    return block;
+}
+
+function parseMessageEmbedMediaBlock(
+    value: Record<string, unknown>,
+): MessageEmbedBlock | null {
+    const media = parseMessageEmbedMediaItem(value);
+    return media ? { ...media, type: "media" } : null;
+}
+
+function parseMessageEmbedMediaItem(
+    value: unknown,
+): MessageEmbedMediaItem | null {
+    if (!isRecord(value) || !isMessageEmbedMediaType(value["mediaType"])) {
+        return null;
+    }
+    const attachment = parseAttachmentExtra(value["attachment"]);
+    if (!attachment) return null;
+    const media: MessageEmbedMediaItem = {
+        attachment,
+        mediaType: value["mediaType"],
+    };
+    copyString(media, value, "alt");
+    copyNumber(media, value, "aspectRatio");
+    copyString(media, value, "caption");
+    copyString(media, value, "title");
+    const thumbnail = parseAttachmentExtra(value["thumbnail"]);
+    if (thumbnail) media.thumbnail = thumbnail;
+    return media;
+}
+
+function parseMessageEmbedSource(value: unknown): MessageEmbedSource | null {
+    if (!isRecord(value)) return null;
+    const source: MessageEmbedSource = {};
+    copyString(source, value, "id");
+    copyString(source, value, "mailID");
+    copyString(source, value, "provider");
+    copyString(source, value, "url");
+    return Object.keys(source).length > 0 ? source : null;
 }
 
 function parseMessageEmoji(value: unknown): MessageEmoji | null {
