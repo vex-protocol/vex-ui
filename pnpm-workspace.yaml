@@ -2,8 +2,6 @@ packages:
     - apps/*
     - packages/*
 
-blockExoticSubdeps: true
-
 pmOnFail: error
 
 catalog:
@@ -45,7 +43,7 @@ catalog:
 
 catalogMode: strict
 
-minimumReleaseAge: 10080
+minimumReleaseAge: 2880
 
 minimumReleaseAgeExclude:
     - "@vex-chat/libvex"
