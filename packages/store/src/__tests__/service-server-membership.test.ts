@@ -18,11 +18,18 @@ type TestClient = {
     invites?: {
         redeem: ReturnType<typeof vi.fn>;
     };
+    me?: {
+        user: ReturnType<typeof vi.fn>;
+    };
     moderation?: {
         fetchPermissionList: ReturnType<typeof vi.fn>;
         kick: ReturnType<typeof vi.fn>;
     };
+    permissions?: {
+        retrieve: ReturnType<typeof vi.fn>;
+    };
     servers: {
+        create?: ReturnType<typeof vi.fn>;
         leave: ReturnType<typeof vi.fn>;
         retrieveByID?: ReturnType<typeof vi.fn>;
     };
@@ -52,6 +59,72 @@ async function resetMembershipState(): Promise<void> {
     $permissionsWritable.set({});
     $groupMessagesWritable.set({});
 }
+
+describe("vexService.createServer", () => {
+    beforeEach(resetMembershipState);
+
+    test("creates a server and caches the owner permission", async () => {
+        const server: Server = {
+            name: "Blood Group",
+            serverID: "server-blood",
+        };
+        const channel: Channel = {
+            channelID: "channel-blood",
+            name: "general",
+            serverID: server.serverID,
+        };
+        const permission: Permission = {
+            permissionID: "permission-owner",
+            powerLevel: 100,
+            resourceID: server.serverID,
+            resourceType: "server",
+            userID: "user-me",
+        };
+        const client: TestClient = {
+            channels: {
+                retrieve: vi.fn(async () => [channel]),
+            },
+            close: vi.fn(async () => undefined),
+            me: {
+                user: vi.fn(() => ({
+                    userID: "user-me",
+                    username: "me",
+                })),
+            },
+            permissions: {
+                retrieve: vi.fn(async () => [permission]),
+            },
+            servers: {
+                create: vi.fn(async () => server),
+                leave: vi.fn(async () => undefined),
+            },
+        };
+
+        serviceInternals.client = client;
+
+        const result = await vexService.createServer(server.name);
+
+        expect(result).toEqual({
+            channelID: channel.channelID,
+            channelName: channel.name,
+            ok: true,
+            serverID: server.serverID,
+            serverName: server.name,
+        });
+        expect(client.servers.create).toHaveBeenCalledWith(server.name);
+        expect(client.channels?.retrieve).toHaveBeenCalledWith(server.serverID);
+        expect(client.permissions?.retrieve).toHaveBeenCalled();
+        expect($serversWritable.get()).toEqual({
+            [server.serverID]: server,
+        });
+        expect($channelsWritable.get()).toEqual({
+            [server.serverID]: [channel],
+        });
+        expect($permissionsWritable.get()).toEqual({
+            [permission.permissionID]: permission,
+        });
+    });
+});
 
 describe("vexService.joinInvite", () => {
     beforeEach(resetMembershipState);
