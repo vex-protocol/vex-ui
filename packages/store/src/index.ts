@@ -76,7 +76,6 @@ export type {
     LinkPreviewHtmlResult,
     LinkPreviewMetadata,
 } from "./link-preview.ts";
-
 export {
     applyEmoji,
     applyMessageDeleteEvent,
@@ -116,6 +115,7 @@ export {
     serializeMessageExtra,
     toggleMessageReactionExtra,
 } from "./message-utils.ts";
+
 export type {
     EncryptedFileAttachment,
     FileAttachment,
@@ -136,15 +136,15 @@ export type {
     MessageReplyReference,
     MessageUpdateEvent,
 } from "./message-utils.ts";
-
 export {
     formatDmNotificationSubtitle,
     formatGroupNotificationSubtitle,
     shouldNotify,
 } from "./notifications.ts";
-export type { NotificationPayload } from "./notifications.ts";
 
+export type { NotificationPayload } from "./notifications.ts";
 export { vexService } from "./service.ts";
+
 export type {
     AuthProbeStatus,
     AuthResult,
@@ -162,3 +162,10 @@ export type {
     ServerOptions,
     SessionInfo,
 } from "./service.ts";
+export {
+    decodeVexDbAtRestKey,
+    deriveLegacyMobileAtRestAesKey,
+    encodeVexDbAtRestKey,
+    generateVexDbAtRestKey,
+    rewrapVexSqliteAtRestKey,
+} from "./sqlite-at-rest-migration.ts";

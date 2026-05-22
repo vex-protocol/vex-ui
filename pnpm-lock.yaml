@@ -18,6 +18,9 @@ catalogs:
     '@types/node':
       specifier: ^24.10.1
       version: 24.12.2
+    '@vex-chat/crypto':
+      specifier: 6.0.0
+      version: 6.0.0
     '@vex-chat/libvex':
       specifier: 6.8.0
       version: 6.8.0
@@ -452,12 +455,18 @@ importers:
       '@nanostores/react':
         specifier: '>=0.8'
         version: 1.1.0(nanostores@1.2.0)(react@19.2.0)
+      '@vex-chat/crypto':
+        specifier: 'catalog:'
+        version: 6.0.0(@vex-chat/types@3.3.1)(typescript@5.9.3)
       '@vex-chat/libvex':
         specifier: 'catalog:'
         version: 6.8.0(better-sqlite3@11.10.0)(typescript@5.9.3)
       '@vex-chat/types':
         specifier: 'catalog:'
         version: 3.3.1
+      kysely:
+        specifier: 0.28.17
+        version: 0.28.17
       nanostores:
         specifier: 'catalog:'
         version: 1.2.0
