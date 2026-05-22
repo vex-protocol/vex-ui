@@ -1,5 +1,6 @@
 // Hermes doesn't provide crypto.getRandomValues (facebook/hermes#915).
 // Polyfill must load before anything that calls globalThis.crypto.getRandomValues.
+import "expo-dev-client";
 import "react-native-get-random-values";
 import { LogBox } from "react-native";
 

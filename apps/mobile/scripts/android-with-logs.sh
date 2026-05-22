@@ -272,7 +272,7 @@ if [ "$START_METRO" = "1" ]; then
         fi
     fi
     echo "Starting Metro dev server on tcp:8081..."
-    EXPO_NO_INTERACTIVE=1 pnpm exec expo start --dev-client --port 8081 --host lan >/tmp/vex-mobile-metro.log 2>&1 &
+    EXPO_NO_INTERACTIVE=1 pnpm exec expo start --port 8081 --host lan >/tmp/vex-mobile-metro.log 2>&1 &
     METRO_PID=$!
     for _ in $(seq 1 25); do
         if lsof -ti tcp:8081 >/dev/null 2>&1; then
