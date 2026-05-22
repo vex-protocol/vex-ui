@@ -572,18 +572,9 @@ export function MessageBubbleRN({
                         !showIdentity && styles.containerGrouped,
                     ]}
                 >
-                    {showIdentity ? (
-                        <Avatar
-                            displayName={authorName}
-                            size={32}
-                            userID={message.authorID}
-                        />
-                    ) : (
-                        <View style={styles.avatarSpacer} />
-                    )}
-
-                    <View style={styles.content}>
-                        {replyReference ? (
+                    {replyReference ? (
+                        <View style={styles.replyReferenceRow}>
+                            <View style={styles.avatarSpacer} />
                             <ReplyReferencePreview
                                 onPress={
                                     onPressReplyTarget
@@ -596,56 +587,74 @@ export function MessageBubbleRN({
                                 }
                                 reply={replyReference}
                             />
-                        ) : null}
-                        {showIdentity && (
-                            <View style={styles.meta}>
-                                <Text
-                                    style={[
-                                        styles.author,
-                                        isOwn && styles.authorSelf,
-                                    ]}
-                                >
-                                    {authorName}
-                                </Text>
-                                <Text style={styles.timestamp}>
-                                    {formatTime(message.timestamp)}
-                                </Text>
-                            </View>
+                        </View>
+                    ) : null}
+
+                    <View style={styles.messageRow}>
+                        {showIdentity ? (
+                            <Avatar
+                                displayName={authorName}
+                                size={32}
+                                userID={message.authorID}
+                            />
+                        ) : (
+                            <View style={styles.avatarSpacer} />
                         )}
-                        {embed ? (
-                            <MessageEmbedCard
-                                embed={embed}
-                                messageText={message.message}
-                            />
-                        ) : null}
-                        {shouldRenderMessage ? (
-                            <MarkdownMessage
-                                grouped={!showIdentity}
-                                nodes={markdownNodes}
-                            />
-                        ) : null}
-                        {inviteID ? (
-                            <InvitePreviewCard
-                                inviteID={inviteID}
-                                isOwn={isOwn}
-                            />
-                        ) : null}
-                        {!inviteID && !embed?.suppressLinkPreview ? (
-                            <LinkPreviewCard content={message.message} />
-                        ) : null}
-                        {reactions.length > 0 ? (
-                            <ReactionRow
-                                currentUserID={currentUserID}
-                                onToggle={
-                                    onToggleReaction
-                                        ? (emoji) => {
-                                              onToggleReaction(message, emoji);
-                                          }
-                                        : undefined
-                                }
-                                reactions={reactions}
-                            />
-                        ) : null}
+
+                        <View style={styles.content}>
+                            {showIdentity && (
+                                <View style={styles.meta}>
+                                    <Text
+                                        style={[
+                                            styles.author,
+                                            isOwn && styles.authorSelf,
+                                        ]}
+                                    >
+                                        {authorName}
+                                    </Text>
+                                    <Text style={styles.timestamp}>
+                                        {formatTime(message.timestamp)}
+                                    </Text>
+                                </View>
+                            )}
+                            {embed ? (
+                                <MessageEmbedCard
+                                    embed={embed}
+                                    messageText={message.message}
+                                />
+                            ) : null}
+                            {shouldRenderMessage ? (
+                                <MarkdownMessage
+                                    grouped={!showIdentity}
+                                    nodes={markdownNodes}
+                                />
+                            ) : null}
+                            {inviteID ? (
+                                <InvitePreviewCard
+                                    inviteID={inviteID}
+                                    isOwn={isOwn}
+                                />
+                            ) : null}
+                            {!inviteID && !embed?.suppressLinkPreview ? (
+                                <LinkPreviewCard content={message.message} />
+                            ) : null}
+                            {reactions.length > 0 ? (
+                                <ReactionRow
+                                    currentUserID={currentUserID}
+                                    onToggle={
+                                        onToggleReaction
+                                            ? (emoji) => {
+                                                  onToggleReaction(
+                                                      message,
+                                                      emoji,
+                                                  );
+                                              }
+                                            : undefined
+                                    }
+                                    reactions={reactions}
+                                />
+                            ) : null}
+                        </View>
                     </View>
                 </View>
             </Pressable>
@@ -1988,8 +1997,6 @@ const styles = StyleSheet.create({
         color: "#d2a8ff",
     },
     container: {
-        flexDirection: "row",
-        gap: 10,
         paddingHorizontal: 12,
         paddingVertical: 6,
     },
@@ -2301,6 +2308,10 @@ const styles = StyleSheet.create({
     menuTextDestructive: {
         color: "#FF7A7A",
     },
+    messageRow: {
+        flexDirection: "row",
+        gap: 10,
+    },
     meta: {
         alignItems: "center",
         flexDirection: "row",
@@ -2433,26 +2444,26 @@ const styles = StyleSheet.create({
     },
     replyConnector: {
         alignItems: "flex-end",
-        paddingTop: 8,
-        width: 30,
+        paddingTop: 10,
+        width: 26,
     },
     replyConnectorCurve: {
-        borderColor: "rgba(133,136,154,0.55)",
-        borderLeftWidth: 2,
-        borderTopLeftRadius: 10,
-        borderTopWidth: 2,
-        height: 38,
-        width: 24,
+        borderColor: "rgba(154,158,178,0.42)",
+        borderLeftWidth: StyleSheet.hairlineWidth,
+        borderTopLeftRadius: 11,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        height: 30,
+        width: 21,
     },
     replyPreview: {
-        alignItems: "flex-start",
+        alignItems: "center",
         flex: 1,
         flexDirection: "row",
         gap: 8,
         maxWidth: 420,
-        minHeight: 42,
-        paddingBottom: 3,
-        paddingTop: 2,
+        minHeight: 38,
+        paddingBottom: 2,
+        paddingTop: 1,
     },
     replyPreviewBody: {
         flex: 1,
@@ -2461,13 +2472,18 @@ const styles = StyleSheet.create({
     replyPreviewText: {
         ...typography.body,
         color: colors.muted,
-        fontSize: 13,
-        lineHeight: 18,
+        fontSize: 12,
+        lineHeight: 17,
     },
     replyReference: {
         alignItems: "flex-start",
+        flex: 1,
         flexDirection: "row",
-        marginBottom: 1,
+    },
+    replyReferenceRow: {
+        flexDirection: "row",
+        gap: 10,
+        marginBottom: 2,
         marginTop: 0,
     },
     systemContainer: {
