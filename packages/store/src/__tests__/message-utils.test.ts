@@ -108,6 +108,7 @@ describe("isImageType", () => {
         expect(isImageType("image/jpeg")).toBe(true);
         expect(isImageType("image/webp")).toBe(true);
         expect(isImageType("image/gif")).toBe(true);
+        expect(isImageType("Image/PNG")).toBe(true);
     });
 
     test("rejects non-image content types", () => {

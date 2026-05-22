@@ -1380,9 +1380,11 @@ function MessageEmbedCard({
 
 function MessageEmbedIcon({ embed }: { embed: MessageEmbed }) {
     const attachment = embed.iconAttachment;
+    const [iconImageFailed, setIconImageFailed] = React.useState(false);
     const [iconUri, setIconUri] = React.useState<null | string>(null);
 
     React.useEffect(() => {
+        setIconImageFailed(false);
         if (!attachment || !isImageType(attachment.contentType)) {
             setIconUri(null);
             return;
@@ -1408,10 +1410,13 @@ function MessageEmbedIcon({ embed }: { embed: MessageEmbed }) {
         };
     }, [attachment]);
 
-    if (iconUri) {
+    if (iconUri && !iconImageFailed) {
         return (
             <Image
                 accessibilityIgnoresInvertColors
+                onError={() => {
+                    setIconImageFailed(true);
+                }}
                 source={{ uri: iconUri }}
                 style={styles.embedIconImage}
             />

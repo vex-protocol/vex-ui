@@ -180,7 +180,7 @@ export function formatFileSize(bytes: number): string {
 }
 
 export function isImageType(contentType: string): boolean {
-    return contentType.startsWith("image/");
+    return contentType.toLowerCase().startsWith("image/");
 }
 
 // ── File attachment parsing ──────────────────────────────────────────────────

@@ -30,6 +30,7 @@
     });
 
     onDestroy(() => {
+        iconLoadSerial += 1;
         setIconUrl("");
     });
 
@@ -58,6 +59,12 @@
         }
         activeIconUrl = nextUrl;
         iconUrl = nextUrl;
+    }
+
+    function handleIconImageError(failedUrl: string): void {
+        if (failedUrl && failedUrl === activeIconUrl) {
+            setIconUrl("");
+        }
     }
 
     async function downloadAttachment(
@@ -99,6 +106,9 @@
                         class="message-embed__icon-image"
                         src={iconUrl}
                         alt=""
+                        onerror={() => {
+                            handleIconImageError(iconUrl);
+                        }}
                     />
                 {:else}
                     {embedIcon(embed.icon, embed.kind)}
