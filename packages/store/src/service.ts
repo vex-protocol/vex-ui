@@ -63,12 +63,14 @@ import {
     applyMessageDeleteEvent,
     applyMessageReactionEvent,
     applyMessageUpdateEvent,
+    createDeleteBatchEventExtra,
     createDeleteEventExtra,
     createReactionEventExtra,
     createUpdateEventExtra,
     type EncryptedFileAttachment,
     foldMessageEvents,
     messageDeleteEvent,
+    messageDeleteEventTargetMailIDs,
     type MessageEmoji,
     messageReactionEvent,
     messageUpdateEvent,
@@ -178,14 +180,14 @@ export interface PasskeySignInBegin {
     requestID: string;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
 export interface PushNotificationSubscriptionInput {
     channel: "expo";
     events?: string[];
     platform?: "android" | "ios" | "web";
     token: string;
 }
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 export type ResumeNetworkStatus = "signed_out" | AuthProbeStatus;
 
@@ -222,6 +224,12 @@ export interface SessionInfo {
     tokenRemainingHours?: number;
     userID: string;
     username: string;
+}
+
+export interface ThreadDeleteForEveryoneResult extends OperationResult {
+    batchCount?: number;
+    deletedCount?: number;
+    localDeleted?: boolean;
 }
 
 interface ClientHttpLike {
@@ -388,6 +396,7 @@ const MAX_PENDING_MESSAGE_EVENT_MESSAGES_PER_CONVERSATION =
 const MAX_PENDING_MESSAGE_EVENT_APPLY_ATTEMPTS =
     MAX_PENDING_REACTION_APPLY_ATTEMPTS;
 const PENDING_MESSAGE_EVENT_TTL_MS = PENDING_REACTION_MESSAGE_TTL_MS;
+const MESSAGE_DELETE_EVENT_BATCH_SIZE = 50;
 
 class Disposable {
     private fns: Array<() => void> = [];
@@ -1059,6 +1068,64 @@ class VexService {
         } catch (err: unknown) {
             return { error: errorMessage(err), ok: false };
         }
+    }
+
+    async deleteThreadForEveryone(
+        conversationKey: string,
+        isGroup: boolean,
+    ): Promise<ThreadDeleteForEveryoneResult> {
+        const actorUserID = $userWritable.get()?.userID;
+        if (!actorUserID) {
+            return { error: "Not signed in.", ok: false };
+        }
+
+        const writable = isGroup ? $groupMessagesWritable : $messagesWritable;
+        const thread = writable.get()[conversationKey] ?? [];
+        if (thread.length === 0) {
+            return {
+                batchCount: 0,
+                deletedCount: 0,
+                localDeleted: false,
+                ok: true,
+            };
+        }
+
+        const targetMailIDs = thread
+            .filter((message) => message.authorID === actorUserID)
+            .map((message) => message.mailID);
+        const batches = chunkArray(
+            targetMailIDs,
+            MESSAGE_DELETE_EVENT_BATCH_SIZE,
+        );
+        let sentCount = 0;
+        for (const batch of batches) {
+            const result = await this.sendMessageExtra(
+                conversationKey,
+                isGroup,
+                createDeleteBatchEventExtra(batch),
+                isGroup ? "delete-group-thread" : "delete-dm-thread",
+            );
+            if (!result.ok) {
+                return {
+                    batchCount: batches.length,
+                    deletedCount: sentCount,
+                    ...(result.error ? { error: result.error } : {}),
+                    ok: false,
+                };
+            }
+            sentCount += batch.length;
+        }
+
+        const localDeleted = await this.deleteLocalThread(
+            conversationKey,
+            isGroup,
+        );
+        return {
+            batchCount: batches.length,
+            deletedCount: targetMailIDs.length,
+            localDeleted,
+            ok: true,
+        };
     }
 
     async downloadFileAttachment(
@@ -2332,18 +2399,34 @@ class VexService {
         isGroup: boolean,
         actorUserID: string,
     ): boolean {
+        return this.applyLocalMessageDeleteBatch(
+            conversationKey,
+            [mailID],
+            isGroup,
+            actorUserID,
+        );
+    }
+
+    private applyLocalMessageDeleteBatch(
+        conversationKey: string,
+        mailIDs: string[],
+        isGroup: boolean,
+        actorUserID: string,
+    ): boolean {
         const writable = isGroup ? $groupMessagesWritable : $messagesWritable;
         const thread = writable.get()[conversationKey] ?? [];
         const nextThread = applyMessageDeleteEvent(
             thread,
-            { action: "delete", targetMailID: mailID },
+            { action: "delete", targetMailIDs: mailIDs },
             actorUserID,
         );
         if (nextThread === thread) {
             return false;
         }
         writable.setKey(conversationKey, nextThread);
-        void this.deletePersistedMessage(mailID);
+        for (const mailID of mailIDs) {
+            void this.deletePersistedMessage(mailID);
+        }
         return true;
     }
 
@@ -2378,8 +2461,8 @@ class VexService {
         conversationKey: string,
         msg: Message,
     ): boolean {
-        const targetMailID = messageEventTargetMailID(msg);
-        if (!targetMailID) {
+        const targetMailIDs = messageEventTargetMailIDs(msg);
+        if (targetMailIDs.length === 0) {
             return false;
         }
         if (this.processedMessageEventMailIDs.has(msg.mailID)) {
@@ -2387,8 +2470,8 @@ class VexService {
         }
 
         const thread = writable.get()[conversationKey] ?? [];
-        const targetExists = thread.some(
-            (message) => message.mailID === targetMailID,
+        const targetExists = thread.some((message) =>
+            targetMailIDs.includes(message.mailID),
         );
         const nextThread = applyMessageEventToThread(thread, msg);
         if (nextThread === thread) {
@@ -2432,13 +2515,13 @@ class VexService {
                 pending.delete(mailID);
                 continue;
             }
-            const targetMailID = messageEventTargetMailID(msg);
-            if (!targetMailID) {
+            const targetMailIDs = messageEventTargetMailIDs(msg);
+            if (targetMailIDs.length === 0) {
                 pending.delete(mailID);
                 continue;
             }
-            const targetExists = thread.some(
-                (message) => message.mailID === targetMailID,
+            const targetExists = thread.some((message) =>
+                targetMailIDs.includes(message.mailID),
             );
             const nextThread = applyMessageEventToThread(thread, msg);
             if (nextThread === thread) {
@@ -3080,7 +3163,11 @@ class VexService {
     private persistAppliedMessageEvent(msg: Message, thread: Message[]): void {
         const deleteEvent = messageDeleteEvent(msg);
         if (deleteEvent) {
-            void this.deletePersistedMessage(deleteEvent.targetMailID);
+            for (const targetMailID of messageDeleteEventTargetMailIDs(
+                deleteEvent,
+            )) {
+                void this.deletePersistedMessage(targetMailID);
+            }
             return;
         }
         const updateEvent = messageUpdateEvent(msg);
@@ -4252,6 +4339,14 @@ function applyMessageEventToThread(thread: Message[], msg: Message): Message[] {
     return thread;
 }
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+    const chunks: T[][] = [];
+    for (let index = 0; index < items.length; index += size) {
+        chunks.push(items.slice(index, index + size));
+    }
+    return chunks;
+}
+
 function debugAuth(step: string, meta?: Record<string, unknown>): void {
     if (!shouldDebugAuth()) {
         return;
@@ -4611,12 +4706,13 @@ function looksLikeReactNativeBlobError(message: string): boolean {
     );
 }
 
-function messageEventTargetMailID(message: Message): null | string {
-    return (
-        messageDeleteEvent(message)?.targetMailID ??
-        messageUpdateEvent(message)?.targetMailID ??
-        null
-    );
+function messageEventTargetMailIDs(message: Message): string[] {
+    const deleteEvent = messageDeleteEvent(message);
+    if (deleteEvent) {
+        return messageDeleteEventTargetMailIDs(deleteEvent);
+    }
+    const updateEvent = messageUpdateEvent(message);
+    return updateEvent ? [updateEvent.targetMailID] : [];
 }
 
 function parseNotificationSubscription(

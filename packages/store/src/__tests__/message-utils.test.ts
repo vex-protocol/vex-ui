@@ -9,6 +9,7 @@ import {
     applyMessageUpdateEvent,
     avatarHue,
     chunkMessages,
+    createDeleteBatchEventExtra,
     createDeleteEventExtra,
     createReactionEventExtra,
     createUnicodeReactionEmoji,
@@ -21,6 +22,7 @@ import {
     formatTime,
     isImageType,
     messageDeleteEvent,
+    messageDeleteEventTargetMailIDs,
     messageEmbed,
     messageReactionEvent,
     messageReactions,
@@ -788,6 +790,49 @@ describe("message reactions", () => {
         expect(applyMessageDeleteEvent([target], event, "mallory")).toEqual([
             target,
         ]);
+    });
+
+    test("serializes and applies batched message delete events", () => {
+        const extra = createDeleteBatchEventExtra([
+            "m-one",
+            "m-two",
+            "m-one",
+            "",
+        ]);
+        const first = makeMessage({
+            authorID: "alice",
+            mailID: "m-one",
+        });
+        const second = makeMessage({
+            authorID: "alice",
+            mailID: "m-two",
+        });
+        const otherAuthor = makeMessage({
+            authorID: "bob",
+            mailID: "m-three",
+        });
+        const event = messageDeleteEvent(
+            makeMessage({ extra, mailID: "m-event" } as Partial<Message>),
+        );
+
+        expect(event).toEqual({
+            action: "delete",
+            targetMailIDs: ["m-one", "m-two"],
+        });
+        if (!event) {
+            throw new Error("Expected delete event");
+        }
+        expect(messageDeleteEventTargetMailIDs(event)).toEqual([
+            "m-one",
+            "m-two",
+        ]);
+        expect(
+            applyMessageDeleteEvent(
+                [first, second, otherAuthor],
+                event,
+                "alice",
+            ),
+        ).toEqual([otherAuthor]);
     });
 
     test("folds edit and delete event messages out of visible history", () => {

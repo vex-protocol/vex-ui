@@ -104,6 +104,45 @@
             });
     }
 
+    function handleDeleteThreadForEveryone(): void {
+        if (
+            !window.confirm(
+                `Delete your messages with ${targetUsername} for everyone and remove local history?`,
+            )
+        ) {
+            return;
+        }
+        void vexService
+            .deleteThreadForEveryone(targetUserID, false)
+            .then((result) => {
+                if (!result.ok) {
+                    sendError = result.error ?? "Failed to delete conversation";
+                    return;
+                }
+                if (!result.localDeleted) {
+                    sendError =
+                        "Remote delete sent, but local history was not removed";
+                }
+            });
+    }
+
+    function handleDeleteThreadForMe(): void {
+        if (
+            !window.confirm(
+                `Delete local messages with ${targetUsername} on this device?`,
+            )
+        ) {
+            return;
+        }
+        void vexService
+            .deleteLocalThread(targetUserID, false)
+            .then((deleted) => {
+                if (!deleted) {
+                    sendError = "Failed to delete local conversation";
+                }
+            });
+    }
+
     function handleEditMessage(message: Message): void {
         sendError = "";
         editingMessage = message;
@@ -129,6 +168,19 @@
             {/if}
             <button class="dm-pane__action" title="Search" aria-label="Search"
                 >🔍</button
+            >
+            <button
+                class="dm-pane__action dm-pane__action--danger dm-pane__action--text"
+                title="Delete local conversation"
+                aria-label="Delete local conversation"
+                onclick={handleDeleteThreadForMe}>Delete for me</button
+            >
+            <button
+                class="dm-pane__action dm-pane__action--danger dm-pane__action--text"
+                title="Delete your messages for everyone"
+                aria-label="Delete your messages for everyone"
+                onclick={handleDeleteThreadForEveryone}
+                >Delete for everyone</button
             >
         </div>
     </header>
@@ -213,6 +265,18 @@
     .dm-pane__action:hover {
         background: var(--bg-hover);
         opacity: 1;
+    }
+
+    .dm-pane__action--danger:hover {
+        color: #ff7a7a;
+    }
+
+    .dm-pane__action--text {
+        width: auto;
+        padding: 0 8px;
+        font-size: 12px;
+        filter: none;
+        white-space: nowrap;
     }
 
     .dm-pane__shield {
