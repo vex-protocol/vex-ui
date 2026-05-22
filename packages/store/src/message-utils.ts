@@ -39,6 +39,7 @@ export interface MessageEmbed {
     display: "decorate" | "replace";
     fields?: MessageEmbedField[];
     icon?: string;
+    iconAttachment?: EncryptedFileAttachment;
     kind: string;
     source?: MessageEmbedSource;
     subtitle?: string;
@@ -179,7 +180,7 @@ export function formatFileSize(bytes: number): string {
 }
 
 export function isImageType(contentType: string): boolean {
-    return contentType.startsWith("image/");
+    return contentType.toLowerCase().startsWith("image/");
 }
 
 // ── File attachment parsing ──────────────────────────────────────────────────
@@ -1109,6 +1110,8 @@ function parseMessageEmbed(value: unknown): MessageEmbed | null {
         version: MESSAGE_EXTRA_VERSION,
     };
     copyString(embed, value, "icon");
+    const iconAttachment = parseAttachmentExtra(value["iconAttachment"]);
+    if (iconAttachment) embed.iconAttachment = iconAttachment;
     copyString(embed, value, "subtitle");
     copyBoolean(embed, value, "suppressLinkPreview");
     copyString(embed, value, "timestamp");
