@@ -91,12 +91,23 @@
         }
     }
 
-    function handleDeleteMessage(message: Message): void {
+    function handleDeleteMessageForEveryone(message: Message): void {
         void vexService
             .deleteMessageForEveryone(channelID, message.mailID, true)
             .then((result) => {
                 if (!result.ok) {
-                    sendError = result.error ?? "Failed to delete message";
+                    sendError =
+                        result.error ?? "Failed to delete message for everyone";
+                }
+            });
+    }
+
+    function handleDeleteMessageForMe(message: Message): void {
+        void vexService
+            .deleteLocalMessage(channelID, message.mailID, true)
+            .then((deleted) => {
+                if (!deleted) {
+                    sendError = "Failed to delete local message";
                 }
             });
     }
@@ -135,7 +146,8 @@
 
     <MessageBox
         messages={channelMessages}
-        onDeleteMessage={handleDeleteMessage}
+        onDeleteMessageForEveryone={handleDeleteMessageForEveryone}
+        onDeleteMessageForMe={handleDeleteMessageForMe}
         onEditMessage={handleEditMessage}
         {usernames}
     />
