@@ -1,8 +1,13 @@
 <script lang="ts">
     import type { Message } from "@vex-chat/libvex";
-    import type { MessageEmbedBlock } from "@vex-chat/store";
+    import type {
+        EncryptedFileAttachment,
+        MessageEmbedBlock,
+    } from "@vex-chat/store";
 
-    import { messageEmbed } from "@vex-chat/store";
+    import { onDestroy } from "svelte";
+
+    import { isImageType, messageEmbed, vexService } from "@vex-chat/store";
 
     import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -12,6 +17,21 @@
 
     let { message }: { message: Message } = $props();
     const embed = $derived(messageEmbed(message));
+    let iconUrl = $state("");
+    let activeIconUrl = "";
+    let iconLoadSerial = 0;
+
+    $effect(() => {
+        const attachment = embed?.iconAttachment;
+        const serial = ++iconLoadSerial;
+        setIconUrl("");
+        if (!attachment || !isImageType(attachment.contentType)) return;
+        void loadIconAttachment(attachment, serial);
+    });
+
+    onDestroy(() => {
+        setIconUrl("");
+    });
 
     function blockKey(block: MessageEmbedBlock, index: number): string {
         if ("attachment" in block) {
@@ -31,13 +51,58 @@
         if (value.includes("tool")) return "Tool";
         return "Info";
     }
+
+    function setIconUrl(nextUrl: string): void {
+        if (activeIconUrl) {
+            URL.revokeObjectURL(activeIconUrl);
+        }
+        activeIconUrl = nextUrl;
+        iconUrl = nextUrl;
+    }
+
+    async function downloadAttachment(
+        attachment: EncryptedFileAttachment,
+    ): Promise<Blob> {
+        const result = await vexService.downloadFileAttachment(attachment);
+        if (!result.ok || !result.data) {
+            throw new Error(result.error ?? "Could not download file");
+        }
+        const buffer = new ArrayBuffer(result.data.byteLength);
+        new Uint8Array(buffer).set(result.data);
+        return new Blob([buffer], { type: attachment.contentType });
+    }
+
+    async function loadIconAttachment(
+        attachment: EncryptedFileAttachment,
+        serial: number,
+    ): Promise<void> {
+        try {
+            const blob = await downloadAttachment(attachment);
+            const nextUrl = URL.createObjectURL(blob);
+            if (serial !== iconLoadSerial) {
+                URL.revokeObjectURL(nextUrl);
+                return;
+            }
+            setIconUrl(nextUrl);
+        } catch {
+            if (serial === iconLoadSerial) setIconUrl("");
+        }
+    }
 </script>
 
 {#if embed}
     <div class={`message-embed message-embed--${embed.tone ?? "info"}`}>
         <div class="message-embed__header">
             <div class="message-embed__icon">
-                {embedIcon(embed.icon, embed.kind)}
+                {#if iconUrl}
+                    <img
+                        class="message-embed__icon-image"
+                        src={iconUrl}
+                        alt=""
+                    />
+                {:else}
+                    {embedIcon(embed.icon, embed.kind)}
+                {/if}
             </div>
             <div class="message-embed__heading">
                 <div class="message-embed__title">{embed.title}</div>
@@ -161,6 +226,14 @@
         border-radius: 6px;
         background: var(--bg-surface);
         font-size: 15px;
+    }
+
+    .message-embed__icon-image {
+        display: block;
+        width: 22px;
+        height: 22px;
+        border-radius: 4px;
+        object-fit: cover;
     }
 
     .message-embed__heading {

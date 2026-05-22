@@ -1293,11 +1293,7 @@ function MessageEmbedCard({
         <View style={[styles.embedCard, embedToneStyle(embed.tone)]}>
             <View style={styles.embedHeader}>
                 <View style={styles.embedIcon}>
-                    <Ionicons
-                        color={colors.textSecondary}
-                        name={embedIconName(embed.icon, embed.kind)}
-                        size={16}
-                    />
+                    <MessageEmbedIcon embed={embed} />
                 </View>
                 <View style={styles.embedHeaderText}>
                     <Text numberOfLines={2} style={styles.embedTitle}>
@@ -1379,6 +1375,55 @@ function MessageEmbedCard({
                 </View>
             ) : null}
         </View>
+    );
+}
+
+function MessageEmbedIcon({ embed }: { embed: MessageEmbed }) {
+    const attachment = embed.iconAttachment;
+    const [iconUri, setIconUri] = React.useState<null | string>(null);
+
+    React.useEffect(() => {
+        if (!attachment || !isImageType(attachment.contentType)) {
+            setIconUri(null);
+            return;
+        }
+
+        let cancelled = false;
+        setIconUri(null);
+        void fetchAttachmentData(attachment)
+            .then((data) => {
+                if (cancelled) return;
+                setIconUri(
+                    `data:${attachment.contentType};base64,${bytesToBase64(
+                        data,
+                    )}`,
+                );
+            })
+            .catch(() => {
+                if (!cancelled) setIconUri(null);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [attachment]);
+
+    if (iconUri) {
+        return (
+            <Image
+                accessibilityIgnoresInvertColors
+                source={{ uri: iconUri }}
+                style={styles.embedIconImage}
+            />
+        );
+    }
+
+    return (
+        <Ionicons
+            color={colors.textSecondary}
+            name={embedIconName(embed.icon, embed.kind)}
+            size={16}
+        />
     );
 }
 
@@ -1862,6 +1907,11 @@ const styles = StyleSheet.create({
         height: 30,
         justifyContent: "center",
         width: 30,
+    },
+    embedIconImage: {
+        borderRadius: 5,
+        height: 22,
+        width: 22,
     },
     embedMedia: {
         gap: 4,

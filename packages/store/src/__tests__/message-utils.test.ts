@@ -186,6 +186,13 @@ describe("message embeds", () => {
                     },
                 ],
                 display: "decorate",
+                iconAttachment: {
+                    contentType: "image/png",
+                    fileID: "icon-1",
+                    fileName: "favicon.png",
+                    fileSize: 512,
+                    key: "icon-secret",
+                },
                 kind: "git.push",
                 title: "Push to master",
                 version: 1,
@@ -195,6 +202,10 @@ describe("message embeds", () => {
         const embed = messageEmbed(makeMessage({ extra } as Partial<Message>));
 
         expect(embed?.kind).toBe("git.push");
+        expect(embed?.iconAttachment).toMatchObject({
+            fileID: "icon-1",
+            fileName: "favicon.png",
+        });
         expect(embed?.blocks?.[0]).toMatchObject({
             mediaType: "svg",
             title: "Summary",
