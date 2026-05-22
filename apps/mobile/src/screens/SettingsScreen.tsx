@@ -48,20 +48,14 @@ export function SettingsScreen({ navigation }: AppScreenProps<"Settings">) {
                 navigation.navigate("Devices");
             },
         },
-        // Passkeys: not wired up for iOS in this build (see react-native-passkey).
-        ...(Platform.OS !== "ios"
-            ? [
-                  {
-                      description:
-                          "Recover and manage your account if you lose every device",
-                      icon: "key-outline" as const,
-                      label: "Passkeys",
-                      onPress: () => {
-                          navigation.navigate("Passkeys");
-                      },
-                  },
-              ]
-            : []),
+        {
+            description: "Recover and manage your account if you lose every device",
+            icon: "key-outline",
+            label: "Passkeys",
+            onPress: () => {
+                navigation.navigate("Passkeys");
+            },
+        },
     ];
 
     const systemRows: ReadonlyArray<SettingsRow> = [

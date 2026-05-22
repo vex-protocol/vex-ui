@@ -180,6 +180,17 @@ export interface PasskeySignInBegin {
     requestID: string;
 }
 
+export interface PasskeyCeremonyDriver {
+    authenticate(
+        options: PublicKeyCredentialRequestOptionsJSON,
+    ): Promise<Record<string, unknown>>;
+    register(
+        options: PublicKeyCredentialCreationOptionsJSON,
+    ): Promise<Record<string, unknown>>;
+}
+
+type PasskeySessionState = "authenticated" | "not_registered" | "unavailable";
+
 export interface PushNotificationSubscriptionInput {
     channel: "expo";
     events?: string[];
@@ -445,6 +456,7 @@ class VexService {
     private lastConnectionRecoveryAt = 0;
     private lastDeviceAuthRefreshAttemptAt = 0;
     private logoutInFlight: null | Promise<void> = null;
+    private passkeyCeremonyDriver: null | PasskeyCeremonyDriver = null;
     private pendingApprovalWatchCancel: (() => void) | null = null;
     private readonly pendingMessageEventMessages = new Map<
         string,
@@ -530,6 +542,10 @@ class VexService {
         }
     }
 
+    setPasskeyCeremonyDriver(driver: null | PasskeyCeremonyDriver): void {
+        this.passkeyCeremonyDriver = driver;
+    }
+
     /**
      * Auto-login from stored credentials → connect.
      * Returns { ok: false } if no credentials found.
@@ -582,6 +598,9 @@ class VexService {
                 });
                 const client = this.requireClient();
 
+                const passkeyState = await this.satisfyPasskeyForCurrentClient(
+                    creds.username,
+                );
                 const authErr = await this.loginWithDeviceKeyWithRetry(
                     client,
                     creds.deviceID,
@@ -612,6 +631,12 @@ class VexService {
                     return { error: authErr.message, ok: false };
                 }
 
+                if (passkeyState === "not_registered") {
+                    await this.registerInitialPasskeyForCurrentClient(
+                        config.deviceName || "This device",
+                    );
+                }
+
                 const connectStart = Date.now();
                 await client.connect();
                 debugAuth("autoLogin:connect:ok", {
@@ -636,6 +661,10 @@ class VexService {
                             true,
                         );
                         const recovered = this.requireClient();
+                        const passkeyState =
+                            await this.satisfyPasskeyForCurrentClient(
+                                creds.username,
+                            );
                         const authErr = await this.loginWithDeviceKeyWithRetry(
                             recovered,
                             creds.deviceID,
@@ -664,6 +693,12 @@ class VexService {
                                 };
                             }
                             return { error: authErr.message, ok: false };
+                        }
+
+                        if (passkeyState === "not_registered") {
+                            await this.registerInitialPasskeyForCurrentClient(
+                                config.deviceName || "This device",
+                            );
                         }
 
                         await recovered.connect();
@@ -1462,6 +1497,9 @@ class VexService {
             client: Client,
             loadedCreds: StoredCredentials,
         ): Promise<AuthResult> => {
+            const passkeyState = await this.satisfyPasskeyForCurrentClient(
+                loadedCreds.username,
+            );
             const authErr = await this.loginWithDeviceKeyWithRetry(
                 client,
                 loadedCreds.deviceID,
@@ -1496,6 +1534,12 @@ class VexService {
                 await keyStore.save({ ...loadedCreds, token: "" });
             } catch {
                 /* non-fatal token update */
+            }
+
+            if (passkeyState === "not_registered") {
+                await this.registerInitialPasskeyForCurrentClient(
+                    config.deviceName || "This device",
+                );
             }
 
             await client.connect();
@@ -1793,10 +1837,18 @@ class VexService {
         const probe = await this.probeAuthSession();
         if (probe === "unauthorized") {
             const client = this.requireClient();
+            const username = this.currentClientUsername();
+            const passkeyState =
+                await this.satisfyPasskeyForCurrentClient(username);
             const authErr = await this.loginWithDeviceKeyWithRetry(client);
             if (authErr) {
                 this.setAuthStatus("unauthorized");
                 return "unauthorized";
+            }
+            if (passkeyState === "not_registered") {
+                await this.registerInitialPasskeyForCurrentClient(
+                    "This device",
+                );
             }
             const afterRelogin = await this.probeAuthSession();
             if (afterRelogin !== "authenticated") {
@@ -1881,12 +1933,20 @@ class VexService {
         this.lastDeviceAuthRefreshAttemptAt = Date.now();
         try {
             const client = this.requireClient();
+            const username = this.currentClientUsername();
+            const passkeyState =
+                await this.satisfyPasskeyForCurrentClient(username);
             const authErr = await this.loginWithDeviceKeyWithRetry(client);
             if (authErr) {
                 debugAuth("session:refresh:failed", {
                     message: authErr.message,
                 });
                 return;
+            }
+            if (passkeyState === "not_registered") {
+                await this.registerInitialPasskeyForCurrentClient(
+                    "This device",
+                );
             }
             debugAuth("session:refresh:ok", {
                 remainingHours: Math.floor(remainingMs / (1000 * 60 * 60)),
@@ -2013,6 +2073,14 @@ class VexService {
                     ok: false,
                 };
             }
+
+            await withTimeout(
+                this.registerInitialPasskeyForCurrentClient(
+                    config.deviceName || "This device",
+                ),
+                REGISTER_STEP_TIMEOUT_MS,
+                "Signup stalled while adding a passkey.",
+            );
 
             await withTimeout(
                 client.connect(),
@@ -3125,6 +3193,14 @@ class VexService {
         });
     }
 
+    private currentClientUsername(): string {
+        const user = $userWritable.get();
+        if (user?.username) {
+            return user.username;
+        }
+        return this.requireClient().me.user().username;
+    }
+
     private async loginWithDeviceKeyWithRetry(
         client: Client,
         deviceID?: string,
@@ -3146,6 +3222,54 @@ class VexService {
             await waitMs(backoffMs);
         }
         return lastErr;
+    }
+
+    private async satisfyPasskeyForCurrentClient(
+        username: string,
+    ): Promise<PasskeySessionState> {
+        const driver = this.passkeyCeremonyDriver;
+        if (!driver) {
+            return "unavailable";
+        }
+        const client = this.requireClient();
+        let begin: PasskeySignInBegin;
+        try {
+            begin = await client.passkeys.beginAuthentication(username);
+        } catch (err: unknown) {
+            if (isUnauthorizedError(err)) {
+                return "not_registered";
+            }
+            throw err;
+        }
+        const response = await driver.authenticate(
+            begin.options as PublicKeyCredentialRequestOptionsJSON,
+        );
+        await client.passkeys.finishAuthentication({
+            requestID: begin.requestID,
+            response,
+        });
+        return "authenticated";
+    }
+
+    private async registerInitialPasskeyForCurrentClient(
+        name: string,
+    ): Promise<void> {
+        const driver = this.passkeyCeremonyDriver;
+        if (!driver) {
+            throw new Error(
+                "Passkey setup is required before this account can sign in on this device.",
+            );
+        }
+        const client = this.requireClient();
+        const begin = await client.passkeys.beginRegistration(name);
+        const response = await driver.register(
+            begin.options as PublicKeyCredentialCreationOptionsJSON,
+        );
+        await client.passkeys.finishRegistration({
+            name,
+            requestID: begin.requestID,
+            response,
+        });
     }
 
     private logWsState(step: string, meta?: Record<string, unknown>): void {
@@ -4135,6 +4259,8 @@ class VexService {
                             token: "",
                             username,
                         });
+                        const passkeyState =
+                            await this.satisfyPasskeyForCurrentClient(username);
                         const authErr = await this.loginWithDeviceKeyWithRetry(
                             client,
                             pending.approvedDeviceID,
@@ -4145,6 +4271,11 @@ class VexService {
                             });
                             $pendingApprovalStageWritable.set("idle");
                             return;
+                        }
+                        if (passkeyState === "not_registered") {
+                            await this.registerInitialPasskeyForCurrentClient(
+                                "This device",
+                            );
                         }
                         $pendingApprovalStageWritable.set("loading_account");
                         await client.connect();
