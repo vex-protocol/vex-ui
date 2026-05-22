@@ -113,9 +113,7 @@ jobs:
                   cache: pnpm
             - run: pnpm install --frozen-lockfile --ignore-scripts
             - name: Sherif — workspace version consistency
-              # -i vite: desktop on vite 7, ui/storybook on vite 6. Re-enable
-              # once packages/ui upgrades to a vite-7-compatible Storybook.
-              run: pnpm dlx sherif@latest -i vite
+              run: pnpm dlx sherif@latest
             - name: Lint affected packages
               env:
                   BASE_REF: ${{ github.base_ref || 'master' }}

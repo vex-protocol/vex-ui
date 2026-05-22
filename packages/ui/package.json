@@ -15,20 +15,20 @@
         "storybook": "concurrently \"storybook dev -p 6001 -c .storybook-react\" \"storybook dev -p 6002 -c .storybook-svelte\" \"tsx scripts/wait-for-storybooks.ts http://localhost:6001 http://localhost:6002 && storybook dev -p 6000 -c .storybook\""
     },
     "devDependencies": {
-        "@builder.io/mitosis": "0.12.1",
+        "@builder.io/mitosis": "0.13.0",
         "@builder.io/mitosis-cli": "0.13.0",
-        "@storybook/addon-essentials": "8.6.14",
-        "@storybook/react-vite": "8.6.18",
-        "@storybook/svelte-vite": "8.6.18",
+        "@storybook/react-vite": "10.4.0",
+        "@storybook/svelte-vite": "10.4.0",
+        "@sveltejs/vite-plugin-svelte": "catalog:",
         "@types/node": "catalog:",
         "@vex-chat/eslint-config": "workspace:*",
         "concurrently": "catalog:",
         "react": "catalog:",
         "react-dom": "catalog:",
-        "storybook": "8.6.18",
+        "storybook": "10.4.0",
         "svelte": "catalog:",
         "tsx": "catalog:",
-        "vite": "6.4.2"
+        "vite": "catalog:"
     },
     "license": "AGPL-3.0-or-later"
 }

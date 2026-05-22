@@ -22,8 +22,8 @@ export default [
         // after each @builder.io/mitosis upgrade. Newer Mitosis versions may
         // emit typed event handlers, at which point these overrides should
         // be tightened or removed. Last verified against
-        // @builder.io/mitosis@0.12.1 + @builder.io/mitosis-cli@0.13.0 on
-        // 2026-04-10. Re-check with:
+        // @builder.io/mitosis@0.13.0 + @builder.io/mitosis-cli@0.13.0 on
+        // 2026-05-22. Re-check with:
         //
         //   pnpm dlx eslint packages/ui/src --rule '{"@typescript-eslint/no-explicit-any":"error"}'
         //
