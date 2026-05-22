@@ -56,6 +56,7 @@ minimumReleaseAgeExclude:
     - unimodules-app-loader
     - uuid
     - dompurify
+    - qs
     - svelte
     - devalue
     - fast-xml-builder
