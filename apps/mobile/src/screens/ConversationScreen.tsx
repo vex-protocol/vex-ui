@@ -212,7 +212,7 @@ export function ConversationScreen({
         ]);
     }, [handlePickAttachment, sending]);
 
-    const deleteMessage = useCallback(
+    const deleteMessageForEveryone = useCallback(
         (message: Message) => {
             void (async () => {
                 const result = await vexService.deleteMessageForEveryone(
@@ -221,7 +221,25 @@ export function ConversationScreen({
                     false,
                 );
                 if (!result.ok) {
-                    setError(result.error ?? "Failed to delete message");
+                    setError(
+                        result.error ?? "Failed to delete message for everyone",
+                    );
+                }
+            })();
+        },
+        [userID],
+    );
+
+    const deleteMessageForMe = useCallback(
+        (message: Message) => {
+            void (async () => {
+                const deleted = await vexService.deleteLocalMessage(
+                    userID,
+                    message.mailID,
+                    false,
+                );
+                if (!deleted) {
+                    setError("Failed to delete local message");
                 }
             })();
         },
@@ -262,7 +280,8 @@ export function ConversationScreen({
                 currentUserID={user?.userID}
                 isOwn={isOwn}
                 message={item}
-                onDeleteMessage={deleteMessage}
+                onDeleteMessageForEveryone={deleteMessageForEveryone}
+                onDeleteMessageForMe={deleteMessageForMe}
                 onEditMessage={editMessage}
                 onToggleReaction={toggleReaction}
                 showIdentity={showIdentity}

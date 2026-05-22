@@ -333,6 +333,49 @@ describe("vexService message edit and delete relay", () => {
         });
     });
 
+    test("sends batched DM delete events before removing a local thread", async () => {
+        const { deleteThread, sendMessage } = installClient();
+        const ownMessages = Array.from({ length: 121 }, (_, index) =>
+            makeMessage({
+                authorID: "me",
+                direction: "outgoing",
+                mailID: `own-${String(index)}`,
+                readerID: "user-a",
+            }),
+        );
+        $messagesWritable.set({
+            "user-a": [
+                ...ownMessages,
+                makeMessage({
+                    authorID: "user-a",
+                    mailID: "their-message",
+                }),
+            ],
+        });
+
+        const result = await vexService.deleteThreadForEveryone(
+            "user-a",
+            false,
+        );
+
+        expect(result).toEqual({
+            batchCount: 3,
+            deletedCount: 121,
+            localDeleted: true,
+            ok: true,
+        });
+        expect(sendMessage).toHaveBeenCalledTimes(3);
+        for (const call of vi.mocked(sendMessage).mock.calls) {
+            const opts = call[2];
+            const event = messageDeleteEvent(
+                makeMessage({ extra: opts?.extra } as Partial<Message>),
+            );
+            expect(event?.targetMailIDs?.length).toBeLessThanOrEqual(50);
+        }
+        expect(deleteThread).toHaveBeenCalledWith("user-a");
+        expect($messagesWritable.get()).toEqual({});
+    });
+
     test("sends a group update event and updates the local message", async () => {
         const { groupMessage, updateMessage } = installClient();
         $groupMessagesWritable.set({

@@ -63,12 +63,14 @@ import {
     applyMessageDeleteEvent,
     applyMessageReactionEvent,
     applyMessageUpdateEvent,
+    createDeleteBatchEventExtra,
     createDeleteEventExtra,
     createReactionEventExtra,
     createUpdateEventExtra,
     type EncryptedFileAttachment,
     foldMessageEvents,
     messageDeleteEvent,
+    messageDeleteEventTargetMailIDs,
     type MessageEmoji,
     messageReactionEvent,
     messageUpdateEvent,
@@ -167,6 +169,15 @@ export interface OperationResult {
     ok: boolean;
 }
 
+export interface PasskeyCeremonyDriver {
+    authenticate(
+        options: PublicKeyCredentialRequestOptionsJSON,
+    ): Promise<Record<string, unknown>>;
+    register(
+        options: PublicKeyCredentialCreationOptionsJSON,
+    ): Promise<Record<string, unknown>>;
+}
+
 /**
  * Result of {@link VexService.beginPasskeySignIn}. Hands back the
  * options the host needs to drive the platform WebAuthn ceremony,
@@ -178,8 +189,6 @@ export interface PasskeySignInBegin {
     requestID: string;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
 export interface PushNotificationSubscriptionInput {
     channel: "expo";
     events?: string[];
@@ -188,6 +197,8 @@ export interface PushNotificationSubscriptionInput {
 }
 
 export type ResumeNetworkStatus = "signed_out" | AuthProbeStatus;
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Server connection options — identical across all auth flows. */
 export interface ServerOptions {
@@ -222,6 +233,12 @@ export interface SessionInfo {
     tokenRemainingHours?: number;
     userID: string;
     username: string;
+}
+
+export interface ThreadDeleteForEveryoneResult extends OperationResult {
+    batchCount?: number;
+    deletedCount?: number;
+    localDeleted?: boolean;
 }
 
 interface ClientHttpLike {
@@ -330,6 +347,8 @@ interface NotificationSubscriptionLike {
     subscriptionID: string;
 }
 
+type PasskeySessionState = "authenticated" | "not_registered" | "unavailable";
+
 interface PendingMessageEventMessage {
     attempts: number;
     message: Message;
@@ -388,6 +407,7 @@ const MAX_PENDING_MESSAGE_EVENT_MESSAGES_PER_CONVERSATION =
 const MAX_PENDING_MESSAGE_EVENT_APPLY_ATTEMPTS =
     MAX_PENDING_REACTION_APPLY_ATTEMPTS;
 const PENDING_MESSAGE_EVENT_TTL_MS = PENDING_REACTION_MESSAGE_TTL_MS;
+const MESSAGE_DELETE_EVENT_BATCH_SIZE = 50;
 
 class Disposable {
     private fns: Array<() => void> = [];
@@ -436,6 +456,7 @@ class VexService {
     private lastConnectionRecoveryAt = 0;
     private lastDeviceAuthRefreshAttemptAt = 0;
     private logoutInFlight: null | Promise<void> = null;
+    private passkeyCeremonyDriver: null | PasskeyCeremonyDriver = null;
     private pendingApprovalWatchCancel: (() => void) | null = null;
     private readonly pendingMessageEventMessages = new Map<
         string,
@@ -573,6 +594,9 @@ class VexService {
                 });
                 const client = this.requireClient();
 
+                const passkeyState = await this.satisfyPasskeyForCurrentClient(
+                    creds.username,
+                );
                 const authErr = await this.loginWithDeviceKeyWithRetry(
                     client,
                     creds.deviceID,
@@ -603,6 +627,12 @@ class VexService {
                     return { error: authErr.message, ok: false };
                 }
 
+                if (passkeyState === "not_registered") {
+                    await this.registerInitialPasskeyForCurrentClient(
+                        config.deviceName || "This device",
+                    );
+                }
+
                 const connectStart = Date.now();
                 await client.connect();
                 debugAuth("autoLogin:connect:ok", {
@@ -627,6 +657,10 @@ class VexService {
                             true,
                         );
                         const recovered = this.requireClient();
+                        const passkeyState =
+                            await this.satisfyPasskeyForCurrentClient(
+                                creds.username,
+                            );
                         const authErr = await this.loginWithDeviceKeyWithRetry(
                             recovered,
                             creds.deviceID,
@@ -655,6 +689,12 @@ class VexService {
                                 };
                             }
                             return { error: authErr.message, ok: false };
+                        }
+
+                        if (passkeyState === "not_registered") {
+                            await this.registerInitialPasskeyForCurrentClient(
+                                config.deviceName || "This device",
+                            );
                         }
 
                         await recovered.connect();
@@ -846,8 +886,6 @@ class VexService {
         }
     }
 
-    // ── Server CRUD ─────────────────────────────────────────────────────
-
     consumeRateLimitNotice(): boolean {
         if (!this.pendingRateLimitNotice) {
             return false;
@@ -855,6 +893,8 @@ class VexService {
         this.pendingRateLimitNotice = false;
         return true;
     }
+
+    // ── Server CRUD ─────────────────────────────────────────────────────
 
     async createChannel(
         name: string,
@@ -1061,6 +1101,64 @@ class VexService {
         }
     }
 
+    async deleteThreadForEveryone(
+        conversationKey: string,
+        isGroup: boolean,
+    ): Promise<ThreadDeleteForEveryoneResult> {
+        const actorUserID = $userWritable.get()?.userID;
+        if (!actorUserID) {
+            return { error: "Not signed in.", ok: false };
+        }
+
+        const writable = isGroup ? $groupMessagesWritable : $messagesWritable;
+        const thread = writable.get()[conversationKey] ?? [];
+        if (thread.length === 0) {
+            return {
+                batchCount: 0,
+                deletedCount: 0,
+                localDeleted: false,
+                ok: true,
+            };
+        }
+
+        const targetMailIDs = thread
+            .filter((message) => message.authorID === actorUserID)
+            .map((message) => message.mailID);
+        const batches = chunkArray(
+            targetMailIDs,
+            MESSAGE_DELETE_EVENT_BATCH_SIZE,
+        );
+        let sentCount = 0;
+        for (const batch of batches) {
+            const result = await this.sendMessageExtra(
+                conversationKey,
+                isGroup,
+                createDeleteBatchEventExtra(batch),
+                isGroup ? "delete-group-thread" : "delete-dm-thread",
+            );
+            if (!result.ok) {
+                return {
+                    batchCount: batches.length,
+                    deletedCount: sentCount,
+                    ...(result.error ? { error: result.error } : {}),
+                    ok: false,
+                };
+            }
+            sentCount += batch.length;
+        }
+
+        const localDeleted = await this.deleteLocalThread(
+            conversationKey,
+            isGroup,
+        );
+        return {
+            batchCount: batches.length,
+            deletedCount: targetMailIDs.length,
+            localDeleted,
+            ok: true,
+        };
+    }
+
     async downloadFileAttachment(
         attachment: EncryptedFileAttachment,
     ): Promise<OperationResult & { data?: Uint8Array }> {
@@ -1078,8 +1176,6 @@ class VexService {
             return { error: errorMessage(err), ok: false };
         }
     }
-
-    // ── Channel operations ──────────────────────────────────────────────
 
     async editMessage(
         conversationKey: string,
@@ -1124,6 +1220,8 @@ class VexService {
         );
         return { ok: true };
     }
+
+    // ── Channel operations ──────────────────────────────────────────────
 
     /**
      * Finish a passkey-registration ceremony. Persists the new
@@ -1211,8 +1309,6 @@ class VexService {
         return client.invites.retrieve(serverID);
     }
 
-    // ── Messaging ───────────────────────────────────────────────────────
-
     /** Effective local retention cap (defaults to 30 when signed out). */
     getLocalMessageRetentionDays(): number {
         const c = this.client as unknown as {
@@ -1224,6 +1320,8 @@ class VexService {
         }
         return $localMessageRetentionDaysWritable.get();
     }
+
+    // ── Messaging ───────────────────────────────────────────────────────
 
     async getServerPermissions(serverID: string): Promise<Permission[]> {
         const client = this.requireClient();
@@ -1395,6 +1493,9 @@ class VexService {
             client: Client,
             loadedCreds: StoredCredentials,
         ): Promise<AuthResult> => {
+            const passkeyState = await this.satisfyPasskeyForCurrentClient(
+                loadedCreds.username,
+            );
             const authErr = await this.loginWithDeviceKeyWithRetry(
                 client,
                 loadedCreds.deviceID,
@@ -1429,6 +1530,12 @@ class VexService {
                 await keyStore.save({ ...loadedCreds, token: "" });
             } catch {
                 /* non-fatal token update */
+            }
+
+            if (passkeyState === "not_registered") {
+                await this.registerInitialPasskeyForCurrentClient(
+                    config.deviceName || "This device",
+                );
             }
 
             await client.connect();
@@ -1537,8 +1644,6 @@ class VexService {
         }
     }
 
-    // ── User operations ─────────────────────────────────────────────────
-
     async lookupUser(query: string): Promise<null | User> {
         try {
             const client = this.requireClient();
@@ -1557,6 +1662,8 @@ class VexService {
             return null;
         }
     }
+
+    // ── User operations ─────────────────────────────────────────────────
 
     markRead(conversationKey: string): void {
         $dmUnreadCountsWritable.setKey(conversationKey, 0);
@@ -1726,10 +1833,18 @@ class VexService {
         const probe = await this.probeAuthSession();
         if (probe === "unauthorized") {
             const client = this.requireClient();
+            const username = this.currentClientUsername();
+            const passkeyState =
+                await this.satisfyPasskeyForCurrentClient(username);
             const authErr = await this.loginWithDeviceKeyWithRetry(client);
             if (authErr) {
                 this.setAuthStatus("unauthorized");
                 return "unauthorized";
+            }
+            if (passkeyState === "not_registered") {
+                await this.registerInitialPasskeyForCurrentClient(
+                    "This device",
+                );
             }
             const afterRelogin = await this.probeAuthSession();
             if (afterRelogin !== "authenticated") {
@@ -1814,12 +1929,20 @@ class VexService {
         this.lastDeviceAuthRefreshAttemptAt = Date.now();
         try {
             const client = this.requireClient();
+            const username = this.currentClientUsername();
+            const passkeyState =
+                await this.satisfyPasskeyForCurrentClient(username);
             const authErr = await this.loginWithDeviceKeyWithRetry(client);
             if (authErr) {
                 debugAuth("session:refresh:failed", {
                     message: authErr.message,
                 });
                 return;
+            }
+            if (passkeyState === "not_registered") {
+                await this.registerInitialPasskeyForCurrentClient(
+                    "This device",
+                );
             }
             debugAuth("session:refresh:ok", {
                 remainingHours: Math.floor(remainingMs / (1000 * 60 * 60)),
@@ -1946,6 +2069,14 @@ class VexService {
                     ok: false,
                 };
             }
+
+            await withTimeout(
+                this.registerInitialPasskeyForCurrentClient(
+                    config.deviceName || "This device",
+                ),
+                REGISTER_STEP_TIMEOUT_MS,
+                "Signup stalled while adding a passkey.",
+            );
 
             await withTimeout(
                 client.connect(),
@@ -2162,11 +2293,11 @@ class VexService {
         }
     }
 
-    // ── Unread management ───────────────────────────────────────────────
-
     setBackgroundConnectionRecoverySuspended(suspended: boolean): void {
         this.backgroundConnectionRecoverySuspended = suspended;
     }
+
+    // ── Unread management ───────────────────────────────────────────────
 
     /**
      * Updates the local message retention preference (1–30 days) and
@@ -2179,6 +2310,10 @@ class VexService {
             setLocalMessageRetentionDays?: (d: number) => void;
         };
         c?.setLocalMessageRetentionDays?.(clamped);
+    }
+
+    setPasskeyCeremonyDriver(driver: null | PasskeyCeremonyDriver): void {
+        this.passkeyCeremonyDriver = driver;
     }
 
     setWebsocketDebug(enabled: boolean): void {
@@ -2332,18 +2467,34 @@ class VexService {
         isGroup: boolean,
         actorUserID: string,
     ): boolean {
+        return this.applyLocalMessageDeleteBatch(
+            conversationKey,
+            [mailID],
+            isGroup,
+            actorUserID,
+        );
+    }
+
+    private applyLocalMessageDeleteBatch(
+        conversationKey: string,
+        mailIDs: string[],
+        isGroup: boolean,
+        actorUserID: string,
+    ): boolean {
         const writable = isGroup ? $groupMessagesWritable : $messagesWritable;
         const thread = writable.get()[conversationKey] ?? [];
         const nextThread = applyMessageDeleteEvent(
             thread,
-            { action: "delete", targetMailID: mailID },
+            { action: "delete", targetMailIDs: mailIDs },
             actorUserID,
         );
         if (nextThread === thread) {
             return false;
         }
         writable.setKey(conversationKey, nextThread);
-        void this.deletePersistedMessage(mailID);
+        for (const mailID of mailIDs) {
+            void this.deletePersistedMessage(mailID);
+        }
         return true;
     }
 
@@ -2378,8 +2529,8 @@ class VexService {
         conversationKey: string,
         msg: Message,
     ): boolean {
-        const targetMailID = messageEventTargetMailID(msg);
-        if (!targetMailID) {
+        const targetMailIDs = messageEventTargetMailIDs(msg);
+        if (targetMailIDs.length === 0) {
             return false;
         }
         if (this.processedMessageEventMailIDs.has(msg.mailID)) {
@@ -2387,8 +2538,8 @@ class VexService {
         }
 
         const thread = writable.get()[conversationKey] ?? [];
-        const targetExists = thread.some(
-            (message) => message.mailID === targetMailID,
+        const targetExists = thread.some((message) =>
+            targetMailIDs.includes(message.mailID),
         );
         const nextThread = applyMessageEventToThread(thread, msg);
         if (nextThread === thread) {
@@ -2432,13 +2583,13 @@ class VexService {
                 pending.delete(mailID);
                 continue;
             }
-            const targetMailID = messageEventTargetMailID(msg);
-            if (!targetMailID) {
+            const targetMailIDs = messageEventTargetMailIDs(msg);
+            if (targetMailIDs.length === 0) {
                 pending.delete(mailID);
                 continue;
             }
-            const targetExists = thread.some(
-                (message) => message.mailID === targetMailID,
+            const targetExists = thread.some((message) =>
+                targetMailIDs.includes(message.mailID),
             );
             const nextThread = applyMessageEventToThread(thread, msg);
             if (nextThread === thread) {
@@ -2666,6 +2817,14 @@ class VexService {
             }
             throw err;
         }
+    }
+
+    private currentClientUsername(): string {
+        const user = $userWritable.get();
+        if (user?.username) {
+            return user.username;
+        }
+        return this.requireClient().me.user().username;
     }
 
     private async deletePersistedMessage(mailID: string): Promise<void> {
@@ -3080,7 +3239,11 @@ class VexService {
     private persistAppliedMessageEvent(msg: Message, thread: Message[]): void {
         const deleteEvent = messageDeleteEvent(msg);
         if (deleteEvent) {
-            void this.deletePersistedMessage(deleteEvent.targetMailID);
+            for (const targetMailID of messageDeleteEventTargetMailIDs(
+                deleteEvent,
+            )) {
+                void this.deletePersistedMessage(targetMailID);
+            }
             return;
         }
         const updateEvent = messageUpdateEvent(msg);
@@ -3234,6 +3397,27 @@ class VexService {
         setTimeout(() => {
             this.kickPopulateState(attempt + 1);
         }, 200);
+    }
+
+    private async registerInitialPasskeyForCurrentClient(
+        name: string,
+    ): Promise<void> {
+        const driver = this.passkeyCeremonyDriver;
+        if (!driver) {
+            throw new Error(
+                "Passkey setup is required before this account can sign in on this device.",
+            );
+        }
+        const client = this.requireClient();
+        const begin = await client.passkeys.beginRegistration(name);
+        const response = await driver.register(
+            begin.options as PublicKeyCredentialCreationOptionsJSON,
+        );
+        await client.passkeys.finishRegistration({
+            name,
+            requestID: begin.requestID,
+            response,
+        });
     }
 
     private rememberProcessedMessageEventMailID(mailID: string): void {
@@ -3870,6 +4054,31 @@ class VexService {
         });
     }
 
+    private async satisfyPasskeyForCurrentClient(
+        username: string,
+    ): Promise<PasskeySessionState> {
+        const driver = this.passkeyCeremonyDriver;
+        if (!driver) {
+            return "unavailable";
+        }
+        const client = this.requireClient();
+        let begin: PasskeySignInBegin;
+        try {
+            begin = await client.passkeys.beginAuthentication(username);
+        } catch (err: unknown) {
+            if (isUnauthorizedError(err)) {
+                return "not_registered";
+            }
+            throw err;
+        }
+        const response = await driver.authenticate(begin.options);
+        await client.passkeys.finishAuthentication({
+            requestID: begin.requestID,
+            response,
+        });
+        return "authenticated";
+    }
+
     private async saveCredentials(
         keyStore: KeyStore,
         creds: {
@@ -4048,6 +4257,8 @@ class VexService {
                             token: "",
                             username,
                         });
+                        const passkeyState =
+                            await this.satisfyPasskeyForCurrentClient(username);
                         const authErr = await this.loginWithDeviceKeyWithRetry(
                             client,
                             pending.approvedDeviceID,
@@ -4058,6 +4269,11 @@ class VexService {
                             });
                             $pendingApprovalStageWritable.set("idle");
                             return;
+                        }
+                        if (passkeyState === "not_registered") {
+                            await this.registerInitialPasskeyForCurrentClient(
+                                "This device",
+                            );
                         }
                         $pendingApprovalStageWritable.set("loading_account");
                         await client.connect();
@@ -4250,6 +4466,14 @@ function applyMessageEventToThread(thread: Message[], msg: Message): Message[] {
         return applyMessageUpdateEvent(thread, updateEvent, msg.authorID);
     }
     return thread;
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+    const chunks: T[][] = [];
+    for (let index = 0; index < items.length; index += size) {
+        chunks.push(items.slice(index, index + size));
+    }
+    return chunks;
 }
 
 function debugAuth(step: string, meta?: Record<string, unknown>): void {
@@ -4611,12 +4835,13 @@ function looksLikeReactNativeBlobError(message: string): boolean {
     );
 }
 
-function messageEventTargetMailID(message: Message): null | string {
-    return (
-        messageDeleteEvent(message)?.targetMailID ??
-        messageUpdateEvent(message)?.targetMailID ??
-        null
-    );
+function messageEventTargetMailIDs(message: Message): string[] {
+    const deleteEvent = messageDeleteEvent(message);
+    if (deleteEvent) {
+        return messageDeleteEventTargetMailIDs(deleteEvent);
+    }
+    const updateEvent = messageUpdateEvent(message);
+    return updateEvent ? [updateEvent.targetMailID] : [];
 }
 
 function parseNotificationSubscription(

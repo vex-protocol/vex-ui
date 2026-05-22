@@ -30,7 +30,8 @@ export interface MessageChunk {
 export interface MessageDeleteEvent {
     action: "delete";
     deletedAt?: string;
-    targetMailID: string;
+    targetMailID?: string;
+    targetMailIDs?: string[];
 }
 
 export interface MessageEmbed {
@@ -195,13 +196,22 @@ export function applyMessageDeleteEvent(
     event: MessageDeleteEvent,
     actorUserID: string,
 ): Message[] {
-    const target = messages.find(
-        (message) => message.mailID === event.targetMailID,
-    );
-    if (!target || target.authorID !== actorUserID) {
+    const targetMailIDs = new Set(messageDeleteEventTargetMailIDs(event));
+    if (targetMailIDs.size === 0) {
         return messages;
     }
-    return messages.filter((message) => message.mailID !== event.targetMailID);
+    let changed = false;
+    const nextMessages = messages.filter((message) => {
+        if (
+            !targetMailIDs.has(message.mailID) ||
+            message.authorID !== actorUserID
+        ) {
+            return true;
+        }
+        changed = true;
+        return false;
+    });
+    return changed ? nextMessages : messages;
 }
 
 export function applyMessageReactionEvent(
@@ -251,6 +261,18 @@ export function applyMessageUpdateEvent(
         };
     });
     return changed ? nextMessages : messages;
+}
+
+export function createDeleteBatchEventExtra(targetMailIDs: string[]): string {
+    return (
+        serializeMessageExtra({
+            messageDeleteEvent: {
+                action: "delete",
+                targetMailIDs,
+            },
+            version: MESSAGE_EXTRA_VERSION,
+        }) ?? JSON.stringify({ version: MESSAGE_EXTRA_VERSION })
+    );
 }
 
 export function createDeleteEventExtra(targetMailID: string): string {
@@ -387,6 +409,25 @@ export function messageDeleteEvent(
     message: MessageWithClientExtra,
 ): MessageDeleteEvent | null {
     return parseMessageExtra(message.extra).messageDeleteEvent ?? null;
+}
+
+export function messageDeleteEventTargetMailIDs(
+    event: MessageDeleteEvent,
+): string[] {
+    const targetMailIDs: string[] = [];
+    const seen = new Set<string>();
+    const add = (targetMailID: string | undefined): void => {
+        if (!targetMailID || seen.has(targetMailID)) {
+            return;
+        }
+        seen.add(targetMailID);
+        targetMailIDs.push(targetMailID);
+    };
+    add(event.targetMailID);
+    for (const targetMailID of event.targetMailIDs ?? []) {
+        add(targetMailID);
+    }
+    return targetMailIDs;
 }
 
 export function messageEmbed(
@@ -1076,19 +1117,41 @@ function parseMessageDeleteEvent(
     if (!isRecord(value)) {
         return undefined;
     }
-    if (
-        value["action"] !== "delete" ||
-        typeof value["targetMailID"] !== "string" ||
-        value["targetMailID"] === ""
-    ) {
+    if (value["action"] !== "delete") {
+        return undefined;
+    }
+    const targetMailID =
+        typeof value["targetMailID"] === "string" &&
+        value["targetMailID"] !== ""
+            ? value["targetMailID"]
+            : undefined;
+    const targetMailIDs = parseMessageDeleteTargets(value["targetMailIDs"]);
+    if (!targetMailID && targetMailIDs.length === 0) {
         return undefined;
     }
     const event: MessageDeleteEvent = {
         action: "delete",
-        targetMailID: value["targetMailID"],
+        ...(targetMailID ? { targetMailID } : {}),
+        ...(targetMailIDs.length > 0 ? { targetMailIDs } : {}),
     };
     copyString(event, value, "deletedAt");
     return event;
+}
+
+function parseMessageDeleteTargets(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    const targets: string[] = [];
+    const seen = new Set<string>();
+    for (const item of value) {
+        if (typeof item !== "string" || item === "" || seen.has(item)) {
+            continue;
+        }
+        seen.add(item);
+        targets.push(item);
+    }
+    return targets;
 }
 
 function parseMessageEmbed(value: unknown): MessageEmbed | null {

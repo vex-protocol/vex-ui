@@ -67,7 +67,8 @@ interface MessageBubbleRNProps {
     currentUserID?: string | undefined;
     isOwn: boolean;
     message: Message;
-    onDeleteMessage?: ((message: Message) => void) | undefined;
+    onDeleteMessageForEveryone?: ((message: Message) => void) | undefined;
+    onDeleteMessageForMe?: ((message: Message) => void) | undefined;
     onEditMessage?: ((message: Message) => void) | undefined;
     onToggleReaction?:
         | ((message: Message, emoji: MessageEmoji) => void)
@@ -173,7 +174,8 @@ export function MessageBubbleRN({
     currentUserID,
     isOwn,
     message,
-    onDeleteMessage,
+    onDeleteMessageForEveryone,
+    onDeleteMessageForMe,
     onEditMessage,
     onToggleReaction,
     showIdentity = true,
@@ -224,20 +226,38 @@ export function MessageBubbleRN({
                       },
                   ]
                 : []),
-            ...(isOwn && onDeleteMessage
+            ...(onDeleteMessageForMe
                 ? [
                       {
-                          id: "delete",
-                          label: "Delete message",
+                          id: "delete-for-me",
+                          label: "Delete for me",
                           onPress: () => {
-                              onDeleteMessage(message);
+                              onDeleteMessageForMe(message);
+                          },
+                          tone: "destructive" as const,
+                      },
+                  ]
+                : []),
+            ...(isOwn && onDeleteMessageForEveryone
+                ? [
+                      {
+                          id: "delete-for-everyone",
+                          label: "Delete for everyone",
+                          onPress: () => {
+                              onDeleteMessageForEveryone(message);
                           },
                           tone: "destructive" as const,
                       },
                   ]
                 : []),
         ],
-        [isOwn, message, onDeleteMessage, onEditMessage],
+        [
+            isOwn,
+            message,
+            onDeleteMessageForEveryone,
+            onDeleteMessageForMe,
+            onEditMessage,
+        ],
     );
 
     const openContextMenuAt = (x: number, y: number) => {

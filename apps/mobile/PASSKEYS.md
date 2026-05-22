@@ -32,13 +32,14 @@ production setup). Substitute your own host wherever you see it.
 
 ## TL;DR
 
-1. iOS — `app.json` declares
-   `"associatedDomains": ["webcredentials:api.vex.wtf"]`. Whenever
-   you change the RP host, update both that entry _and_ the
-   `apple-app-site-association` Apple is fetching from it.
-2. Android — host `assetlinks.json` on the same host (or have spire
-   serve it) and let Expo's prebuild keep `compileSdkVersion`
-   current.
+1. iOS — `app.config.js` writes
+   `associatedDomains: ["webcredentials:<RP host>"]` for the selected
+   environment. Production defaults to `api.vex.wtf`; development
+   defaults to `dev.vex.wtf`; set `VEX_PASSKEY_RP_HOST` to override.
+2. Android — `app.config.js` writes the matching Digital Asset Links
+   include for the selected RP host. The static `app.json` value is
+   only the production base; prebuild output comes from the dynamic
+   config.
 3. spire — set `SPIRE_PASSKEY_RP_ID=api.vex.wtf` and
    `SPIRE_PASSKEY_ORIGINS` to the comma-separated list of expected
    origins (typically `https://api.vex.wtf` plus any
@@ -98,7 +99,7 @@ with the package name and SHA-256 signing-cert fingerprint(s):
 ]
 ```
 
-Get the fingerprint with
+For local credentials, get the fingerprint with
 
 ```sh
 keytool -list -v -alias <alias> -keystore <keystore.jks>
@@ -107,6 +108,12 @@ keytool -list -v -alias <alias> -keystore <keystore.jks>
 and paste the colon-delimited `SHA256` value into
 `sha256_cert_fingerprints`. If you have separate dev/release keys,
 add an entry for each — the same JSON file can carry both.
+
+For EAS-managed credentials, use the SHA-256 certificate fingerprint
+shown by EAS for the exact package that will use the RP host. The
+current production Android app uses package `chat.vex.mobile`; the
+development app uses `chat.vex.mobile.dev`, and each package has its
+own EAS signing certificate.
 
 ## spire — relying-party config
 
@@ -165,6 +172,18 @@ SPIRE_PASSKEY_ANDROID_FINGERPRINTS=AA:BB:...:CC,DD:EE:...:FF
 can configure one platform now and the other later. The routes are
 mounted ahead of spire's per-IP rate limiter so periodic platform
 fetches by Apple / Google CDNs are never 429'd.
+
+For the production Docker Compose deployment, put those values in
+`apps/spire/.env` next to `SPK` and `JWT_SECRET`; compose passes the
+file into the `spire` service. For development, use the development
+RP host, package, and EAS signing fingerprint instead:
+
+```
+SPIRE_PASSKEY_RP_ID=dev.vex.wtf
+SPIRE_PASSKEY_ORIGINS=https://dev.vex.wtf,ios:bundle-id:chat.vex.mobile.dev
+SPIRE_PASSKEY_ANDROID_PACKAGE=chat.vex.mobile.dev
+SPIRE_PASSKEY_ANDROID_FINGERPRINTS=<dev EAS SHA-256 fingerprint>
+```
 
 After setting them and restarting spire:
 

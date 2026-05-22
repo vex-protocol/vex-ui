@@ -21,12 +21,14 @@
 
     let {
         messages,
-        onDeleteMessage,
+        onDeleteMessageForEveryone,
+        onDeleteMessageForMe,
         onEditMessage,
         usernames,
     }: {
         messages: Message[];
-        onDeleteMessage?: (message: Message) => void;
+        onDeleteMessageForEveryone?: (message: Message) => void;
+        onDeleteMessageForMe?: (message: Message) => void;
         onEditMessage?: (message: Message) => void;
         usernames?: Record<string, string>;
     } = $props();
@@ -115,9 +117,9 @@
                 {@const embed = messageEmbed(msg)}
                 {@const isOwn = msg.authorID === $user?.userID}
                 <div class="message" class:message--own={isOwn}>
-                    {#if isOwn && (onEditMessage || onDeleteMessage)}
+                    {#if onDeleteMessageForMe || (isOwn && (onEditMessage || onDeleteMessageForEveryone))}
                         <div class="message__actions">
-                            {#if onEditMessage}
+                            {#if isOwn && onEditMessage}
                                 <button
                                     class="message__action"
                                     type="button"
@@ -126,13 +128,25 @@
                                     title="Edit message">Edit</button
                                 >
                             {/if}
-                            {#if onDeleteMessage}
+                            {#if onDeleteMessageForMe}
                                 <button
                                     class="message__action message__action--danger"
                                     type="button"
-                                    onclick={() => onDeleteMessage?.(msg)}
-                                    aria-label="Delete message"
-                                    title="Delete message">Delete</button
+                                    onclick={() => onDeleteMessageForMe?.(msg)}
+                                    aria-label="Delete message for me"
+                                    title="Delete message for me"
+                                    >Delete for me</button
+                                >
+                            {/if}
+                            {#if isOwn && onDeleteMessageForEveryone}
+                                <button
+                                    class="message__action message__action--danger"
+                                    type="button"
+                                    onclick={() =>
+                                        onDeleteMessageForEveryone?.(msg)}
+                                    aria-label="Delete message for everyone"
+                                    title="Delete message for everyone"
+                                    >Delete for everyone</button
                                 >
                             {/if}
                         </div>
@@ -239,8 +253,8 @@
         border-radius: 6px;
     }
 
-    .message--own:hover .message__actions,
-    .message--own:focus-within .message__actions {
+    .message:hover .message__actions,
+    .message:focus-within .message__actions {
         display: flex;
     }
 
