@@ -4,8 +4,13 @@ packages:
 
 pmOnFail: error
 
+overrides:
+    # @expo/config-plugins currently resolves xcode@3.0.1 with uuid@^7.0.3,
+    # which is flagged by GHSA-w5hq-g745-h8pq. Remove this override after
+    # xcode drops the uuid dependency or Expo picks up a patched xcode release.
+    "xcode>uuid": 11.1.1
+
 catalog:
-    "@nanostores/react": 1.1.0
     "@sveltejs/vite-plugin-svelte": 6.2.4
     "@types/node": 24.12.2
     "@vex-chat/libvex": 6.7.0
@@ -16,7 +21,6 @@ catalog:
     nanostores: 1.2.0
     prettier-plugin-svelte: 3.5.1
     react: 19.2.0
-    react-dom: 19.2.0
     svelte: 5.55.7
     tsx: 4.21.0
     typescript: 5.9.3
@@ -29,7 +33,7 @@ catalogMode: prefer
 cleanupUnusedCatalogs: true
 savePrefix: ""
 
-minimumReleaseAge: 2880
+minimumReleaseAge: 1440
 
 minimumReleaseAgeExclude:
     - "@vex-chat/*"

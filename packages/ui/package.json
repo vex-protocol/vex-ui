@@ -24,7 +24,7 @@
         "@vex-chat/eslint-config": "workspace:*",
         "concurrently": "catalog:",
         "react": "catalog:",
-        "react-dom": "catalog:",
+        "react-dom": "19.2.0",
         "storybook": "10.4.0",
         "svelte": "catalog:",
         "tsx": "catalog:",
