@@ -335,7 +335,7 @@ interface DevicesWithApprovalLike {
 }
 
 interface HttpErrorLike {
-    response: { status: number };
+    response: { data?: unknown; status: number };
 }
 
 interface MessageMapWritableLike {
@@ -594,13 +594,12 @@ class VexService {
                 });
                 const client = this.requireClient();
 
-                const passkeyState = await this.satisfyPasskeyForCurrentClient(
-                    creds.username,
-                );
-                const authErr = await this.loginWithDeviceKeyWithRetry(
-                    client,
-                    creds.deviceID,
-                );
+                const { authErr, passkeyState } =
+                    await this.loginWithDeviceKeyWithPasskeyRetry(
+                        client,
+                        creds.username,
+                        creds.deviceID,
+                    );
                 if (authErr) {
                     await this.close();
                     if (isStaleCredentialError(authErr)) {
@@ -624,7 +623,7 @@ class VexService {
                             requireReauth: true,
                         };
                     }
-                    return { error: authErr.message, ok: false };
+                    return { error: errorMessage(authErr), ok: false };
                 }
 
                 if (passkeyState === "not_registered") {
@@ -657,14 +656,12 @@ class VexService {
                             true,
                         );
                         const recovered = this.requireClient();
-                        const passkeyState =
-                            await this.satisfyPasskeyForCurrentClient(
+                        const { authErr, passkeyState } =
+                            await this.loginWithDeviceKeyWithPasskeyRetry(
+                                recovered,
                                 creds.username,
+                                creds.deviceID,
                             );
-                        const authErr = await this.loginWithDeviceKeyWithRetry(
-                            recovered,
-                            creds.deviceID,
-                        );
                         if (authErr) {
                             await this.close();
                             if (isStaleCredentialError(authErr)) {
@@ -688,7 +685,7 @@ class VexService {
                                     requireReauth: true,
                                 };
                             }
-                            return { error: authErr.message, ok: false };
+                            return { error: errorMessage(authErr), ok: false };
                         }
 
                         if (passkeyState === "not_registered") {
@@ -1493,13 +1490,12 @@ class VexService {
             client: Client,
             loadedCreds: StoredCredentials,
         ): Promise<AuthResult> => {
-            const passkeyState = await this.satisfyPasskeyForCurrentClient(
-                loadedCreds.username,
-            );
-            const authErr = await this.loginWithDeviceKeyWithRetry(
-                client,
-                loadedCreds.deviceID,
-            );
+            const { authErr, passkeyState } =
+                await this.loginWithDeviceKeyWithPasskeyRetry(
+                    client,
+                    loadedCreds.username,
+                    loadedCreds.deviceID,
+                );
             debugAuth("login:device-key:done", {
                 error: authErr?.message ?? null,
                 ok: !authErr,
@@ -1523,7 +1519,7 @@ class VexService {
                         requireReauth: true,
                     };
                 }
-                return { error: authErr.message, ok: false };
+                return { error: errorMessage(authErr), ok: false };
             }
 
             try {
@@ -1834,9 +1830,8 @@ class VexService {
         if (probe === "unauthorized") {
             const client = this.requireClient();
             const username = this.currentClientUsername();
-            const passkeyState =
-                await this.satisfyPasskeyForCurrentClient(username);
-            const authErr = await this.loginWithDeviceKeyWithRetry(client);
+            const { authErr, passkeyState } =
+                await this.loginWithDeviceKeyWithPasskeyRetry(client, username);
             if (authErr) {
                 this.setAuthStatus("unauthorized");
                 return "unauthorized";
@@ -1930,12 +1925,11 @@ class VexService {
         try {
             const client = this.requireClient();
             const username = this.currentClientUsername();
-            const passkeyState =
-                await this.satisfyPasskeyForCurrentClient(username);
-            const authErr = await this.loginWithDeviceKeyWithRetry(client);
+            const { authErr, passkeyState } =
+                await this.loginWithDeviceKeyWithPasskeyRetry(client, username);
             if (authErr) {
                 debugAuth("session:refresh:failed", {
-                    message: authErr.message,
+                    message: errorMessage(authErr),
                 });
                 return;
             }
@@ -3201,6 +3195,29 @@ class VexService {
         });
     }
 
+    private async loginWithDeviceKeyWithPasskeyRetry(
+        client: Client,
+        username: string,
+        deviceID?: string,
+    ): Promise<{
+        authErr: Error | null;
+        passkeyState: PasskeySessionState;
+    }> {
+        let passkeyState = await this.satisfyPasskeyForCurrentClient(username);
+        let authErr = await this.loginWithDeviceKeyWithRetry(client, deviceID);
+        if (!isPasskeyRequiredError(authErr)) {
+            return { authErr, passkeyState };
+        }
+
+        const retryUsername = passkeyRequiredUsername(authErr) ?? username;
+        debugAuth("device-login:passkey-required:retry", {
+            username: retryUsername,
+        });
+        passkeyState = await this.satisfyPasskeyForCurrentClient(retryUsername);
+        authErr = await this.loginWithDeviceKeyWithRetry(client, deviceID);
+        return { authErr, passkeyState };
+    }
+
     private async loginWithDeviceKeyWithRetry(
         client: Client,
         deviceID?: string,
@@ -4257,15 +4274,15 @@ class VexService {
                             token: "",
                             username,
                         });
-                        const passkeyState =
-                            await this.satisfyPasskeyForCurrentClient(username);
-                        const authErr = await this.loginWithDeviceKeyWithRetry(
-                            client,
-                            pending.approvedDeviceID,
-                        );
+                        const { authErr, passkeyState } =
+                            await this.loginWithDeviceKeyWithPasskeyRetry(
+                                client,
+                                username,
+                                pending.approvedDeviceID,
+                            );
                         if (authErr) {
                             debugAuth("approvalWatcher:loginFailed", {
-                                message: authErr.message,
+                                message: errorMessage(authErr),
                             });
                             $pendingApprovalStageWritable.set("idle");
                             return;
@@ -4657,6 +4674,49 @@ function extractServerErrorBody(err: unknown): null | string {
     return null;
 }
 
+function extractServerErrorPayload(
+    err: unknown,
+): null | Record<string, unknown> {
+    if (err == null || typeof err !== "object") return null;
+    const errObj = err as { response?: unknown };
+    const response = errObj.response;
+    if (response == null || typeof response !== "object") return null;
+    const data = (response as { data?: unknown }).data;
+    if (data == null) return null;
+
+    if (
+        isRecord(data) &&
+        !(data instanceof ArrayBuffer) &&
+        !ArrayBuffer.isView(data)
+    ) {
+        return data;
+    }
+
+    let bodyText: null | string = null;
+    if (data instanceof ArrayBuffer) {
+        bodyText = new TextDecoder().decode(data);
+    } else if (
+        data instanceof Uint8Array ||
+        (typeof data === "object" &&
+            "byteLength" in data &&
+            typeof (data as { byteLength: unknown }).byteLength === "number" &&
+            "buffer" in data)
+    ) {
+        bodyText = new TextDecoder().decode(data as Uint8Array);
+    } else if (typeof data === "string") {
+        bodyText = data;
+    }
+
+    if (bodyText === null) return null;
+
+    try {
+        const parsed: unknown = JSON.parse(bodyText);
+        return isRecord(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
 function generateAutoProvisionUsername(): string {
     const bytes = new Uint8Array(4);
     if (typeof globalThis.crypto?.getRandomValues !== "function") {
@@ -4750,6 +4810,14 @@ function isNotFoundError(err: unknown): boolean {
         return /status code 404/i.test(err.message);
     }
     return false;
+}
+
+function isPasskeyRequiredError(err: unknown): boolean {
+    return (
+        hasHttpStatus(err) &&
+        err.response.status === 403 &&
+        /passkey verification required/i.test(errorMessage(err))
+    );
 }
 
 function isRateLimitedError(err: unknown): boolean {
@@ -4860,6 +4928,19 @@ function parseNotificationSubscription(
         };
     }
     throw new Error("Invalid push subscription response.");
+}
+
+function passkeyRequiredUsername(err: unknown): null | string {
+    if (!isPasskeyRequiredError(err)) {
+        return null;
+    }
+    const payload = extractServerErrorPayload(err);
+    const username = payload?.["username"];
+    if (typeof username !== "string") {
+        return null;
+    }
+    const trimmed = username.trim();
+    return trimmed.length > 0 ? trimmed : null;
 }
 
 function readErrorField(body: unknown): null | string {
