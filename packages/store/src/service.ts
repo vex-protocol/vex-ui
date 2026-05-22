@@ -198,6 +198,10 @@ export interface PushNotificationSubscriptionInput {
 
 export type ResumeNetworkStatus = "signed_out" | AuthProbeStatus;
 
+export interface SendMessageOptions {
+    extra?: null | string;
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Server connection options — identical across all auth flows. */
@@ -2178,10 +2182,12 @@ class VexService {
     async sendDM(
         recipientID: string,
         content: string,
+        options?: SendMessageOptions,
     ): Promise<OperationResult> {
         const send = async (): Promise<void> => {
-            const client = this.requireClient();
-            await client.messages.send(recipientID, content);
+            const client =
+                this.requireClient() as unknown as ClientWithMessageExtraLike;
+            await client.messages.send(recipientID, content, options);
         };
         try {
             await send();
@@ -2217,10 +2223,12 @@ class VexService {
     async sendGroupMessage(
         channelID: string,
         content: string,
+        options?: SendMessageOptions,
     ): Promise<OperationResult> {
         const send = async (): Promise<void> => {
-            const client = this.requireClient();
-            await client.messages.group(channelID, content);
+            const client =
+                this.requireClient() as unknown as ClientWithMessageExtraLike;
+            await client.messages.group(channelID, content, options);
         };
         try {
             await send();

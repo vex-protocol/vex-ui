@@ -1,4 +1,5 @@
 import type { PickedAttachment } from "../lib/attachments";
+import type { MessageReplyReference } from "@vex-chat/store";
 import type { RecordingOptions } from "expo-audio";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -40,12 +41,14 @@ interface MessageInputBarProps {
     editing?: boolean | undefined;
     onAttachPress?: (() => void) | undefined;
     onCancelEdit?: (() => void) | undefined;
+    onCancelReply?: (() => void) | undefined;
     onChangeText: (text: string) => void;
     onRemoveAttachment?: (() => void) | undefined;
     onSend: () => void;
     onVoiceMemoError?: ((message: string) => void) | undefined;
     onVoiceMemoRecorded?: ((attachment: PickedAttachment) => void) | undefined;
     placeholder?: string;
+    replyingTo?: MessageReplyReference | null | undefined;
     sending?: boolean;
     value: string;
 }
@@ -86,12 +89,14 @@ export function MessageInputBar({
     editing = false,
     onAttachPress,
     onCancelEdit,
+    onCancelReply,
     onChangeText,
     onRemoveAttachment,
     onSend,
     onVoiceMemoError,
     onVoiceMemoRecorded,
     placeholder = "Message...",
+    replyingTo = null,
     sending = false,
     value,
 }: MessageInputBarProps) {
@@ -130,6 +135,60 @@ export function MessageInputBar({
                     : null,
             ]}
         >
+            {replyingTo && !editing ? (
+                <View style={styles.replyPreview}>
+                    <View style={styles.replyRail} />
+                    <Ionicons
+                        color={colors.textSecondary}
+                        name="arrow-undo-outline"
+                        size={16}
+                    />
+                    <View style={styles.replyMeta}>
+                        <Text numberOfLines={1} style={styles.replyTitle}>
+                            {replyingTo.targetAuthorName ??
+                                replyingTo.targetAuthorID?.slice(0, 8) ??
+                                "Message"}
+                        </Text>
+                        <Text numberOfLines={1} style={styles.replyText}>
+                            {replyingTo.targetPreview ??
+                                replyingTo.targetAttachment?.fileName ??
+                                "Original message"}
+                        </Text>
+                    </View>
+                    {replyingTo.targetAttachment ? (
+                        <View style={styles.replyAttachmentIcon}>
+                            <Ionicons
+                                color={colors.muted}
+                                name={
+                                    isImageType(
+                                        replyingTo.targetAttachment.contentType,
+                                    )
+                                        ? "image-outline"
+                                        : "document-outline"
+                                }
+                                size={16}
+                            />
+                        </View>
+                    ) : null}
+                    <TouchableOpacity
+                        accessibilityLabel="Cancel reply"
+                        accessibilityRole="button"
+                        disabled={sending}
+                        onPress={onCancelReply}
+                        style={[
+                            styles.removeAttachmentBtn,
+                            sending && styles.actionBtnDisabled,
+                        ]}
+                    >
+                        <Ionicons
+                            color={colors.textSecondary}
+                            name="close"
+                            size={18}
+                        />
+                    </TouchableOpacity>
+                </View>
+            ) : null}
+
             {attachment ? (
                 <View style={styles.attachmentPreview}>
                     {attachment.previewUri &&
@@ -777,6 +836,45 @@ const styles = StyleSheet.create({
         height: 32,
         justifyContent: "center",
         width: 32,
+    },
+    replyAttachmentIcon: {
+        alignItems: "center",
+        backgroundColor: colors.input,
+        borderColor: colors.borderSubtle,
+        borderWidth: 1,
+        height: 32,
+        justifyContent: "center",
+        width: 32,
+    },
+    replyMeta: {
+        flex: 1,
+        minWidth: 0,
+    },
+    replyPreview: {
+        alignItems: "center",
+        backgroundColor: "rgba(255,255,255,0.04)",
+        borderColor: colors.borderSubtle,
+        borderWidth: 1,
+        flexDirection: "row",
+        gap: 8,
+        minHeight: 42,
+        paddingLeft: 10,
+        paddingRight: 4,
+        paddingVertical: 6,
+    },
+    replyRail: {
+        alignSelf: "stretch",
+        backgroundColor: "rgba(138,180,255,0.58)",
+        width: 2,
+    },
+    replyText: {
+        color: colors.muted,
+        fontSize: 11,
+    },
+    replyTitle: {
+        color: colors.textSecondary,
+        fontSize: 12,
+        fontWeight: "700",
     },
     sendBtn: {
         alignItems: "center",

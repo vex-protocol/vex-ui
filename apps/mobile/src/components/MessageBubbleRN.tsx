@@ -8,6 +8,7 @@ import type {
     MessageEmoji,
     MessageMarkdownNode,
     MessageReaction,
+    MessageReplyReference,
 } from "@vex-chat/store";
 import type {
     DimensionValue,
@@ -34,6 +35,7 @@ import {
 
 import {
     applyEmoji,
+    buildMessageReplyReference,
     createUnicodeReactionEmoji,
     emojiReactionKey,
     emojiReactionLabel,
@@ -43,6 +45,7 @@ import {
     isImageType,
     messageEmbed,
     messageReactions,
+    messageReply,
     parseMessageMarkdown,
     vexService,
 } from "@vex-chat/store";
@@ -70,10 +73,18 @@ interface MessageBubbleRNProps {
     onDeleteMessageForEveryone?: ((message: Message) => void) | undefined;
     onDeleteMessageForMe?: ((message: Message) => void) | undefined;
     onEditMessage?: ((message: Message) => void) | undefined;
+    onPressReplyTarget?: ((mailID: string) => void) | undefined;
+    onReplyMessage?: ((message: Message) => void) | undefined;
     onToggleReaction?:
         | ((message: Message, emoji: MessageEmoji) => void)
         | undefined;
+    replyTarget?: MessageReplyTarget | null | undefined;
     showIdentity?: boolean;
+}
+
+interface MessageReplyTarget {
+    authorName: string;
+    message: Message;
 }
 
 const QUICK_REACTION_EMOJIS: MessageEmoji[] = [
@@ -177,7 +188,10 @@ export function MessageBubbleRN({
     onDeleteMessageForEveryone,
     onDeleteMessageForMe,
     onEditMessage,
+    onPressReplyTarget,
+    onReplyMessage,
     onToggleReaction,
+    replyTarget = null,
     showIdentity = true,
 }: MessageBubbleRNProps) {
     const { height: windowHeight, width: windowWidth } = useWindowDimensions();
@@ -199,12 +213,36 @@ export function MessageBubbleRN({
         () => Boolean(embed?.blocks?.some(usesMessageMarkdownSource)),
         [embed],
     );
+    const replyTargetAuthorName = replyTarget?.authorName;
+    const replyTargetMessage = replyTarget?.message;
+    const replyReference = React.useMemo(
+        () =>
+            replyTargetMessage
+                ? buildMessageReplyReference(
+                      replyTargetMessage,
+                      replyTargetAuthorName,
+                  )
+                : messageReply(message),
+        [message, replyTargetAuthorName, replyTargetMessage],
+    );
     const shouldRenderMessage =
         !embed || (embed.display !== "replace" && !embedConsumesMessage);
     const reactions = React.useMemo(() => messageReactions(message), [message]);
 
     const menuActions = React.useMemo(
         () => [
+            ...(onReplyMessage
+                ? [
+                      {
+                          id: "reply",
+                          label: "Reply",
+                          onPress: () => {
+                              onReplyMessage(message);
+                          },
+                          tone: "default" as const,
+                      },
+                  ]
+                : []),
             {
                 id: "copy",
                 label: "Copy text",
@@ -257,6 +295,7 @@ export function MessageBubbleRN({
             onDeleteMessageForEveryone,
             onDeleteMessageForMe,
             onEditMessage,
+            onReplyMessage,
         ],
     );
 
@@ -559,6 +598,20 @@ export function MessageBubbleRN({
                                 </Text>
                             </View>
                         )}
+                        {replyReference ? (
+                            <ReplyReferencePreview
+                                onPress={
+                                    onPressReplyTarget
+                                        ? () => {
+                                              onPressReplyTarget(
+                                                  replyReference.targetMailID,
+                                              );
+                                          }
+                                        : undefined
+                                }
+                                reply={replyReference}
+                            />
+                        ) : null}
                         {embed ? (
                             <MessageEmbedCard
                                 embed={embed}
@@ -1539,6 +1592,111 @@ function ReactionRow({
     );
 }
 
+function ReplyAttachmentThumbnail({
+    attachment,
+}: {
+    attachment: EncryptedFileAttachment;
+}) {
+    const shouldRenderImage = isImageType(attachment.contentType);
+    const [imageUri, setImageUri] = React.useState<null | string>(null);
+
+    React.useEffect(() => {
+        if (!shouldRenderImage) {
+            setImageUri(null);
+            return;
+        }
+        let cancelled = false;
+        setImageUri(null);
+        void fetchAttachmentData(attachment)
+            .then((data) => {
+                if (cancelled) return;
+                setImageUri(
+                    `data:${attachment.contentType};base64,${bytesToBase64(
+                        data,
+                    )}`,
+                );
+            })
+            .catch(() => {
+                if (!cancelled) setImageUri(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [attachment, shouldRenderImage]);
+
+    if (imageUri) {
+        return (
+            <Image
+                accessibilityIgnoresInvertColors
+                source={{ uri: imageUri }}
+                style={styles.replyAttachmentImage}
+            />
+        );
+    }
+
+    return (
+        <View style={styles.replyAttachmentIcon}>
+            <Ionicons
+                color={colors.textSecondary}
+                name={shouldRenderImage ? "image-outline" : "document-outline"}
+                size={16}
+            />
+        </View>
+    );
+}
+
+function ReplyReferencePreview({
+    onPress,
+    reply,
+}: {
+    onPress?: (() => void) | undefined;
+    reply: MessageReplyReference;
+}) {
+    const author =
+        reply.targetAuthorName ??
+        (reply.targetAuthorID ? reply.targetAuthorID.slice(0, 8) : "Message");
+    const preview =
+        reply.targetPreview ??
+        reply.targetAttachment?.fileName ??
+        "Original message";
+
+    return (
+        <View style={styles.replyReference}>
+            <View style={styles.replyConnector}>
+                <View style={styles.replyConnectorCurve} />
+            </View>
+            <Pressable
+                accessibilityRole={onPress ? "button" : undefined}
+                disabled={!onPress}
+                onPress={onPress}
+                style={({ pressed }) => [
+                    styles.replyCard,
+                    pressed && styles.attachmentPressed,
+                ]}
+            >
+                <Ionicons
+                    color={colors.muted}
+                    name="arrow-undo-outline"
+                    size={14}
+                />
+                <View style={styles.replyTextBlock}>
+                    <Text numberOfLines={1} style={styles.replyAuthor}>
+                        {author}
+                    </Text>
+                    <Text numberOfLines={1} style={styles.replyPreviewText}>
+                        {preview}
+                    </Text>
+                </View>
+                {reply.targetAttachment ? (
+                    <ReplyAttachmentThumbnail
+                        attachment={reply.targetAttachment}
+                    />
+                ) : null}
+            </Pressable>
+        </View>
+    );
+}
+
 function usesMessageMarkdownSource(block: MessageEmbedBlock): boolean {
     if (block.type !== "markdown") return false;
     return block.source === "message";
@@ -2230,6 +2388,71 @@ const styles = StyleSheet.create({
         flexWrap: "wrap",
         gap: 6,
         marginTop: 5,
+    },
+    replyAttachmentIcon: {
+        alignItems: "center",
+        backgroundColor: colors.input,
+        borderColor: colors.borderSubtle,
+        borderRadius: 6,
+        borderWidth: 1,
+        height: 34,
+        justifyContent: "center",
+        width: 34,
+    },
+    replyAttachmentImage: {
+        backgroundColor: colors.input,
+        borderRadius: 6,
+        height: 34,
+        width: 34,
+    },
+    replyAuthor: {
+        ...typography.body,
+        color: colors.textSecondary,
+        fontSize: 11,
+        fontWeight: "700",
+    },
+    replyCard: {
+        alignItems: "center",
+        backgroundColor: "rgba(255,255,255,0.045)",
+        borderColor: "rgba(255,255,255,0.11)",
+        borderRadius: 8,
+        borderWidth: 1,
+        flex: 1,
+        flexDirection: "row",
+        gap: 8,
+        maxWidth: 360,
+        minHeight: 38,
+        paddingHorizontal: 9,
+        paddingVertical: 7,
+    },
+    replyConnector: {
+        alignItems: "flex-end",
+        paddingTop: 4,
+        width: 24,
+    },
+    replyConnectorCurve: {
+        borderBottomColor: "rgba(138,180,255,0.42)",
+        borderBottomLeftRadius: 8,
+        borderBottomWidth: 2,
+        borderLeftColor: "rgba(138,180,255,0.42)",
+        borderLeftWidth: 2,
+        height: 20,
+        width: 15,
+    },
+    replyPreviewText: {
+        ...typography.body,
+        color: colors.muted,
+        fontSize: 11,
+    },
+    replyReference: {
+        alignItems: "flex-start",
+        flexDirection: "row",
+        marginBottom: 4,
+        marginTop: 2,
+    },
+    replyTextBlock: {
+        flex: 1,
+        minWidth: 0,
     },
     systemContainer: {
         alignItems: "center",

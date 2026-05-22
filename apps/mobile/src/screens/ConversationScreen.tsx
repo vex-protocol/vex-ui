@@ -17,7 +17,10 @@ import {
 import {
     $messages,
     $user,
+    buildMessageReplyReference,
+    createReplyExtra,
     formatFileAttachmentMarkdown,
+    messageReply,
     vexService,
 } from "@vex-chat/store";
 
@@ -46,6 +49,10 @@ export function ConversationScreen({
         const thread = allMessages[userID] ?? [];
         return [...thread].reverse();
     }, [allMessages, userID]);
+    const messageByID = useMemo(
+        () => new Map(messages.map((message) => [message.mailID, message])),
+        [messages],
+    );
     const identityVisibility = useMemo(
         () => buildIdentityVisibility(messages),
         [messages],
@@ -64,15 +71,40 @@ export function ConversationScreen({
     const [text, setText] = useState("");
     const [attachment, setAttachment] = useState<null | PickedAttachment>(null);
     const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+    const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(
+        null,
+    );
     const [sending, setSending] = useState(false);
     const [error, setError] = useState("");
+    const listRef = useRef<FlatList<Message>>(null);
     const sendInFlightRef = useRef(false);
     const insets = useSafeAreaInsets();
+    const authorNameForMessage = useCallback(
+        (message: Message): string =>
+            message.authorID === user?.userID
+                ? (user?.username ?? "Unknown")
+                : username,
+        [user?.userID, user?.username, username],
+    );
+    const liveReplyingToMessage = replyingToMessage
+        ? (messageByID.get(replyingToMessage.mailID) ?? replyingToMessage)
+        : null;
+    const replyReference = useMemo(
+        () =>
+            liveReplyingToMessage
+                ? buildMessageReplyReference(
+                      liveReplyingToMessage,
+                      authorNameForMessage(liveReplyingToMessage),
+                  )
+                : null,
+        [authorNameForMessage, liveReplyingToMessage],
+    );
 
     const sendMessage = useCallback(async () => {
         const content = text.trim();
         const pendingEdit = editingMessage;
         const pendingAttachment = attachment;
+        const pendingReply = liveReplyingToMessage;
         if (pendingEdit) {
             if (!content || !user || sendInFlightRef.current) {
                 return;
@@ -82,6 +114,7 @@ export function ConversationScreen({
             setError("");
             setText("");
             setEditingMessage(null);
+            setReplyingToMessage(null);
             await waitForComposerPaint();
             try {
                 const result = await vexService.editMessage(
@@ -121,6 +154,7 @@ export function ConversationScreen({
         setError("");
         setText("");
         setAttachment(null);
+        setReplyingToMessage(null);
         await waitForComposerPaint();
         try {
             let messageBody = content;
@@ -137,6 +171,11 @@ export function ConversationScreen({
                     setAttachment((current) =>
                         current === null ? pendingAttachment : current,
                     );
+                    if (pendingReply) {
+                        setReplyingToMessage((current) =>
+                            current === null ? pendingReply : current,
+                        );
+                    }
                     return;
                 }
                 const attachmentMarkdown = formatFileAttachmentMarkdown(
@@ -147,13 +186,28 @@ export function ConversationScreen({
                     : attachmentMarkdown;
             }
 
-            const result = await vexService.sendDM(userID, messageBody);
+            const replyExtra = pendingReply
+                ? createReplyExtra(
+                      pendingReply,
+                      authorNameForMessage(pendingReply),
+                  )
+                : undefined;
+            const result = await vexService.sendDM(
+                userID,
+                messageBody,
+                replyExtra ? { extra: replyExtra } : undefined,
+            );
             if (!result.ok) {
                 setError(result.error ?? "Failed to send");
                 setText((current) => (current === "" ? content : current));
                 setAttachment((current) =>
                     current === null ? pendingAttachment : current,
                 );
+                if (pendingReply) {
+                    setReplyingToMessage((current) =>
+                        current === null ? pendingReply : current,
+                    );
+                }
                 return;
             }
         } catch (err: unknown) {
@@ -162,11 +216,25 @@ export function ConversationScreen({
             setAttachment((current) =>
                 current === null ? pendingAttachment : current,
             );
+            if (pendingReply) {
+                setReplyingToMessage((current) =>
+                    current === null ? pendingReply : current,
+                );
+            }
         } finally {
             sendInFlightRef.current = false;
             setSending(false);
         }
-    }, [attachment, editingMessage, text, user, userID, sendInFlightRef]);
+    }, [
+        attachment,
+        authorNameForMessage,
+        editingMessage,
+        liveReplyingToMessage,
+        text,
+        user,
+        userID,
+        sendInFlightRef,
+    ]);
 
     const handlePickAttachment = useCallback(
         (kind: "file" | "image") => {
@@ -249,9 +317,33 @@ export function ConversationScreen({
     const editMessage = useCallback((message: Message) => {
         setError("");
         setAttachment(null);
+        setReplyingToMessage(null);
         setEditingMessage(message);
         setText(message.message);
     }, []);
+
+    const replyToMessage = useCallback((message: Message) => {
+        setError("");
+        setEditingMessage(null);
+        setReplyingToMessage(message);
+    }, []);
+
+    const scrollToMessage = useCallback(
+        (mailID: string) => {
+            const index = messages.findIndex(
+                (message) => message.mailID === mailID,
+            );
+            if (index === -1) {
+                return;
+            }
+            listRef.current?.scrollToIndex({
+                animated: true,
+                index,
+                viewPosition: 0.45,
+            });
+        },
+        [messages],
+    );
 
     const toggleReaction = useCallback(
         (message: Message, emoji: MessageEmoji) => {
@@ -272,18 +364,31 @@ export function ConversationScreen({
 
     function renderMessage({ index, item }: { index: number; item: Message }) {
         const isOwn = item.authorID === user?.userID;
-        const ownName = user?.username ?? "Unknown";
         const showIdentity = identityVisibility[index] ?? true;
+        const reply = messageReply(item);
+        const targetMessage = reply
+            ? messageByID.get(reply.targetMailID)
+            : undefined;
         return (
             <MessageBubbleRN
-                authorName={isOwn ? ownName : username}
+                authorName={authorNameForMessage(item)}
                 currentUserID={user?.userID}
                 isOwn={isOwn}
                 message={item}
                 onDeleteMessageForEveryone={deleteMessageForEveryone}
                 onDeleteMessageForMe={deleteMessageForMe}
                 onEditMessage={editMessage}
+                onPressReplyTarget={scrollToMessage}
+                onReplyMessage={replyToMessage}
                 onToggleReaction={toggleReaction}
+                replyTarget={
+                    targetMessage
+                        ? {
+                              authorName: authorNameForMessage(targetMessage),
+                              message: targetMessage,
+                          }
+                        : null
+                }
                 showIdentity={showIdentity}
             />
         );
@@ -316,6 +421,13 @@ export function ConversationScreen({
                     data={messages}
                     inverted
                     keyExtractor={(m) => m.mailID}
+                    onScrollToIndexFailed={(info) => {
+                        listRef.current?.scrollToOffset({
+                            animated: true,
+                            offset: info.averageItemLength * info.index,
+                        });
+                    }}
+                    ref={listRef}
                     renderItem={renderMessage}
                 />
             )}
@@ -335,6 +447,9 @@ export function ConversationScreen({
                     setEditingMessage(null);
                     setText("");
                 }}
+                onCancelReply={() => {
+                    setReplyingToMessage(null);
+                }}
                 onChangeText={setText}
                 onRemoveAttachment={() => {
                     setAttachment(null);
@@ -345,6 +460,7 @@ export function ConversationScreen({
                 placeholder={
                     editingMessage ? "Edit message" : `Message @${username}`
                 }
+                replyingTo={replyReference}
                 sending={sending}
                 value={text}
             />
@@ -415,6 +531,13 @@ function buildIdentityVisibility(messages: Message[]): boolean[] {
             visibility[index] = true;
             chunkAuthorID = null;
             chunkStartTs = 0;
+            continue;
+        }
+
+        if (messageReply(current)) {
+            visibility[index] = true;
+            chunkAuthorID = current.authorID;
+            chunkStartTs = currentTs;
             continue;
         }
 

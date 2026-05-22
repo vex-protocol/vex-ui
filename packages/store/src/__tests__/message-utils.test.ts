@@ -8,10 +8,12 @@ import {
     applyMessageReactionEvent,
     applyMessageUpdateEvent,
     avatarHue,
+    buildMessageReplyReference,
     chunkMessages,
     createDeleteBatchEventExtra,
     createDeleteEventExtra,
     createReactionEventExtra,
+    createReplyExtra,
     createUnicodeReactionEmoji,
     createUpdateEventExtra,
     emojiReactionLabel,
@@ -26,6 +28,8 @@ import {
     messageEmbed,
     messageReactionEvent,
     messageReactions,
+    messageReply,
+    messageReplyPreviewText,
     messageUpdateEvent,
     parseFileExtra,
     parseMessageExtra,
@@ -226,6 +230,67 @@ describe("message embeds", () => {
         });
 
         expect(parseMessageExtra(extra).embed).toBeUndefined();
+    });
+});
+
+describe("message replies", () => {
+    test("serializes and parses reply references with compact snapshots", () => {
+        const attachment = {
+            contentType: "image/png",
+            fileID: "file-123",
+            fileName: "screen.png",
+            fileSize: 2048,
+            key: "secret",
+        };
+        const target = makeMessage({
+            authorID: "bob",
+            mailID: "m-target",
+            message: `look at this\n\n${formatFileAttachmentMarkdown(
+                attachment,
+            )}`,
+            timestamp: "2026-04-10T12:01:00.000Z",
+        });
+        const extra = createReplyExtra(target, "Bob");
+        const reply = messageReply(makeMessage({ extra }));
+
+        expect(reply).toEqual({
+            targetAttachment: attachment,
+            targetAuthorID: "bob",
+            targetAuthorName: "Bob",
+            targetMailID: "m-target",
+            targetPreview: "look at this",
+            targetTimestamp: "2026-04-10T12:01:00.000Z",
+        });
+    });
+
+    test("uses attachment names when the target has no text preview", () => {
+        const attachment = {
+            contentType: "image/jpeg",
+            fileID: "file-456",
+            fileName: "photo.jpg",
+            fileSize: 4096,
+            key: "secret",
+        };
+        const target = makeMessage({
+            mailID: "m-target",
+            message: formatFileAttachmentMarkdown(attachment),
+        });
+
+        expect(buildMessageReplyReference(target).targetPreview).toBe(
+            "photo.jpg",
+        );
+        expect(messageReplyPreviewText(target.message)).toBe("");
+    });
+
+    test("drops malformed reply metadata", () => {
+        const parsed = parseMessageExtra(
+            JSON.stringify({
+                reply: { targetMailID: "" },
+                version: 1,
+            }),
+        );
+
+        expect(parsed.reply).toBeUndefined();
     });
 });
 

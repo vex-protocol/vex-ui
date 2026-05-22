@@ -113,6 +113,7 @@ export interface MessageExtra {
     messageUpdateEvent?: MessageUpdateEvent;
     reactionEvent?: MessageReactionEvent;
     reactions?: MessageReaction[];
+    reply?: MessageReplyReference;
     version: 1;
 }
 
@@ -135,6 +136,15 @@ export interface MessageReactionEvent {
     action: "toggle";
     emoji: MessageEmoji;
     targetMailID: string;
+}
+
+export interface MessageReplyReference {
+    targetAttachment?: EncryptedFileAttachment;
+    targetAuthorID?: string;
+    targetAuthorName?: string;
+    targetMailID: string;
+    targetPreview?: string;
+    targetTimestamp?: string;
 }
 
 export interface MessageUpdateEvent {
@@ -174,6 +184,25 @@ export function avatarHue(id: string): number {
     return Math.abs(h) % 360;
 }
 
+export function buildMessageReplyReference(
+    target: MessageWithClientExtra,
+    targetAuthorName?: string,
+): MessageReplyReference {
+    const targetAttachment = messageFirstAttachment(target.message);
+    const preview =
+        messageReplyPreviewText(target.message) ||
+        targetAttachment?.fileName ||
+        "Message";
+    return {
+        ...(targetAttachment ? { targetAttachment } : {}),
+        targetAuthorID: target.authorID,
+        ...(targetAuthorName ? { targetAuthorName } : {}),
+        targetMailID: target.mailID,
+        targetPreview: preview,
+        targetTimestamp: target.timestamp,
+    };
+}
+
 export function formatFileSize(bytes: number): string {
     if (bytes < 1024) return String(bytes) + " B";
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
@@ -189,6 +218,7 @@ export function isImageType(contentType: string): boolean {
 const VEX_FILE_SCHEME = "vex-file://";
 
 const MESSAGE_EXTRA_VERSION = 1;
+const MESSAGE_REPLY_PREVIEW_MAX = 280;
 const INLINE_BARE_URL_RE = /^https?:\/\/[^\s<>\[\]{}"']+/i;
 
 export function applyMessageDeleteEvent(
@@ -301,6 +331,30 @@ export function createReactionEventExtra(
             version: MESSAGE_EXTRA_VERSION,
         }) ?? JSON.stringify({ version: MESSAGE_EXTRA_VERSION })
     );
+}
+
+export function createReplyExtra(
+    target: MessageWithClientExtra,
+    targetAuthorName?: string,
+    currentExtra?: null | string,
+): string {
+    return (
+        createReplyReferenceExtra(
+            buildMessageReplyReference(target, targetAuthorName),
+            currentExtra,
+        ) ?? JSON.stringify({ version: MESSAGE_EXTRA_VERSION })
+    );
+}
+
+export function createReplyReferenceExtra(
+    reply: MessageReplyReference,
+    currentExtra?: null | string,
+): null | string {
+    return serializeMessageExtra({
+        ...parseMessageExtra(currentExtra),
+        reply,
+        version: MESSAGE_EXTRA_VERSION,
+    });
 }
 
 export function createUnicodeReactionEmoji(
@@ -436,6 +490,15 @@ export function messageEmbed(
     return parseMessageExtra(message.extra).embed ?? null;
 }
 
+export function messageFirstAttachment(
+    content: string,
+): EncryptedFileAttachment | undefined {
+    return parseMessageMarkdown(content).find(
+        (node): node is Extract<MessageMarkdownNode, { type: "attachment" }> =>
+            node.type === "attachment",
+    )?.attachment;
+}
+
 export function messageReactionEvent(
     message: MessageWithClientExtra,
 ): MessageReactionEvent | null {
@@ -446,6 +509,25 @@ export function messageReactions(
     message: MessageWithClientExtra,
 ): MessageReaction[] {
     return parseMessageExtra(message.extra).reactions ?? [];
+}
+
+export function messageReply(
+    message: MessageWithClientExtra,
+): MessageReplyReference | null {
+    return parseMessageExtra(message.extra).reply ?? null;
+}
+
+export function messageReplyPreviewText(content: string): string {
+    const text = parseMessageMarkdown(content)
+        .flatMap((node) =>
+            node.type === "text"
+                ? node.segments.map((segment) => segment.text)
+                : [],
+        )
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+    return truncateReplyPreview(text);
 }
 
 export function messageUpdateEvent(
@@ -495,12 +577,14 @@ export function parseMessageExtra(
             raw["messageUpdateEvent"],
         );
         const reactionEvent = parseMessageReactionEvent(raw["reactionEvent"]);
+        const reply = parseMessageReplyReference(raw["reply"]);
         const rest = { ...raw };
         delete rest["embed"];
         delete rest["messageDeleteEvent"];
         delete rest["messageUpdateEvent"];
         delete rest["reactionEvent"];
         delete rest["reactions"];
+        delete rest["reply"];
         delete rest["version"];
         return {
             ...rest,
@@ -509,6 +593,7 @@ export function parseMessageExtra(
             ...(messageUpdate ? { messageUpdateEvent: messageUpdate } : {}),
             ...(reactionEvent ? { reactionEvent } : {}),
             reactions: parseMessageReactions(raw["reactions"]),
+            ...(reply ? { reply } : {}),
             version: MESSAGE_EXTRA_VERSION,
         };
     } catch {
@@ -690,6 +775,21 @@ function copyString(
     const value = source[key];
     if (typeof value === "string") {
         Reflect.set(target, key, value);
+    }
+}
+
+function copyTrimmedString(
+    target: object,
+    source: Record<string, unknown>,
+    key: string,
+): void {
+    const value = source[key];
+    if (typeof value !== "string") {
+        return;
+    }
+    const trimmed = value.trim();
+    if (trimmed) {
+        Reflect.set(target, key, trimmed);
     }
 }
 
@@ -956,6 +1056,7 @@ function normalizeMessageExtra(extra: MessageExtra): MessageExtra {
         normalized.messageUpdateEvent,
     );
     const reactionEvent = parseMessageReactionEvent(normalized.reactionEvent);
+    const reply = parseMessageReplyReference(normalized.reply);
     if (embed) {
         normalized.embed = embed;
     } else {
@@ -975,6 +1076,11 @@ function normalizeMessageExtra(extra: MessageExtra): MessageExtra {
         normalized.reactionEvent = reactionEvent;
     } else {
         delete normalized.reactionEvent;
+    }
+    if (reply) {
+        normalized.reply = reply;
+    } else {
+        delete normalized.reply;
     }
     if (reactions.length > 0) {
         normalized.reactions = reactions;
@@ -1454,6 +1560,39 @@ function parseMessageReactions(value: unknown): MessageReaction[] {
     return reactions;
 }
 
+function parseMessageReplyReference(
+    value: unknown,
+): MessageReplyReference | undefined {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const targetMailID =
+        typeof value["targetMailID"] === "string"
+            ? value["targetMailID"].trim()
+            : "";
+    if (!targetMailID) {
+        return undefined;
+    }
+
+    const reply: MessageReplyReference = { targetMailID };
+    const targetAttachment = parseAttachmentExtra(value["targetAttachment"]);
+    if (targetAttachment) {
+        reply.targetAttachment = targetAttachment;
+    }
+    copyTrimmedString(reply, value, "targetAuthorID");
+    copyTrimmedString(reply, value, "targetAuthorName");
+    copyTrimmedString(reply, value, "targetTimestamp");
+
+    const targetPreview =
+        typeof value["targetPreview"] === "string"
+            ? truncateReplyPreview(value["targetPreview"].replace(/\s+/g, " "))
+            : "";
+    if (targetPreview) {
+        reply.targetPreview = targetPreview;
+    }
+    return reply;
+}
+
 function parseMessageUpdateEvent(
     value: unknown,
 ): MessageUpdateEvent | undefined {
@@ -1516,6 +1655,14 @@ function trimInlineUrl(value: string): string {
         next = next.slice(0, -1);
     }
     return next;
+}
+
+function truncateReplyPreview(value: string): string {
+    const trimmed = value.trim();
+    if (trimmed.length <= MESSAGE_REPLY_PREVIEW_MAX) {
+        return trimmed;
+    }
+    return `${trimmed.slice(0, MESSAGE_REPLY_PREVIEW_MAX - 3).trimEnd()}...`;
 }
 
 function unescapeMarkdownLabel(value: string): string {
