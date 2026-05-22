@@ -49,7 +49,8 @@ export function SettingsScreen({ navigation }: AppScreenProps<"Settings">) {
             },
         },
         {
-            description: "Recover and manage your account if you lose every device",
+            description:
+                "Recover and manage your account if you lose every device",
             icon: "key-outline",
             label: "Passkeys",
             onPress: () => {

@@ -169,6 +169,15 @@ export interface OperationResult {
     ok: boolean;
 }
 
+export interface PasskeyCeremonyDriver {
+    authenticate(
+        options: PublicKeyCredentialRequestOptionsJSON,
+    ): Promise<Record<string, unknown>>;
+    register(
+        options: PublicKeyCredentialCreationOptionsJSON,
+    ): Promise<Record<string, unknown>>;
+}
+
 /**
  * Result of {@link VexService.beginPasskeySignIn}. Hands back the
  * options the host needs to drive the platform WebAuthn ceremony,
@@ -180,17 +189,6 @@ export interface PasskeySignInBegin {
     requestID: string;
 }
 
-export interface PasskeyCeremonyDriver {
-    authenticate(
-        options: PublicKeyCredentialRequestOptionsJSON,
-    ): Promise<Record<string, unknown>>;
-    register(
-        options: PublicKeyCredentialCreationOptionsJSON,
-    ): Promise<Record<string, unknown>>;
-}
-
-type PasskeySessionState = "authenticated" | "not_registered" | "unavailable";
-
 export interface PushNotificationSubscriptionInput {
     channel: "expo";
     events?: string[];
@@ -198,9 +196,9 @@ export interface PushNotificationSubscriptionInput {
     token: string;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
 export type ResumeNetworkStatus = "signed_out" | AuthProbeStatus;
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Server connection options — identical across all auth flows. */
 export interface ServerOptions {
@@ -348,6 +346,8 @@ interface MessageMapWritableLike {
 interface NotificationSubscriptionLike {
     subscriptionID: string;
 }
+
+type PasskeySessionState = "authenticated" | "not_registered" | "unavailable";
 
 interface PendingMessageEventMessage {
     attempts: number;
@@ -540,10 +540,6 @@ class VexService {
         } catch (err: unknown) {
             return { error: errorMessage(err), ok: false };
         }
-    }
-
-    setPasskeyCeremonyDriver(driver: null | PasskeyCeremonyDriver): void {
-        this.passkeyCeremonyDriver = driver;
     }
 
     /**
@@ -890,8 +886,6 @@ class VexService {
         }
     }
 
-    // ── Server CRUD ─────────────────────────────────────────────────────
-
     consumeRateLimitNotice(): boolean {
         if (!this.pendingRateLimitNotice) {
             return false;
@@ -899,6 +893,8 @@ class VexService {
         this.pendingRateLimitNotice = false;
         return true;
     }
+
+    // ── Server CRUD ─────────────────────────────────────────────────────
 
     async createChannel(
         name: string,
@@ -1181,8 +1177,6 @@ class VexService {
         }
     }
 
-    // ── Channel operations ──────────────────────────────────────────────
-
     async editMessage(
         conversationKey: string,
         mailID: string,
@@ -1226,6 +1220,8 @@ class VexService {
         );
         return { ok: true };
     }
+
+    // ── Channel operations ──────────────────────────────────────────────
 
     /**
      * Finish a passkey-registration ceremony. Persists the new
@@ -1313,8 +1309,6 @@ class VexService {
         return client.invites.retrieve(serverID);
     }
 
-    // ── Messaging ───────────────────────────────────────────────────────
-
     /** Effective local retention cap (defaults to 30 when signed out). */
     getLocalMessageRetentionDays(): number {
         const c = this.client as unknown as {
@@ -1326,6 +1320,8 @@ class VexService {
         }
         return $localMessageRetentionDaysWritable.get();
     }
+
+    // ── Messaging ───────────────────────────────────────────────────────
 
     async getServerPermissions(serverID: string): Promise<Permission[]> {
         const client = this.requireClient();
@@ -1648,8 +1644,6 @@ class VexService {
         }
     }
 
-    // ── User operations ─────────────────────────────────────────────────
-
     async lookupUser(query: string): Promise<null | User> {
         try {
             const client = this.requireClient();
@@ -1668,6 +1662,8 @@ class VexService {
             return null;
         }
     }
+
+    // ── User operations ─────────────────────────────────────────────────
 
     markRead(conversationKey: string): void {
         $dmUnreadCountsWritable.setKey(conversationKey, 0);
@@ -2297,11 +2293,11 @@ class VexService {
         }
     }
 
-    // ── Unread management ───────────────────────────────────────────────
-
     setBackgroundConnectionRecoverySuspended(suspended: boolean): void {
         this.backgroundConnectionRecoverySuspended = suspended;
     }
+
+    // ── Unread management ───────────────────────────────────────────────
 
     /**
      * Updates the local message retention preference (1–30 days) and
@@ -2314,6 +2310,10 @@ class VexService {
             setLocalMessageRetentionDays?: (d: number) => void;
         };
         c?.setLocalMessageRetentionDays?.(clamped);
+    }
+
+    setPasskeyCeremonyDriver(driver: null | PasskeyCeremonyDriver): void {
+        this.passkeyCeremonyDriver = driver;
     }
 
     setWebsocketDebug(enabled: boolean): void {
@@ -2819,6 +2819,14 @@ class VexService {
         }
     }
 
+    private currentClientUsername(): string {
+        const user = $userWritable.get();
+        if (user?.username) {
+            return user.username;
+        }
+        return this.requireClient().me.user().username;
+    }
+
     private async deletePersistedMessage(mailID: string): Promise<void> {
         const database = (this.client as ClientWithLocalDatabaseLike | null)
             ?.database;
@@ -3193,14 +3201,6 @@ class VexService {
         });
     }
 
-    private currentClientUsername(): string {
-        const user = $userWritable.get();
-        if (user?.username) {
-            return user.username;
-        }
-        return this.requireClient().me.user().username;
-    }
-
     private async loginWithDeviceKeyWithRetry(
         client: Client,
         deviceID?: string,
@@ -3222,54 +3222,6 @@ class VexService {
             await waitMs(backoffMs);
         }
         return lastErr;
-    }
-
-    private async satisfyPasskeyForCurrentClient(
-        username: string,
-    ): Promise<PasskeySessionState> {
-        const driver = this.passkeyCeremonyDriver;
-        if (!driver) {
-            return "unavailable";
-        }
-        const client = this.requireClient();
-        let begin: PasskeySignInBegin;
-        try {
-            begin = await client.passkeys.beginAuthentication(username);
-        } catch (err: unknown) {
-            if (isUnauthorizedError(err)) {
-                return "not_registered";
-            }
-            throw err;
-        }
-        const response = await driver.authenticate(
-            begin.options as PublicKeyCredentialRequestOptionsJSON,
-        );
-        await client.passkeys.finishAuthentication({
-            requestID: begin.requestID,
-            response,
-        });
-        return "authenticated";
-    }
-
-    private async registerInitialPasskeyForCurrentClient(
-        name: string,
-    ): Promise<void> {
-        const driver = this.passkeyCeremonyDriver;
-        if (!driver) {
-            throw new Error(
-                "Passkey setup is required before this account can sign in on this device.",
-            );
-        }
-        const client = this.requireClient();
-        const begin = await client.passkeys.beginRegistration(name);
-        const response = await driver.register(
-            begin.options as PublicKeyCredentialCreationOptionsJSON,
-        );
-        await client.passkeys.finishRegistration({
-            name,
-            requestID: begin.requestID,
-            response,
-        });
     }
 
     private logWsState(step: string, meta?: Record<string, unknown>): void {
@@ -3445,6 +3397,27 @@ class VexService {
         setTimeout(() => {
             this.kickPopulateState(attempt + 1);
         }, 200);
+    }
+
+    private async registerInitialPasskeyForCurrentClient(
+        name: string,
+    ): Promise<void> {
+        const driver = this.passkeyCeremonyDriver;
+        if (!driver) {
+            throw new Error(
+                "Passkey setup is required before this account can sign in on this device.",
+            );
+        }
+        const client = this.requireClient();
+        const begin = await client.passkeys.beginRegistration(name);
+        const response = await driver.register(
+            begin.options as PublicKeyCredentialCreationOptionsJSON,
+        );
+        await client.passkeys.finishRegistration({
+            name,
+            requestID: begin.requestID,
+            response,
+        });
     }
 
     private rememberProcessedMessageEventMailID(mailID: string): void {
@@ -4079,6 +4052,31 @@ class VexService {
             dmThreadCount: Object.keys(messagesAcc).length,
             serverCount: Object.keys(serversAcc).length,
         });
+    }
+
+    private async satisfyPasskeyForCurrentClient(
+        username: string,
+    ): Promise<PasskeySessionState> {
+        const driver = this.passkeyCeremonyDriver;
+        if (!driver) {
+            return "unavailable";
+        }
+        const client = this.requireClient();
+        let begin: PasskeySignInBegin;
+        try {
+            begin = await client.passkeys.beginAuthentication(username);
+        } catch (err: unknown) {
+            if (isUnauthorizedError(err)) {
+                return "not_registered";
+            }
+            throw err;
+        }
+        const response = await driver.authenticate(begin.options);
+        await client.passkeys.finishAuthentication({
+            requestID: begin.requestID,
+            response,
+        });
+        return "authenticated";
     }
 
     private async saveCredentials(
