@@ -11,7 +11,9 @@ import {
 } from "../domains/messaging.ts";
 import {
     createUnicodeReactionEmoji,
+    messageDeleteEvent,
     messageReactionEvent,
+    messageUpdateEvent,
 } from "../message-utils.ts";
 import { vexService } from "../service.ts";
 
@@ -25,12 +27,19 @@ function installClient({
             _opts?: { extra?: null | string },
         ) => {},
     ),
+    saveMessage = vi.fn(async (_message: Message) => {}),
     sendMessage = vi.fn(
         async (
             _userID: string,
             _message: string,
             _opts?: { extra?: null | string },
         ) => {},
+    ),
+    updateMessage = vi.fn(
+        async (
+            _mailID: string,
+            _patch: { extra?: null | string | undefined; message?: string },
+        ) => true,
     ),
 }: {
     deleteMessage?: (mailID: string) => Promise<void>;
@@ -40,15 +49,24 @@ function installClient({
         message: string,
         opts?: { extra?: null | string },
     ) => Promise<void>;
+    saveMessage?: (message: Message) => Promise<void>;
     sendMessage?: (
         userID: string,
         message: string,
         opts?: { extra?: null | string },
     ) => Promise<void>;
+    updateMessage?:
+        | ((
+              mailID: string,
+              patch: { extra?: null | string | undefined; message?: string },
+          ) => Promise<boolean>)
+        | null;
 } = {}) {
     (vexService as unknown as { client: unknown }).client = {
         database: {
             deleteMessage,
+            saveMessage,
+            updateMessage: updateMessage ?? undefined,
         },
         messages: {
             delete: deleteThread,
@@ -56,7 +74,14 @@ function installClient({
             send: sendMessage,
         },
     };
-    return { deleteMessage, deleteThread, groupMessage, sendMessage };
+    return {
+        deleteMessage,
+        deleteThread,
+        groupMessage,
+        saveMessage,
+        sendMessage,
+        updateMessage,
+    };
 }
 
 function makeMessage(overrides: Partial<Message> = {}): Message {
@@ -252,6 +277,160 @@ describe("vexService.deleteLocalThread", () => {
 
         expect(deleted).toBe(false);
         expect(deleteThread).not.toHaveBeenCalled();
+    });
+});
+
+describe("vexService message edit and delete relay", () => {
+    beforeEach(() => {
+        $messagesWritable.set({});
+        $groupMessagesWritable.set({});
+        $dmUnreadCountsWritable.set({});
+        $channelUnreadCountsWritable.set({});
+        $userWritable.set({
+            userID: "me",
+            username: "me",
+        } as User);
+    });
+
+    afterEach(() => {
+        resetClient();
+        $userWritable.set(null);
+    });
+
+    test("sends a DM delete event and removes the local message", async () => {
+        const { deleteMessage, sendMessage } = installClient();
+        $messagesWritable.set({
+            "user-a": [
+                makeMessage({
+                    authorID: "me",
+                    direction: "outgoing",
+                    mailID: "m1",
+                    readerID: "user-a",
+                }),
+            ],
+        });
+
+        const result = await vexService.deleteMessageForEveryone(
+            "user-a",
+            "m1",
+            false,
+        );
+
+        expect(result).toEqual({ ok: true });
+        expect(sendMessage).toHaveBeenCalledWith("user-a", "", {
+            extra: expect.any(String) as string,
+        });
+        const opts = vi.mocked(sendMessage).mock.calls[0]?.[2];
+        expect(messageDeleteEvent(makeMessage({ extra: opts?.extra }))).toEqual(
+            {
+                action: "delete",
+                targetMailID: "m1",
+            },
+        );
+        expect($messagesWritable.get()["user-a"]).toEqual([]);
+        await vi.waitFor(() => {
+            expect(deleteMessage).toHaveBeenCalledWith("m1");
+        });
+    });
+
+    test("sends a group update event and updates the local message", async () => {
+        const { groupMessage, updateMessage } = installClient();
+        $groupMessagesWritable.set({
+            "channel-1": [
+                makeMessage({
+                    authorID: "me",
+                    direction: "outgoing",
+                    group: "channel-1",
+                    mailID: "g1",
+                    message: "before",
+                }),
+            ],
+        });
+
+        const result = await vexService.editMessage(
+            "channel-1",
+            "g1",
+            true,
+            "after",
+        );
+
+        expect(result).toEqual({ ok: true });
+        expect(groupMessage).toHaveBeenCalledWith("channel-1", "", {
+            extra: expect.any(String) as string,
+        });
+        const opts = vi.mocked(groupMessage).mock.calls[0]?.[2];
+        expect(messageUpdateEvent(makeMessage({ extra: opts?.extra }))).toEqual(
+            {
+                action: "update",
+                message: "after",
+                targetMailID: "g1",
+            },
+        );
+        expect($groupMessagesWritable.get()["channel-1"]?.[0]?.message).toBe(
+            "after",
+        );
+        await vi.waitFor(() => {
+            expect(updateMessage).toHaveBeenCalledWith("g1", {
+                message: "after",
+            });
+        });
+    });
+
+    test("falls back to rewriting storage when updateMessage is unavailable", async () => {
+        const saveMessage = vi.fn(async (_message: Message) => {});
+        const deleteMessage = vi.fn(async (_mailID: string) => {});
+        installClient({
+            deleteMessage,
+            saveMessage,
+            updateMessage: null,
+        });
+        $messagesWritable.set({
+            "user-a": [
+                makeMessage({
+                    authorID: "me",
+                    direction: "outgoing",
+                    mailID: "m1",
+                    message: "before",
+                    readerID: "user-a",
+                }),
+            ],
+        });
+
+        const result = await vexService.editMessage(
+            "user-a",
+            "m1",
+            false,
+            "after",
+        );
+
+        expect(result).toEqual({ ok: true });
+        await vi.waitFor(() => {
+            expect(deleteMessage).toHaveBeenCalledWith("m1");
+            expect(saveMessage).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    mailID: "m1",
+                    message: "after",
+                }),
+            );
+        });
+    });
+
+    test("does not relay edits for messages authored by someone else", async () => {
+        const { sendMessage } = installClient();
+        $messagesWritable.set({
+            "user-a": [makeMessage({ authorID: "user-a" })],
+        });
+
+        const result = await vexService.editMessage(
+            "user-a",
+            "m1",
+            false,
+            "nope",
+        );
+
+        expect(result.ok).toBe(false);
+        expect(sendMessage).not.toHaveBeenCalled();
+        expect($messagesWritable.get()["user-a"]?.[0]?.message).toBe("hello");
     });
 });
 

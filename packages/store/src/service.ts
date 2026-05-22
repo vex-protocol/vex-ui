@@ -60,12 +60,18 @@ import {
     setLocalMessageRetentionDaysPreference,
 } from "./domains/settings.ts";
 import {
+    applyMessageDeleteEvent,
     applyMessageReactionEvent,
+    applyMessageUpdateEvent,
+    createDeleteEventExtra,
     createReactionEventExtra,
+    createUpdateEventExtra,
     type EncryptedFileAttachment,
-    foldMessageReactionEvents,
+    foldMessageEvents,
+    messageDeleteEvent,
     type MessageEmoji,
     messageReactionEvent,
+    messageUpdateEvent,
 } from "./message-utils.ts";
 
 // ── Public types ────────────────────────────────────────────────────────────
@@ -232,7 +238,14 @@ interface ClientWithInternalHttp {
 }
 
 interface ClientWithLocalDatabaseLike {
-    database?: Pick<Storage, "deleteMessage">;
+    database?: {
+        deleteMessage?: (mailID: string) => Promise<void>;
+        saveMessage?: (message: Message) => Promise<void>;
+        updateMessage?: (
+            mailID: string,
+            patch: { extra?: null | string | undefined; message?: string },
+        ) => Promise<boolean>;
+    };
 }
 
 interface ClientWithMessageExtraLike {
@@ -317,6 +330,12 @@ interface NotificationSubscriptionLike {
     subscriptionID: string;
 }
 
+interface PendingMessageEventMessage {
+    attempts: number;
+    message: Message;
+    queuedAt: number;
+}
+
 interface PendingReactionMessage {
     attempts: number;
     message: Message;
@@ -361,6 +380,14 @@ const MAX_PENDING_REACTION_CONVERSATIONS = 100;
 const MAX_PENDING_REACTION_MESSAGES_PER_CONVERSATION = 200;
 const MAX_PENDING_REACTION_APPLY_ATTEMPTS = 20;
 const PENDING_REACTION_MESSAGE_TTL_MS = 5 * 60 * 1000;
+const MAX_PROCESSED_MESSAGE_EVENT_MAIL_IDS = MAX_PROCESSED_REACTION_MAIL_IDS;
+const MAX_PENDING_MESSAGE_EVENT_CONVERSATIONS =
+    MAX_PENDING_REACTION_CONVERSATIONS;
+const MAX_PENDING_MESSAGE_EVENT_MESSAGES_PER_CONVERSATION =
+    MAX_PENDING_REACTION_MESSAGES_PER_CONVERSATION;
+const MAX_PENDING_MESSAGE_EVENT_APPLY_ATTEMPTS =
+    MAX_PENDING_REACTION_APPLY_ATTEMPTS;
+const PENDING_MESSAGE_EVENT_TTL_MS = PENDING_REACTION_MESSAGE_TTL_MS;
 
 class Disposable {
     private fns: Array<() => void> = [];
@@ -410,6 +437,10 @@ class VexService {
     private lastDeviceAuthRefreshAttemptAt = 0;
     private logoutInFlight: null | Promise<void> = null;
     private pendingApprovalWatchCancel: (() => void) | null = null;
+    private readonly pendingMessageEventMessages = new Map<
+        string,
+        Map<string, PendingMessageEventMessage>
+    >();
     private pendingRateLimitNotice = false;
     private readonly pendingReactionMessages = new Map<
         string,
@@ -421,6 +452,7 @@ class VexService {
      */
     private populateStateAbort = false;
     private populateStateInFlight: null | Promise<void> = null;
+    private readonly processedMessageEventMailIDs = new Set<string>();
     private readonly processedReactionMailIDs = new Set<string>();
     private wsDebugEnabled = shouldDebugAuth();
     private wsDebugFrameLogsEnabled = shouldDebugAuth();
@@ -787,7 +819,9 @@ class VexService {
     }
 
     async close(): Promise<void> {
+        this.pendingMessageEventMessages.clear();
         this.pendingReactionMessages.clear();
+        this.processedMessageEventMailIDs.clear();
         this.processedReactionMailIDs.clear();
         if (this.client) {
             // `populateState` walks every channel + DM and decrypts SQLite
@@ -962,6 +996,44 @@ class VexService {
         return true;
     }
 
+    async deleteMessageForEveryone(
+        conversationKey: string,
+        mailID: string,
+        isGroup: boolean,
+    ): Promise<OperationResult> {
+        const actorUserID = $userWritable.get()?.userID;
+        if (!actorUserID) {
+            return { error: "Not signed in.", ok: false };
+        }
+        const target = this.findThreadMessage(conversationKey, mailID, isGroup);
+        if (!target) {
+            return { error: "Message not found.", ok: false };
+        }
+        if (target.authorID !== actorUserID) {
+            return {
+                error: "You can only delete your own messages.",
+                ok: false,
+            };
+        }
+
+        const result = await this.sendMessageExtra(
+            conversationKey,
+            isGroup,
+            createDeleteEventExtra(mailID),
+            isGroup ? "delete-group-message" : "delete-dm-message",
+        );
+        if (!result.ok) {
+            return result;
+        }
+        this.applyLocalMessageDelete(
+            conversationKey,
+            mailID,
+            isGroup,
+            actorUserID,
+        );
+        return { ok: true };
+    }
+
     /**
      * Remove a passkey from the currently signed-in account. Works
      * with either a device session OR a passkey session — spire's
@@ -1007,6 +1079,52 @@ class VexService {
         }
     }
 
+    // ── Channel operations ──────────────────────────────────────────────
+
+    async editMessage(
+        conversationKey: string,
+        mailID: string,
+        isGroup: boolean,
+        content: string,
+    ): Promise<OperationResult> {
+        const actorUserID = $userWritable.get()?.userID;
+        if (!actorUserID) {
+            return { error: "Not signed in.", ok: false };
+        }
+        const message = content.trim();
+        if (message.length === 0) {
+            return { error: "Message cannot be empty.", ok: false };
+        }
+        const target = this.findThreadMessage(conversationKey, mailID, isGroup);
+        if (!target) {
+            return { error: "Message not found.", ok: false };
+        }
+        if (target.authorID !== actorUserID) {
+            return { error: "You can only edit your own messages.", ok: false };
+        }
+        if (target.message === message) {
+            return { ok: true };
+        }
+
+        const result = await this.sendMessageExtra(
+            conversationKey,
+            isGroup,
+            createUpdateEventExtra(mailID, message),
+            isGroup ? "edit-group-message" : "edit-dm-message",
+        );
+        if (!result.ok) {
+            return result;
+        }
+        this.applyLocalMessageUpdate(
+            conversationKey,
+            mailID,
+            isGroup,
+            message,
+            actorUserID,
+        );
+        return { ok: true };
+    }
+
     /**
      * Finish a passkey-registration ceremony. Persists the new
      * authenticator on spire and returns the public passkey shape
@@ -1025,8 +1143,6 @@ class VexService {
             return { error: errorMessage(err), ok: false };
         }
     }
-
-    // ── Channel operations ──────────────────────────────────────────────
 
     /**
      * Finish a passkey authentication ceremony. Stage two of the
@@ -1095,6 +1211,8 @@ class VexService {
         return client.invites.retrieve(serverID);
     }
 
+    // ── Messaging ───────────────────────────────────────────────────────
+
     /** Effective local retention cap (defaults to 30 when signed out). */
     getLocalMessageRetentionDays(): number {
         const c = this.client as unknown as {
@@ -1111,8 +1229,6 @@ class VexService {
         const client = this.requireClient();
         return client.moderation.fetchPermissionList(serverID);
     }
-
-    // ── Messaging ───────────────────────────────────────────────────────
 
     async getSessionInfo(): Promise<null | SessionInfo> {
         try {
@@ -1421,6 +1537,8 @@ class VexService {
         }
     }
 
+    // ── User operations ─────────────────────────────────────────────────
+
     async lookupUser(query: string): Promise<null | User> {
         try {
             const client = this.requireClient();
@@ -1444,8 +1562,6 @@ class VexService {
         $dmUnreadCountsWritable.setKey(conversationKey, 0);
         $channelUnreadCountsWritable.setKey(conversationKey, 0);
     }
-
-    // ── User operations ─────────────────────────────────────────────────
 
     onDeviceRequestQueueChanged(listener: () => void): () => void {
         this.deviceRequestQueueListeners.add(listener);
@@ -2046,6 +2162,8 @@ class VexService {
         }
     }
 
+    // ── Unread management ───────────────────────────────────────────────
+
     setBackgroundConnectionRecoverySuspended(suspended: boolean): void {
         this.backgroundConnectionRecoverySuspended = suspended;
     }
@@ -2063,8 +2181,6 @@ class VexService {
         c?.setLocalMessageRetentionDays?.(clamped);
     }
 
-    // ── Unread management ───────────────────────────────────────────────
-
     setWebsocketDebug(enabled: boolean): void {
         this.wsDebugEnabled = enabled;
         if (enabled) {
@@ -2073,6 +2189,8 @@ class VexService {
         }
         this.detachWebsocketDebug();
     }
+
+    // ── Notifications ───────────────────────────────────────────────────
 
     setWebsocketFrameDebug(enabled: boolean): void {
         this.wsDebugFrameLogsEnabled = enabled;
@@ -2083,11 +2201,11 @@ class VexService {
         this.attachWebsocketDebug();
     }
 
+    // ── Encrypted message metadata ──────────────────────────────────────
+
     setWebsocketStateDebug(enabled: boolean): void {
         this.wsDebugStateLogsEnabled = enabled;
     }
-
-    // ── Notifications ───────────────────────────────────────────────────
 
     async subscribePushNotifications(
         input: PushNotificationSubscriptionInput,
@@ -2125,8 +2243,6 @@ class VexService {
         return parseNotificationSubscription(response.data);
     }
 
-    // ── Encrypted message metadata ──────────────────────────────────────
-
     async toggleMessageReaction(
         conversationKey: string,
         mailID: string,
@@ -2138,44 +2254,12 @@ class VexService {
         }
 
         const extra = createReactionEventExtra(mailID, emoji);
-        const send = async (): Promise<void> => {
-            const client =
-                this.requireClient() as unknown as ClientWithMessageExtraLike;
-            if (isGroup) {
-                await client.messages.group(conversationKey, "", { extra });
-            } else {
-                await client.messages.send(conversationKey, "", { extra });
-            }
-        };
-
-        try {
-            await send();
-            return { ok: true };
-        } catch (err: unknown) {
-            if (isNetworkError(err) || isNotAuthenticatedError(err)) {
-                this.resetWebsocketWatchdog();
-                const recovered = await this.recoverConnection(
-                    isGroup ? "react-group" : "react-dm",
-                );
-                if (recovered === "authenticated") {
-                    try {
-                        await send();
-                        return { ok: true };
-                    } catch (retryErr: unknown) {
-                        if (
-                            isUnauthorizedError(retryErr) ||
-                            isNotAuthenticatedError(retryErr)
-                        ) {
-                            this.setAuthStatus("unauthorized");
-                        } else if (isNetworkError(retryErr)) {
-                            this.setAuthStatus("offline");
-                        }
-                        return { error: errorMessage(retryErr), ok: false };
-                    }
-                }
-            }
-            return { error: errorMessage(err), ok: false };
-        }
+        return this.sendMessageExtra(
+            conversationKey,
+            isGroup,
+            extra,
+            isGroup ? "react-group" : "react-dm",
+        );
     }
 
     async unsubscribePushNotifications(subscriptionID: string): Promise<void> {
@@ -2240,6 +2324,142 @@ class VexService {
             }
             return { error: message, ok: false };
         }
+    }
+
+    private applyLocalMessageDelete(
+        conversationKey: string,
+        mailID: string,
+        isGroup: boolean,
+        actorUserID: string,
+    ): boolean {
+        const writable = isGroup ? $groupMessagesWritable : $messagesWritable;
+        const thread = writable.get()[conversationKey] ?? [];
+        const nextThread = applyMessageDeleteEvent(
+            thread,
+            { action: "delete", targetMailID: mailID },
+            actorUserID,
+        );
+        if (nextThread === thread) {
+            return false;
+        }
+        writable.setKey(conversationKey, nextThread);
+        void this.deletePersistedMessage(mailID);
+        return true;
+    }
+
+    private applyLocalMessageUpdate(
+        conversationKey: string,
+        mailID: string,
+        isGroup: boolean,
+        message: string,
+        actorUserID: string,
+    ): boolean {
+        const writable = isGroup ? $groupMessagesWritable : $messagesWritable;
+        const thread = writable.get()[conversationKey] ?? [];
+        const nextThread = applyMessageUpdateEvent(
+            thread,
+            { action: "update", message, targetMailID: mailID },
+            actorUserID,
+        );
+        if (nextThread === thread) {
+            return false;
+        }
+        writable.setKey(conversationKey, nextThread);
+        void this.updatePersistedMessage(
+            mailID,
+            message,
+            nextThread.find((item) => item.mailID === mailID),
+        );
+        return true;
+    }
+
+    private applyMessageEventMessage(
+        writable: MessageMapWritableLike,
+        conversationKey: string,
+        msg: Message,
+    ): boolean {
+        const targetMailID = messageEventTargetMailID(msg);
+        if (!targetMailID) {
+            return false;
+        }
+        if (this.processedMessageEventMailIDs.has(msg.mailID)) {
+            return true;
+        }
+
+        const thread = writable.get()[conversationKey] ?? [];
+        const targetExists = thread.some(
+            (message) => message.mailID === targetMailID,
+        );
+        const nextThread = applyMessageEventToThread(thread, msg);
+        if (nextThread === thread) {
+            const me = $userWritable.get();
+            if (targetExists || me?.userID === msg.authorID) {
+                this.rememberProcessedMessageEventMailID(msg.mailID);
+                return true;
+            }
+            this.queuePendingMessageEventMessage(conversationKey, msg);
+            return true;
+        }
+
+        this.rememberProcessedMessageEventMailID(msg.mailID);
+        writable.setKey(conversationKey, nextThread);
+        this.persistAppliedMessageEvent(msg, nextThread);
+        return true;
+    }
+
+    private applyPendingMessageEventMessages(
+        writable: MessageMapWritableLike,
+        conversationKey: string,
+    ): void {
+        const pending = this.pendingMessageEventMessages.get(conversationKey);
+        if (!pending || pending.size === 0) {
+            return;
+        }
+
+        let thread = writable.get()[conversationKey] ?? [];
+        const now = Date.now();
+        for (const [mailID, pendingEvent] of pending) {
+            const msg = pendingEvent.message;
+            if (this.processedMessageEventMailIDs.has(mailID)) {
+                pending.delete(mailID);
+                continue;
+            }
+            if (
+                now - pendingEvent.queuedAt > PENDING_MESSAGE_EVENT_TTL_MS ||
+                pendingEvent.attempts >=
+                    MAX_PENDING_MESSAGE_EVENT_APPLY_ATTEMPTS
+            ) {
+                pending.delete(mailID);
+                continue;
+            }
+            const targetMailID = messageEventTargetMailID(msg);
+            if (!targetMailID) {
+                pending.delete(mailID);
+                continue;
+            }
+            const targetExists = thread.some(
+                (message) => message.mailID === targetMailID,
+            );
+            const nextThread = applyMessageEventToThread(thread, msg);
+            if (nextThread === thread) {
+                if (targetExists) {
+                    pending.delete(mailID);
+                    this.rememberProcessedMessageEventMailID(mailID);
+                    continue;
+                }
+                pendingEvent.attempts += 1;
+                continue;
+            }
+            thread = nextThread;
+            pending.delete(mailID);
+            this.rememberProcessedMessageEventMailID(mailID);
+            this.persistAppliedMessageEvent(msg, thread);
+        }
+
+        if (pending.size === 0) {
+            this.pendingMessageEventMessages.delete(conversationKey);
+        }
+        writable.setKey(conversationKey, thread);
     }
 
     private applyPendingReactionMessages(
@@ -2448,6 +2668,24 @@ class VexService {
         }
     }
 
+    private async deletePersistedMessage(mailID: string): Promise<void> {
+        const database = (this.client as ClientWithLocalDatabaseLike | null)
+            ?.database;
+        const deleteMessage = database?.deleteMessage;
+        if (typeof deleteMessage !== "function") {
+            debugAuth("message-delete:missing-storage", { mailID });
+            return;
+        }
+        try {
+            await deleteMessage.call(database, mailID);
+        } catch (err: unknown) {
+            debugAuth("message-delete:persist-failed", {
+                mailID,
+                message: errorMessage(err),
+            });
+        }
+    }
+
     private detachWebsocketDebug(): void {
         if (!this.wsDebugSocket) {
             return;
@@ -2640,17 +2878,34 @@ class VexService {
         }
     }
 
+    private findThreadMessage(
+        conversationKey: string,
+        mailID: string,
+        isGroup: boolean,
+    ): Message | null {
+        const writable = isGroup ? $groupMessagesWritable : $messagesWritable;
+        return (
+            (writable.get()[conversationKey] ?? []).find(
+                (message) => message.mailID === mailID,
+            ) ?? null
+        );
+    }
+
     private handleDirectMessage(msg: Message): void {
         const me = $userWritable.get();
         const isOwnMessage = Boolean(me && msg.authorID === me.userID);
         const threadKey = isOwnMessage ? msg.readerID : msg.authorID;
         const prev = $messagesWritable.get()[threadKey] ?? [];
         if (prev.some((m) => m.mailID === msg.mailID)) return;
+        if (this.applyMessageEventMessage($messagesWritable, threadKey, msg)) {
+            return;
+        }
         if (this.applyReactionMessage($messagesWritable, threadKey, msg)) {
             return;
         }
 
         $messagesWritable.setKey(threadKey, [...prev, msg]);
+        this.applyPendingMessageEventMessages($messagesWritable, threadKey);
         this.applyPendingReactionMessages($messagesWritable, threadKey);
 
         if (!isOwnMessage) {
@@ -2664,11 +2919,24 @@ class VexService {
     private handleGroupMessage(msg: Message, channelID: string): void {
         const prev = $groupMessagesWritable.get()[channelID] ?? [];
         if (prev.some((m) => m.mailID === msg.mailID)) return;
+        if (
+            this.applyMessageEventMessage(
+                $groupMessagesWritable,
+                channelID,
+                msg,
+            )
+        ) {
+            return;
+        }
         if (this.applyReactionMessage($groupMessagesWritable, channelID, msg)) {
             return;
         }
 
         $groupMessagesWritable.setKey(channelID, [...prev, msg]);
+        this.applyPendingMessageEventMessages(
+            $groupMessagesWritable,
+            channelID,
+        );
         this.applyPendingReactionMessages($groupMessagesWritable, channelID);
 
         const me = $userWritable.get();
@@ -2809,6 +3077,24 @@ class VexService {
         debugAuth("rate-limited", { source });
     }
 
+    private persistAppliedMessageEvent(msg: Message, thread: Message[]): void {
+        const deleteEvent = messageDeleteEvent(msg);
+        if (deleteEvent) {
+            void this.deletePersistedMessage(deleteEvent.targetMailID);
+            return;
+        }
+        const updateEvent = messageUpdateEvent(msg);
+        if (updateEvent) {
+            void this.updatePersistedMessage(
+                updateEvent.targetMailID,
+                updateEvent.message,
+                thread.find(
+                    (message) => message.mailID === updateEvent.targetMailID,
+                ),
+            );
+        }
+    }
+
     /**
      * Hydrate servers/channels/DM history into nanostores. Runs in the
      * background after connect so the JS thread can answer WS keepalives;
@@ -2833,6 +3119,31 @@ class VexService {
                 this.populateStateInFlight = null;
             }
         }
+    }
+
+    private queuePendingMessageEventMessage(
+        conversationKey: string,
+        msg: Message,
+    ): void {
+        let pending = this.pendingMessageEventMessages.get(conversationKey);
+        if (!pending) {
+            pending = new Map();
+            this.pendingMessageEventMessages.set(conversationKey, pending);
+        }
+        pending.delete(msg.mailID);
+        pending.set(msg.mailID, {
+            attempts: 0,
+            message: msg,
+            queuedAt: Date.now(),
+        });
+        trimMapStart(
+            pending,
+            MAX_PENDING_MESSAGE_EVENT_MESSAGES_PER_CONVERSATION,
+        );
+        trimMapStart(
+            this.pendingMessageEventMessages,
+            MAX_PENDING_MESSAGE_EVENT_CONVERSATIONS,
+        );
     }
 
     private queuePendingReactionMessage(
@@ -2923,6 +3234,13 @@ class VexService {
         setTimeout(() => {
             this.kickPopulateState(attempt + 1);
         }, 200);
+    }
+
+    private rememberProcessedMessageEventMailID(mailID: string): void {
+        rememberProcessedMessageEventMailID(
+            this.processedMessageEventMailIDs,
+            mailID,
+        );
     }
 
     private rememberProcessedReactionMailID(mailID: string): void {
@@ -3055,6 +3373,7 @@ class VexService {
             return deduplicateMessages(
                 [...hydratedMsgs, ...existing],
                 this.processedReactionMailIDs,
+                this.processedMessageEventMailIDs,
             );
         };
         const mergeHydratedDmIntoStore = (): Record<string, Message[]> => {
@@ -3079,10 +3398,18 @@ class VexService {
                     userID,
                     mergeHydratedThread(userID, messagesAcc[userID]),
                 );
+                this.applyPendingMessageEventMessages(
+                    $messagesWritable,
+                    userID,
+                );
                 this.applyPendingReactionMessages($messagesWritable, userID);
             } else {
                 $messagesWritable.set(mergeHydratedDmIntoStore());
                 for (const threadKey of Object.keys(messagesAcc)) {
+                    this.applyPendingMessageEventMessages(
+                        $messagesWritable,
+                        threadKey,
+                    );
                     this.applyPendingReactionMessages(
                         $messagesWritable,
                         threadKey,
@@ -3145,6 +3472,7 @@ class VexService {
                     messagesAcc[user.userID] = deduplicateMessages(
                         msgs,
                         this.processedReactionMailIDs,
+                        this.processedMessageEventMailIDs,
                     );
                 }
             } catch (err: unknown) {
@@ -3353,6 +3681,7 @@ class VexService {
                     groupMessagesAcc[channel.channelID] = deduplicateMessages(
                         msgs,
                         this.processedReactionMailIDs,
+                        this.processedMessageEventMailIDs,
                     );
                 }
                 const durationMs = Date.now() - startedAt;
@@ -3435,6 +3764,7 @@ class VexService {
                     messagesAcc[userID] = deduplicateMessages(
                         msgs,
                         this.processedReactionMailIDs,
+                        this.processedMessageEventMailIDs,
                     );
                 }
                 if (!familiarsAcc[userID]) {
@@ -3498,6 +3828,10 @@ class VexService {
         $channelsWritable.set(channelsAcc);
         $groupMessagesWritable.set(groupMessagesAcc);
         for (const channelID of Object.keys(groupMessagesAcc)) {
+            this.applyPendingMessageEventMessages(
+                $groupMessagesWritable,
+                channelID,
+            );
             this.applyPendingReactionMessages(
                 $groupMessagesWritable,
                 channelID,
@@ -3510,6 +3844,7 @@ class VexService {
         // `retrieve` fails, or when a peer is not yet in `familiars`.
         $messagesWritable.set(mergeHydratedDmIntoStore());
         for (const threadKey of Object.keys(messagesAcc)) {
+            this.applyPendingMessageEventMessages($messagesWritable, threadKey);
             this.applyPendingReactionMessages($messagesWritable, threadKey);
         }
         debugAuth("populateState:familiars-messages:published-final", {
@@ -3548,6 +3883,50 @@ class VexService {
             await keyStore.save(creds);
         } catch {
             /* ignore — keystore failures are non-fatal here */
+        }
+    }
+
+    private async sendMessageExtra(
+        conversationKey: string,
+        isGroup: boolean,
+        extra: string,
+        recoveryReason: string,
+    ): Promise<OperationResult> {
+        const send = async (): Promise<void> => {
+            const client =
+                this.requireClient() as unknown as ClientWithMessageExtraLike;
+            if (isGroup) {
+                await client.messages.group(conversationKey, "", { extra });
+            } else {
+                await client.messages.send(conversationKey, "", { extra });
+            }
+        };
+
+        try {
+            await send();
+            return { ok: true };
+        } catch (err: unknown) {
+            if (isNetworkError(err) || isNotAuthenticatedError(err)) {
+                this.resetWebsocketWatchdog();
+                const recovered = await this.recoverConnection(recoveryReason);
+                if (recovered === "authenticated") {
+                    try {
+                        await send();
+                        return { ok: true };
+                    } catch (retryErr: unknown) {
+                        if (
+                            isUnauthorizedError(retryErr) ||
+                            isNotAuthenticatedError(retryErr)
+                        ) {
+                            this.setAuthStatus("unauthorized");
+                        } else if (isNetworkError(retryErr)) {
+                            this.setAuthStatus("offline");
+                        }
+                        return { error: errorMessage(retryErr), ok: false };
+                    }
+                }
+            }
+            return { error: errorMessage(err), ok: false };
         }
     }
 
@@ -3760,6 +4139,47 @@ class VexService {
         this.disposable.dispose();
     }
 
+    private async updatePersistedMessage(
+        mailID: string,
+        message: string,
+        updatedMessage?: Message,
+    ): Promise<void> {
+        const database = (this.client as ClientWithLocalDatabaseLike | null)
+            ?.database;
+        const updateMessage = database?.updateMessage;
+        if (typeof updateMessage === "function") {
+            try {
+                await updateMessage.call(database, mailID, { message });
+            } catch (err: unknown) {
+                debugAuth("message-edit:persist-failed", {
+                    mailID,
+                    message: errorMessage(err),
+                });
+            }
+            return;
+        }
+
+        const deleteMessage = database?.deleteMessage;
+        const saveMessage = database?.saveMessage;
+        if (
+            !updatedMessage ||
+            typeof deleteMessage !== "function" ||
+            typeof saveMessage !== "function"
+        ) {
+            debugAuth("message-edit:missing-storage", { mailID });
+            return;
+        }
+        try {
+            await deleteMessage.call(database, mailID);
+            await saveMessage.call(database, updatedMessage);
+        } catch (err: unknown) {
+            debugAuth("message-edit:persist-failed", {
+                mailID,
+                message: errorMessage(err),
+            });
+        }
+    }
+
     private wireEvents(): void {
         this.subscribe("connected", () => {
             this.logWsState("ws:connected");
@@ -3820,6 +4240,18 @@ class VexService {
     }
 }
 
+function applyMessageEventToThread(thread: Message[], msg: Message): Message[] {
+    const deleteEvent = messageDeleteEvent(msg);
+    if (deleteEvent) {
+        return applyMessageDeleteEvent(thread, deleteEvent, msg.authorID);
+    }
+    const updateEvent = messageUpdateEvent(msg);
+    if (updateEvent) {
+        return applyMessageUpdateEvent(thread, updateEvent, msg.authorID);
+    }
+    return thread;
+}
+
 function debugAuth(step: string, meta?: Record<string, unknown>): void {
     if (!shouldDebugAuth()) {
         return;
@@ -3871,6 +4303,7 @@ function decodeMsgpackHttpData(data: unknown): unknown {
 function deduplicateMessages(
     messages: Message[],
     processedReactionMailIDs?: Set<string>,
+    processedMessageEventMailIDs?: Set<string>,
 ): Message[] {
     const seen = new Set<string>();
     const deduped = messages.filter((m) => {
@@ -3888,7 +4321,17 @@ function deduplicateMessages(
             }
         }
     }
-    return foldMessageReactionEvents(deduped);
+    if (processedMessageEventMailIDs) {
+        for (const message of deduped) {
+            if (messageDeleteEvent(message) || messageUpdateEvent(message)) {
+                rememberProcessedMessageEventMailID(
+                    processedMessageEventMailIDs,
+                    message.mailID,
+                );
+            }
+        }
+    }
+    return foldMessageEvents(deduped);
 }
 
 function describeWsFrame(data: Uint8Array): {
@@ -4168,6 +4611,14 @@ function looksLikeReactNativeBlobError(message: string): boolean {
     );
 }
 
+function messageEventTargetMailID(message: Message): null | string {
+    return (
+        messageDeleteEvent(message)?.targetMailID ??
+        messageUpdateEvent(message)?.targetMailID ??
+        null
+    );
+}
+
 function parseNotificationSubscription(
     value: unknown,
 ): NotificationSubscriptionLike {
@@ -4199,6 +4650,21 @@ function readErrorField(body: unknown): null | string {
         }
     }
     return null;
+}
+
+function rememberProcessedMessageEventMailID(
+    processedMessageEventMailIDs: Set<string>,
+    mailID: string,
+): void {
+    processedMessageEventMailIDs.add(mailID);
+    if (
+        processedMessageEventMailIDs.size <=
+        MAX_PROCESSED_MESSAGE_EVENT_MAIL_IDS
+    ) {
+        return;
+    }
+    processedMessageEventMailIDs.clear();
+    processedMessageEventMailIDs.add(mailID);
 }
 
 function rememberProcessedReactionMailID(

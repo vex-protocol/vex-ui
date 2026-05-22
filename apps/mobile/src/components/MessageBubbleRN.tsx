@@ -68,6 +68,7 @@ interface MessageBubbleRNProps {
     isOwn: boolean;
     message: Message;
     onDeleteMessage?: ((message: Message) => void) | undefined;
+    onEditMessage?: ((message: Message) => void) | undefined;
     onToggleReaction?:
         | ((message: Message, emoji: MessageEmoji) => void)
         | undefined;
@@ -173,6 +174,7 @@ export function MessageBubbleRN({
     isOwn,
     message,
     onDeleteMessage,
+    onEditMessage,
     onToggleReaction,
     showIdentity = true,
 }: MessageBubbleRNProps) {
@@ -210,7 +212,19 @@ export function MessageBubbleRN({
                 },
                 tone: "default" as const,
             },
-            ...(onDeleteMessage
+            ...(isOwn && onEditMessage
+                ? [
+                      {
+                          id: "edit",
+                          label: "Edit message",
+                          onPress: () => {
+                              onEditMessage(message);
+                          },
+                          tone: "default" as const,
+                      },
+                  ]
+                : []),
+            ...(isOwn && onDeleteMessage
                 ? [
                       {
                           id: "delete",
@@ -223,7 +237,7 @@ export function MessageBubbleRN({
                   ]
                 : []),
         ],
-        [message, onDeleteMessage],
+        [isOwn, message, onDeleteMessage, onEditMessage],
     );
 
     const openContextMenuAt = (x: number, y: number) => {

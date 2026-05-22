@@ -63,6 +63,7 @@ export function ConversationScreen({
 
     const [text, setText] = useState("");
     const [attachment, setAttachment] = useState<null | PickedAttachment>(null);
+    const [editingMessage, setEditingMessage] = useState<Message | null>(null);
     const [sending, setSending] = useState(false);
     const [error, setError] = useState("");
     const sendInFlightRef = useRef(false);
@@ -70,7 +71,44 @@ export function ConversationScreen({
 
     const sendMessage = useCallback(async () => {
         const content = text.trim();
+        const pendingEdit = editingMessage;
         const pendingAttachment = attachment;
+        if (pendingEdit) {
+            if (!content || !user || sendInFlightRef.current) {
+                return;
+            }
+            sendInFlightRef.current = true;
+            setSending(true);
+            setError("");
+            setText("");
+            setEditingMessage(null);
+            await waitForComposerPaint();
+            try {
+                const result = await vexService.editMessage(
+                    userID,
+                    pendingEdit.mailID,
+                    false,
+                    content,
+                );
+                if (!result.ok) {
+                    setError(result.error ?? "Failed to edit message");
+                    setText((current) => (current === "" ? content : current));
+                    setEditingMessage((current) => current ?? pendingEdit);
+                }
+            } catch (err: unknown) {
+                setError(
+                    err instanceof Error
+                        ? err.message
+                        : "Failed to edit message",
+                );
+                setText((current) => (current === "" ? content : current));
+                setEditingMessage((current) => current ?? pendingEdit);
+            } finally {
+                sendInFlightRef.current = false;
+                setSending(false);
+            }
+            return;
+        }
         if (
             (!content && !pendingAttachment) ||
             !user ||
@@ -128,7 +166,7 @@ export function ConversationScreen({
             sendInFlightRef.current = false;
             setSending(false);
         }
-    }, [attachment, text, user, userID, sendInFlightRef]);
+    }, [attachment, editingMessage, text, user, userID, sendInFlightRef]);
 
     const handlePickAttachment = useCallback(
         (kind: "file" | "image") => {
@@ -140,6 +178,7 @@ export function ConversationScreen({
                             ? await pickImageAttachment()
                             : await pickFileAttachment();
                     if (picked) {
+                        setEditingMessage(null);
                         setAttachment(picked);
                     }
                 } catch (err: unknown) {
@@ -176,18 +215,25 @@ export function ConversationScreen({
     const deleteMessage = useCallback(
         (message: Message) => {
             void (async () => {
-                const deleted = await vexService.deleteLocalMessage(
+                const result = await vexService.deleteMessageForEveryone(
                     userID,
                     message.mailID,
                     false,
                 );
-                if (!deleted) {
-                    setError("Failed to delete message");
+                if (!result.ok) {
+                    setError(result.error ?? "Failed to delete message");
                 }
             })();
         },
         [userID],
     );
+
+    const editMessage = useCallback((message: Message) => {
+        setError("");
+        setAttachment(null);
+        setEditingMessage(message);
+        setText(message.message);
+    }, []);
 
     const toggleReaction = useCallback(
         (message: Message, emoji: MessageEmoji) => {
@@ -217,6 +263,7 @@ export function ConversationScreen({
                 isOwn={isOwn}
                 message={item}
                 onDeleteMessage={deleteMessage}
+                onEditMessage={editMessage}
                 onToggleReaction={toggleReaction}
                 showIdentity={showIdentity}
             />
@@ -263,7 +310,12 @@ export function ConversationScreen({
             <MessageInputBar
                 attachment={attachment}
                 bottomInset={insets.bottom}
+                editing={editingMessage !== null}
                 onAttachPress={openAttachmentMenu}
+                onCancelEdit={() => {
+                    setEditingMessage(null);
+                    setText("");
+                }}
                 onChangeText={setText}
                 onRemoveAttachment={() => {
                     setAttachment(null);
@@ -271,7 +323,9 @@ export function ConversationScreen({
                 onSend={() => void sendMessage()}
                 onVoiceMemoError={setError}
                 onVoiceMemoRecorded={setAttachment}
-                placeholder={`Message @${username}`}
+                placeholder={
+                    editingMessage ? "Edit message" : `Message @${username}`
+                }
                 sending={sending}
                 value={text}
             />

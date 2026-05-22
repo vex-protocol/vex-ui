@@ -4,20 +4,27 @@ import { describe, expect, test } from "vitest";
 
 import {
     applyEmoji,
+    applyMessageDeleteEvent,
     applyMessageReactionEvent,
+    applyMessageUpdateEvent,
     avatarHue,
     chunkMessages,
+    createDeleteEventExtra,
     createReactionEventExtra,
     createUnicodeReactionEmoji,
+    createUpdateEventExtra,
     emojiReactionLabel,
+    foldMessageEvents,
     foldMessageReactionEvents,
     formatFileAttachmentMarkdown,
     formatFileSize,
     formatTime,
     isImageType,
+    messageDeleteEvent,
     messageEmbed,
     messageReactionEvent,
     messageReactions,
+    messageUpdateEvent,
     parseFileExtra,
     parseMessageExtra,
     parseMessageMarkdown,
@@ -719,6 +726,92 @@ describe("message reactions", () => {
                 userIDs: ["bob"],
             },
         ]);
+    });
+
+    test("serializes and applies message update events", () => {
+        const extra = createUpdateEventExtra("m-target", "edited");
+        const target = makeMessage({
+            authorID: "alice",
+            mailID: "m-target",
+            message: "original",
+        });
+        const event = messageUpdateEvent(
+            makeMessage({ extra, mailID: "m-event" } as Partial<Message>),
+        );
+
+        expect(event).toEqual({
+            action: "update",
+            message: "edited",
+            targetMailID: "m-target",
+        });
+        if (!event) {
+            throw new Error("Expected update event");
+        }
+        expect(
+            applyMessageUpdateEvent([target], event, "alice")[0]?.message,
+        ).toBe("edited");
+        expect(
+            applyMessageUpdateEvent([target], event, "mallory")[0]?.message,
+        ).toBe("original");
+    });
+
+    test("serializes and applies message delete events", () => {
+        const extra = createDeleteEventExtra("m-target");
+        const target = makeMessage({
+            authorID: "alice",
+            mailID: "m-target",
+        });
+        const event = messageDeleteEvent(
+            makeMessage({ extra, mailID: "m-event" } as Partial<Message>),
+        );
+
+        expect(event).toEqual({
+            action: "delete",
+            targetMailID: "m-target",
+        });
+        if (!event) {
+            throw new Error("Expected delete event");
+        }
+        expect(applyMessageDeleteEvent([target], event, "alice")).toEqual([]);
+        expect(applyMessageDeleteEvent([target], event, "mallory")).toEqual([
+            target,
+        ]);
+    });
+
+    test("folds edit and delete event messages out of visible history", () => {
+        const keep = makeMessage({
+            authorID: "alice",
+            mailID: "m-keep",
+            message: "before",
+        });
+        const remove = makeMessage({
+            authorID: "alice",
+            mailID: "m-remove",
+            message: "gone",
+        });
+        const editEvent = makeMessage({
+            authorID: "alice",
+            extra: createUpdateEventExtra("m-keep", "after"),
+            mailID: "m-edit-event",
+            message: "",
+        } as Partial<Message>);
+        const deleteEvent = makeMessage({
+            authorID: "alice",
+            extra: createDeleteEventExtra("m-remove"),
+            mailID: "m-delete-event",
+            message: "",
+        } as Partial<Message>);
+
+        const folded = foldMessageEvents([
+            keep,
+            remove,
+            editEvent,
+            deleteEvent,
+        ]);
+
+        expect(folded).toHaveLength(1);
+        expect(folded[0]?.mailID).toBe("m-keep");
+        expect(folded[0]?.message).toBe("after");
     });
 });
 
