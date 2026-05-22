@@ -148,6 +148,7 @@ export type {
     InvitePreview,
     JoinInviteResult,
     OperationResult,
+    PasskeyCeremonyDriver,
     PasskeySignInBegin,
     ResumeNetworkStatus,
     ServerOptions,
