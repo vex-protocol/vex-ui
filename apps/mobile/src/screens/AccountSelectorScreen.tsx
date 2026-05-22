@@ -1,4 +1,3 @@
-import type { IdentityBackup } from "../lib/identityBackup";
 import type { AuthScreenProps } from "../navigation/types";
 
 import React, { useCallback, useState } from "react";
@@ -15,26 +14,18 @@ import {
 
 import { useFocusEffect } from "@react-navigation/native";
 import { BlurView } from "expo-blur";
-import * as Clipboard from "expo-clipboard";
 
 import { Avatar } from "../components/Avatar";
 import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
 import { VexLogo } from "../components/VexLogo";
-import { getServerUrl } from "../lib/config";
 import { haptic } from "../lib/haptics";
-import { parseIdentityBackup, pickIdentityBackup } from "../lib/identityBackup";
 import {
     clearCredentials,
     type KnownAccount,
     listKnownAccounts,
     setActiveUsername,
-    setUserIDForUsername,
 } from "../lib/keychain";
-import {
-    restoreIdentityKeyBackup,
-    sanitizeHostForBackup,
-} from "../lib/restoreIdentityKeyBackup";
 import { colors, typography } from "../theme";
 
 interface AccountRowProps {
@@ -130,154 +121,6 @@ export function AccountSelectorScreen({ navigation }: Props) {
         navigation.navigate("HangTight", { force: true });
     }, [navigation]);
 
-    const applyParsedBackup = useCallback(
-        async (backup: IdentityBackup) => {
-            const currentHost = sanitizeHostForBackup(getServerUrl());
-            const backupHost = sanitizeHostForBackup(backup.server);
-            if (currentHost !== backupHost) {
-                setErrorText(
-                    `This backup is for ${backup.server}, but you are connected to ${getServerUrl()}. Switch servers and try again.`,
-                );
-                return;
-            }
-
-            const overwriting = accounts.some(
-                (a) => a.username === backup.username,
-            );
-            if (overwriting) {
-                const confirmed = await new Promise<boolean>((resolve) => {
-                    Alert.alert(
-                        `Replace @${backup.username}?`,
-                        "An account with this username is already on this device. Restoring will replace its device key with the one from the backup.",
-                        [
-                            {
-                                onPress: () => {
-                                    resolve(false);
-                                },
-                                style: "cancel",
-                                text: "Cancel",
-                            },
-                            {
-                                onPress: () => {
-                                    resolve(true);
-                                },
-                                style: "destructive",
-                                text: "Replace",
-                            },
-                        ],
-                    );
-                });
-                if (!confirmed) {
-                    return;
-                }
-            }
-
-            setSigningInUsername(backup.username);
-            try {
-                const result = await restoreIdentityKeyBackup(backup);
-                if (!result.ok) {
-                    setErrorText(result.error);
-                    await refresh();
-                    return;
-                }
-                if (backup.userID.length > 0) {
-                    await setUserIDForUsername(backup.username, backup.userID);
-                }
-            } catch (err: unknown) {
-                setErrorText(
-                    err instanceof Error
-                        ? err.message
-                        : "Restore failed unexpectedly.",
-                );
-                await refresh();
-            } finally {
-                setSigningInUsername(null);
-            }
-        },
-        [accounts, refresh],
-    );
-
-    const handleRestoreFromFile = useCallback(async () => {
-        if (signingInUsername !== null) {
-            return;
-        }
-        haptic("tap");
-        setErrorText(null);
-        const parsed = await pickIdentityBackup();
-        if (!parsed.ok) {
-            if ("canceled" in parsed && parsed.canceled) {
-                return;
-            }
-            if ("error" in parsed) {
-                setErrorText(parsed.error);
-            }
-            return;
-        }
-        await applyParsedBackup(parsed.backup);
-    }, [applyParsedBackup, signingInUsername]);
-
-    const handleRestoreFromClipboard = useCallback(async () => {
-        if (signingInUsername !== null) {
-            return;
-        }
-        haptic("tap");
-        setErrorText(null);
-        let raw = "";
-        try {
-            raw = await Clipboard.getStringAsync();
-        } catch (err: unknown) {
-            setErrorText(
-                err instanceof Error
-                    ? `Could not read the clipboard: ${err.message}`
-                    : "Could not read the clipboard.",
-            );
-            return;
-        }
-        if (raw.trim().length === 0) {
-            setErrorText(
-                "The clipboard is empty. Copy your backup text first, then try again.",
-            );
-            return;
-        }
-        const parsed = parseIdentityBackup(raw);
-        if (!parsed.ok) {
-            if ("canceled" in parsed && parsed.canceled) {
-                return;
-            }
-            if ("error" in parsed) {
-                setErrorText(parsed.error);
-            }
-            return;
-        }
-        await applyParsedBackup(parsed.backup);
-    }, [applyParsedBackup, signingInUsername]);
-
-    const handleRestore = useCallback(() => {
-        if (signingInUsername !== null) {
-            return;
-        }
-        haptic("tap");
-        Alert.alert(
-            "Restore from backup",
-            "Pick a Vex identity backup file, or paste the text from a backup you saved earlier.",
-            [
-                { style: "cancel", text: "Cancel" },
-                {
-                    onPress: () => {
-                        void handleRestoreFromClipboard();
-                    },
-                    text: "Paste from clipboard",
-                },
-                {
-                    onPress: () => {
-                        void handleRestoreFromFile();
-                    },
-                    text: "Pick a file",
-                },
-            ],
-        );
-    }, [handleRestoreFromClipboard, handleRestoreFromFile, signingInUsername]);
-
     if (!hydrated) {
         return (
             <ScreenLayout>
@@ -314,13 +157,6 @@ export function AccountSelectorScreen({ navigation }: Props) {
                         style={styles.addButton}
                         title="Get started"
                         variant="primary"
-                    />
-                    <VexButton
-                        disabled={signingInUsername !== null}
-                        onPress={handleRestore}
-                        style={styles.addButton}
-                        title="Restore from backup"
-                        variant="outline"
                     />
                 </ScrollView>
             </ScreenLayout>
@@ -376,13 +212,6 @@ export function AccountSelectorScreen({ navigation }: Props) {
                         onPress={handleAddAccount}
                         style={styles.addButton}
                         title="Add another account"
-                        variant="outline"
-                    />
-                    <VexButton
-                        disabled={signingInUsername !== null}
-                        onPress={handleRestore}
-                        style={styles.addButton}
-                        title="Restore from backup"
                         variant="outline"
                     />
                 </View>

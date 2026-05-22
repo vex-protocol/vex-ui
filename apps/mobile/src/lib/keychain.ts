@@ -3,6 +3,7 @@ import type { KeyStore, StoredCredentials } from "@vex-chat/libvex";
 import * as SecureStore from "expo-secure-store";
 
 import { getServerUrl } from "./config";
+import { clearLocalDatabaseKeyMaterial } from "./platform";
 
 /*
  * Multi-account credential store.
@@ -41,7 +42,8 @@ export interface KnownAccount {
 /**
  * Remove credentials for a specific user (or, when no username is passed, the
  * currently active user). This deletes their device-key slot, their userID
- * cache, and the active-user pointer if it currently points at them.
+ * cache, local DB key material, and the active-user pointer if it currently
+ * points at them.
  *
  * NOTE: Most caller-driven "switch account" flows should NOT use this — they
  * should leave key material alone and just flip the active pointer with
@@ -57,6 +59,7 @@ export async function clearCredentials(username?: string): Promise<void> {
     }
     await SecureStore.deleteItemAsync(credsKeyForUser(user));
     await SecureStore.deleteItemAsync(userIDKeyForUser(user));
+    await clearLocalDatabaseKeyMaterial(user);
     await removeFromKnownUsers(user);
     const active = await loadActiveUsername();
     if (active === user) {
