@@ -29,7 +29,10 @@ import {
     $permissions,
     $servers,
     $user,
+    buildMessageReplyReference,
+    createReplyExtra,
     formatFileAttachmentMarkdown,
+    messageReply,
     vexService,
 } from "@vex-chat/store";
 
@@ -75,6 +78,10 @@ export function ChannelScreen({
         const thread = allGroupMessages[channelID] ?? [];
         return [...thread].reverse();
     }, [allGroupMessages, channelID]);
+    const messageByID = useMemo(
+        () => new Map(messages.map((message) => [message.mailID, message])),
+        [messages],
+    );
     const identityVisibility = useMemo(
         () => buildIdentityVisibility(messages),
         [messages],
@@ -94,9 +101,13 @@ export function ChannelScreen({
     const [text, setText] = useState("");
     const [attachment, setAttachment] = useState<null | PickedAttachment>(null);
     const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+    const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(
+        null,
+    );
     const [sending, setSending] = useState(false);
     const [sendError, setSendError] = useState("");
     const sendInFlightRef = useRef(false);
+    const listRef = useRef<FlatList<Message>>(null);
     const [members, setMembers] = useState<User[]>([]);
     const [serverPermissions, setServerPermissions] = useState<Permission[]>(
         [],
@@ -108,6 +119,26 @@ export function ChannelScreen({
     const [membersDrawerVisible, setMembersDrawerVisible] = useState(false);
     const [membersDrawerAnim] = useState(() => new Animated.Value(0));
     const leftSidebarOpen = useStore($leftSidebarOpen);
+    const authorNameForMessage = useCallback(
+        (message: Message): string =>
+            message.authorID === user?.userID
+                ? (user?.username ?? "Unknown")
+                : (usernames[message.authorID] ?? message.authorID.slice(0, 8)),
+        [user?.userID, user?.username, usernames],
+    );
+    const liveReplyingToMessage = replyingToMessage
+        ? (messageByID.get(replyingToMessage.mailID) ?? replyingToMessage)
+        : null;
+    const replyReference = useMemo(
+        () =>
+            liveReplyingToMessage
+                ? buildMessageReplyReference(
+                      liveReplyingToMessage,
+                      authorNameForMessage(liveReplyingToMessage),
+                  )
+                : null,
+        [authorNameForMessage, liveReplyingToMessage],
+    );
 
     const membersBackdropOpacity = useMemo(
         () =>
@@ -345,6 +376,7 @@ export function ChannelScreen({
         const content = text.trim();
         const pendingEdit = editingMessage;
         const pendingAttachment = attachment;
+        const pendingReply = liveReplyingToMessage;
         if (pendingEdit) {
             if (!content || !user || sendInFlightRef.current) {
                 return;
@@ -354,6 +386,7 @@ export function ChannelScreen({
             setSendError("");
             setText("");
             setEditingMessage(null);
+            setReplyingToMessage(null);
             await waitForComposerPaint();
             try {
                 const result = await vexService.editMessage(
@@ -393,6 +426,7 @@ export function ChannelScreen({
         setSendError("");
         setText("");
         setAttachment(null);
+        setReplyingToMessage(null);
         await waitForComposerPaint();
         try {
             let messageBody = content;
@@ -411,6 +445,11 @@ export function ChannelScreen({
                     setAttachment((current) =>
                         current === null ? pendingAttachment : current,
                     );
+                    if (pendingReply) {
+                        setReplyingToMessage((current) =>
+                            current === null ? pendingReply : current,
+                        );
+                    }
                     return;
                 }
                 const attachmentMarkdown = formatFileAttachmentMarkdown(
@@ -421,9 +460,16 @@ export function ChannelScreen({
                     : attachmentMarkdown;
             }
 
+            const replyExtra = pendingReply
+                ? createReplyExtra(
+                      pendingReply,
+                      authorNameForMessage(pendingReply),
+                  )
+                : undefined;
             const result = await vexService.sendGroupMessage(
                 channelID,
                 messageBody,
+                replyExtra ? { extra: replyExtra } : undefined,
             );
             if (!result.ok) {
                 setSendError(result.error ?? "Failed to send");
@@ -431,6 +477,11 @@ export function ChannelScreen({
                 setAttachment((current) =>
                     current === null ? pendingAttachment : current,
                 );
+                if (pendingReply) {
+                    setReplyingToMessage((current) =>
+                        current === null ? pendingReply : current,
+                    );
+                }
                 return;
             }
         } catch (err: unknown) {
@@ -439,11 +490,25 @@ export function ChannelScreen({
             setAttachment((current) =>
                 current === null ? pendingAttachment : current,
             );
+            if (pendingReply) {
+                setReplyingToMessage((current) =>
+                    current === null ? pendingReply : current,
+                );
+            }
         } finally {
             sendInFlightRef.current = false;
             setSending(false);
         }
-    }, [attachment, editingMessage, text, user, channelID, sendInFlightRef]);
+    }, [
+        attachment,
+        authorNameForMessage,
+        editingMessage,
+        liveReplyingToMessage,
+        text,
+        user,
+        channelID,
+        sendInFlightRef,
+    ]);
 
     const handlePickAttachment = useCallback(
         (kind: "file" | "image") => {
@@ -526,9 +591,33 @@ export function ChannelScreen({
     const editMessage = useCallback((message: Message) => {
         setSendError("");
         setAttachment(null);
+        setReplyingToMessage(null);
         setEditingMessage(message);
         setText(message.message);
     }, []);
+
+    const replyToMessage = useCallback((message: Message) => {
+        setSendError("");
+        setEditingMessage(null);
+        setReplyingToMessage(message);
+    }, []);
+
+    const scrollToMessage = useCallback(
+        (mailID: string) => {
+            const index = messages.findIndex(
+                (message) => message.mailID === mailID,
+            );
+            if (index === -1) {
+                return;
+            }
+            listRef.current?.scrollToIndex({
+                animated: true,
+                index,
+                viewPosition: 0.45,
+            });
+        },
+        [messages],
+    );
 
     const toggleReaction = useCallback(
         (message: Message, emoji: MessageEmoji) => {
@@ -549,23 +638,31 @@ export function ChannelScreen({
 
     function renderMessage({ index, item }: { index: number; item: Message }) {
         const isOwn = item.authorID === user?.userID;
-        const ownName = user?.username ?? "Unknown";
         const showIdentity = identityVisibility[index] ?? true;
+        const reply = messageReply(item);
+        const targetMessage = reply
+            ? messageByID.get(reply.targetMailID)
+            : undefined;
         return (
             <MessageBubbleRN
-                authorName={
-                    isOwn
-                        ? ownName
-                        : (usernames[item.authorID] ??
-                          item.authorID.slice(0, 8))
-                }
+                authorName={authorNameForMessage(item)}
                 currentUserID={user?.userID}
                 isOwn={isOwn}
                 message={item}
                 onDeleteMessageForEveryone={deleteMessageForEveryone}
                 onDeleteMessageForMe={deleteMessageForMe}
                 onEditMessage={editMessage}
+                onPressReplyTarget={scrollToMessage}
+                onReplyMessage={replyToMessage}
                 onToggleReaction={toggleReaction}
+                replyTarget={
+                    targetMessage
+                        ? {
+                              authorName: authorNameForMessage(targetMessage),
+                              message: targetMessage,
+                          }
+                        : null
+                }
                 showIdentity={showIdentity}
             />
         );
@@ -666,6 +763,13 @@ export function ChannelScreen({
                 data={messages}
                 inverted
                 keyExtractor={(m) => m.mailID}
+                onScrollToIndexFailed={(info) => {
+                    listRef.current?.scrollToOffset({
+                        animated: true,
+                        offset: info.averageItemLength * info.index,
+                    });
+                }}
+                ref={listRef}
                 renderItem={renderMessage}
             />
 
@@ -684,6 +788,9 @@ export function ChannelScreen({
                     setEditingMessage(null);
                     setText("");
                 }}
+                onCancelReply={() => {
+                    setReplyingToMessage(null);
+                }}
                 onChangeText={setText}
                 onRemoveAttachment={() => {
                     setAttachment(null);
@@ -694,6 +801,7 @@ export function ChannelScreen({
                 placeholder={
                     editingMessage ? "Edit message" : `Message #${channelName}`
                 }
+                replyingTo={replyReference}
                 sending={sending}
                 value={text}
             />
@@ -903,6 +1011,13 @@ function buildIdentityVisibility(messages: Message[]): boolean[] {
             visibility[index] = true;
             chunkAuthorID = null;
             chunkStartTs = 0;
+            continue;
+        }
+
+        if (messageReply(current)) {
+            visibility[index] = true;
+            chunkAuthorID = current.authorID;
+            chunkStartTs = currentTs;
             continue;
         }
 
