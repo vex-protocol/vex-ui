@@ -583,6 +583,20 @@ export function MessageBubbleRN({
                     )}
 
                     <View style={styles.content}>
+                        {replyReference ? (
+                            <ReplyReferencePreview
+                                onPress={
+                                    onPressReplyTarget
+                                        ? () => {
+                                              onPressReplyTarget(
+                                                  replyReference.targetMailID,
+                                              );
+                                          }
+                                        : undefined
+                                }
+                                reply={replyReference}
+                            />
+                        ) : null}
                         {showIdentity && (
                             <View style={styles.meta}>
                                 <Text
@@ -598,20 +612,6 @@ export function MessageBubbleRN({
                                 </Text>
                             </View>
                         )}
-                        {replyReference ? (
-                            <ReplyReferencePreview
-                                onPress={
-                                    onPressReplyTarget
-                                        ? () => {
-                                              onPressReplyTarget(
-                                                  replyReference.targetMailID,
-                                              );
-                                          }
-                                        : undefined
-                                }
-                                reply={replyReference}
-                            />
-                        ) : null}
                         {embed ? (
                             <MessageEmbedCard
                                 embed={embed}
@@ -1659,6 +1659,7 @@ function ReplyReferencePreview({
         reply.targetPreview ??
         reply.targetAttachment?.fileName ??
         "Original message";
+    const targetAuthorID = reply.targetAuthorID;
 
     return (
         <View style={styles.replyReference}>
@@ -1670,16 +1671,26 @@ function ReplyReferencePreview({
                 disabled={!onPress}
                 onPress={onPress}
                 style={({ pressed }) => [
-                    styles.replyCard,
+                    styles.replyPreview,
                     pressed && styles.attachmentPressed,
                 ]}
             >
-                <Ionicons
-                    color={colors.muted}
-                    name="arrow-undo-outline"
-                    size={14}
-                />
-                <View style={styles.replyTextBlock}>
+                {targetAuthorID ? (
+                    <Avatar
+                        displayName={author}
+                        size={22}
+                        userID={targetAuthorID}
+                    />
+                ) : (
+                    <View style={styles.replyAvatarFallback}>
+                        <Ionicons
+                            color={colors.textSecondary}
+                            name="arrow-undo-outline"
+                            size={14}
+                        />
+                    </View>
+                )}
+                <View style={styles.replyPreviewBody}>
                     <Text numberOfLines={1} style={styles.replyAuthor}>
                         {author}
                     </Text>
@@ -2391,68 +2402,73 @@ const styles = StyleSheet.create({
     },
     replyAttachmentIcon: {
         alignItems: "center",
-        backgroundColor: colors.input,
-        borderColor: colors.borderSubtle,
+        backgroundColor: "rgba(255,255,255,0.055)",
+        borderColor: "rgba(255,255,255,0.1)",
         borderRadius: 6,
         borderWidth: 1,
-        height: 34,
+        height: 28,
         justifyContent: "center",
-        width: 34,
+        width: 28,
     },
     replyAttachmentImage: {
         backgroundColor: colors.input,
         borderRadius: 6,
-        height: 34,
-        width: 34,
+        height: 28,
+        width: 28,
     },
     replyAuthor: {
         ...typography.body,
         color: colors.textSecondary,
-        fontSize: 11,
+        fontSize: 13,
         fontWeight: "700",
+        lineHeight: 17,
     },
-    replyCard: {
+    replyAvatarFallback: {
         alignItems: "center",
-        backgroundColor: "rgba(255,255,255,0.045)",
-        borderColor: "rgba(255,255,255,0.11)",
-        borderRadius: 8,
-        borderWidth: 1,
-        flex: 1,
-        flexDirection: "row",
-        gap: 8,
-        maxWidth: 360,
-        minHeight: 38,
-        paddingHorizontal: 9,
-        paddingVertical: 7,
+        backgroundColor: "rgba(255,255,255,0.055)",
+        borderRadius: 999,
+        height: 22,
+        justifyContent: "center",
+        width: 22,
     },
     replyConnector: {
         alignItems: "flex-end",
-        paddingTop: 4,
-        width: 24,
+        paddingTop: 8,
+        width: 30,
     },
     replyConnectorCurve: {
-        borderBottomColor: "rgba(138,180,255,0.42)",
-        borderBottomLeftRadius: 8,
-        borderBottomWidth: 2,
-        borderLeftColor: "rgba(138,180,255,0.42)",
+        borderColor: "rgba(133,136,154,0.55)",
         borderLeftWidth: 2,
-        height: 20,
-        width: 15,
+        borderTopLeftRadius: 10,
+        borderTopWidth: 2,
+        height: 38,
+        width: 24,
+    },
+    replyPreview: {
+        alignItems: "flex-start",
+        flex: 1,
+        flexDirection: "row",
+        gap: 8,
+        maxWidth: 420,
+        minHeight: 42,
+        paddingBottom: 3,
+        paddingTop: 2,
+    },
+    replyPreviewBody: {
+        flex: 1,
+        minWidth: 0,
     },
     replyPreviewText: {
         ...typography.body,
         color: colors.muted,
-        fontSize: 11,
+        fontSize: 13,
+        lineHeight: 18,
     },
     replyReference: {
         alignItems: "flex-start",
         flexDirection: "row",
-        marginBottom: 4,
-        marginTop: 2,
-    },
-    replyTextBlock: {
-        flex: 1,
-        minWidth: 0,
+        marginBottom: 1,
+        marginTop: 0,
     },
     systemContainer: {
         alignItems: "center",
