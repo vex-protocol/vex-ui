@@ -1,15 +1,7 @@
-import type { IdentityBackup } from "../lib/identityBackup";
 import type { AuthScreenProps } from "../navigation/types";
 
-import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
-} from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-    Alert,
     Animated,
     Easing,
     Keyboard,
@@ -31,26 +23,18 @@ import {
 } from "@vex-chat/store";
 
 import { useStore } from "@nanostores/react";
-import * as Clipboard from "expo-clipboard";
 
 import { Avatar } from "../components/Avatar";
 import { CornerBracketBox } from "../components/CornerBracketBox";
 import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
 import { VexLogo } from "../components/VexLogo";
-import { getServerOptions, getServerUrl } from "../lib/config";
-import { haptic } from "../lib/haptics";
-import { parseIdentityBackup, pickIdentityBackup } from "../lib/identityBackup";
+import { getServerOptions } from "../lib/config";
+import { keychainKeyStore, listKnownAccounts } from "../lib/keychain";
 import {
-    keychainKeyStore,
-    listKnownAccounts,
-    setUserIDForUsername,
-} from "../lib/keychain";
-import { mobileConfig } from "../lib/platform";
-import {
-    restoreIdentityKeyBackup,
-    sanitizeHostForBackup,
-} from "../lib/restoreIdentityKeyBackup";
+    cleanupLegacyLocalKeyMaterialArtifacts,
+    mobileConfig,
+} from "../lib/platform";
 import { hydrateLocalMessageRetention } from "../lib/retentionPreference";
 import { colors, typography } from "../theme";
 
@@ -91,8 +75,6 @@ export function HangTightScreen({
     const [focused, setFocused] = useState(false);
     const [pendingApproval, setPendingApproval] =
         useState<null | PendingApprovalSnapshot>(null);
-    const [restoreBusy, setRestoreBusy] = useState(false);
-    const [restoreError, setRestoreError] = useState<null | string>(null);
 
     // ── Boot spinner animations (kept for the initial loading phase) ────────
     const spin = useMemo(() => new Animated.Value(0), []);
@@ -112,6 +94,10 @@ export function HangTightScreen({
     const inputGlow = useRef(new Animated.Value(0)).current;
     const buttonScale = useRef(new Animated.Value(1)).current;
     const errorShake = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        void cleanupLegacyLocalKeyMaterialArtifacts();
+    }, []);
 
     useEffect(() => {
         Animated.loop(
@@ -393,162 +379,8 @@ export function HangTightScreen({
             });
     };
 
-    const applyParsedBackupOnConfirm = useCallback(
-        async (backup: IdentityBackup) => {
-            const currentHost = sanitizeHostForBackup(getServerUrl());
-            const backupHost = sanitizeHostForBackup(backup.server);
-            if (currentHost !== backupHost) {
-                setRestoreError(
-                    `This backup is for ${backup.server}, but you are connected to ${getServerUrl()}. Switch servers and try again.`,
-                );
-                return;
-            }
-            const accounts = await listKnownAccounts();
-            const overwriting = accounts.some(
-                (a) => a.username === backup.username,
-            );
-            if (overwriting) {
-                const confirmed = await new Promise<boolean>((resolve) => {
-                    Alert.alert(
-                        `Replace @${backup.username}?`,
-                        "An account with this username is already on this device. Restoring will replace its device key with the one from the backup.",
-                        [
-                            {
-                                onPress: () => {
-                                    resolve(false);
-                                },
-                                style: "cancel",
-                                text: "Cancel",
-                            },
-                            {
-                                onPress: () => {
-                                    resolve(true);
-                                },
-                                style: "destructive",
-                                text: "Replace",
-                            },
-                        ],
-                    );
-                });
-                if (!confirmed) {
-                    return;
-                }
-            }
-            setRestoreBusy(true);
-            setRestoreError(null);
-            try {
-                const result = await restoreIdentityKeyBackup(backup);
-                if (!result.ok) {
-                    setRestoreError(result.error);
-                    return;
-                }
-                await vexService.abortDeferredDeviceApproval();
-                vexService.cancelPendingApproval();
-                setPendingApproval(null);
-                if (backup.userID.length > 0) {
-                    await setUserIDForUsername(backup.username, backup.userID);
-                }
-            } catch (err: unknown) {
-                setRestoreError(
-                    err instanceof Error
-                        ? err.message
-                        : "Restore failed unexpectedly.",
-                );
-            } finally {
-                setRestoreBusy(false);
-            }
-        },
-        [],
-    );
-
-    const handleRestoreFromClipboardOnConfirm = useCallback(async () => {
-        if (restoreBusy || busy) {
-            return;
-        }
-        haptic("tap");
-        setRestoreError(null);
-        let raw = "";
-        try {
-            raw = await Clipboard.getStringAsync();
-        } catch (err: unknown) {
-            setRestoreError(
-                err instanceof Error
-                    ? `Could not read the clipboard: ${err.message}`
-                    : "Could not read the clipboard.",
-            );
-            return;
-        }
-        if (raw.trim().length === 0) {
-            setRestoreError(
-                "The clipboard is empty. Copy your backup text first, then try again.",
-            );
-            return;
-        }
-        const parsed = parseIdentityBackup(raw);
-        if (!parsed.ok) {
-            if ("canceled" in parsed && parsed.canceled) {
-                return;
-            }
-            if ("error" in parsed) {
-                setRestoreError(parsed.error);
-            }
-            return;
-        }
-        await applyParsedBackupOnConfirm(parsed.backup);
-    }, [applyParsedBackupOnConfirm, busy, restoreBusy]);
-
-    const handleRestoreFromFileOnConfirm = useCallback(async () => {
-        if (restoreBusy || busy) {
-            return;
-        }
-        haptic("tap");
-        setRestoreError(null);
-        const parsed = await pickIdentityBackup();
-        if (!parsed.ok) {
-            if ("canceled" in parsed && parsed.canceled) {
-                return;
-            }
-            if ("error" in parsed) {
-                setRestoreError(parsed.error);
-            }
-            return;
-        }
-        await applyParsedBackupOnConfirm(parsed.backup);
-    }, [applyParsedBackupOnConfirm, busy, restoreBusy]);
-
-    const handleRestoreFromBackupOnConfirm = useCallback(() => {
-        if (restoreBusy || busy) {
-            return;
-        }
-        haptic("tap");
-        Alert.alert(
-            "Restore from key backup",
-            "Pick a Vex identity backup file, or paste the text from a backup you saved earlier.",
-            [
-                { style: "cancel", text: "Cancel" },
-                {
-                    onPress: () => {
-                        void handleRestoreFromClipboardOnConfirm();
-                    },
-                    text: "Paste from clipboard",
-                },
-                {
-                    onPress: () => {
-                        void handleRestoreFromFileOnConfirm();
-                    },
-                    text: "Pick a file",
-                },
-            ],
-        );
-    }, [
-        busy,
-        handleRestoreFromClipboardOnConfirm,
-        handleRestoreFromFileOnConfirm,
-        restoreBusy,
-    ]);
-
     const handleConfirmExisting = () => {
-        if (!pendingApproval || busy || restoreBusy) {
+        if (!pendingApproval || busy) {
             return;
         }
         Vibration.vibrate([0, 20, 40, 20]);
@@ -580,7 +412,7 @@ export function HangTightScreen({
     };
 
     const handleDenyExisting = () => {
-        if (busy || restoreBusy) {
+        if (busy) {
             return;
         }
         Vibration.vibrate(15);
@@ -589,7 +421,6 @@ export function HangTightScreen({
             vexService.cancelPendingApproval();
             setPendingApproval(null);
             setBootError("");
-            setRestoreError(null);
             setBusy(false);
             setRetryMode("auth");
             setUsername("");
@@ -886,8 +717,7 @@ export function HangTightScreen({
                             <Text style={styles.subheading}>
                                 That handle is already registered. If it's
                                 yours, we'll ask one of your other signed-in
-                                devices to approve this one — or restore from a
-                                key backup if you have one.
+                                devices to approve this one.
                             </Text>
 
                             <View style={styles.confirmAvatarWrap}>
@@ -928,17 +758,9 @@ export function HangTightScreen({
                                 </CornerBracketBox>
                             </View>
 
-                            {restoreError ? (
-                                <View style={styles.errorBox}>
-                                    <Text style={styles.errorText}>
-                                        {restoreError}
-                                    </Text>
-                                </View>
-                            ) : null}
-
                             <View style={styles.confirmButtonStack}>
                                 <VexButton
-                                    disabled={busy || restoreBusy}
+                                    disabled={busy}
                                     glow
                                     onPress={handleConfirmExisting}
                                     style={styles.confirmPrimary}
@@ -946,25 +768,17 @@ export function HangTightScreen({
                                     variant="primary"
                                 />
                                 <VexButton
-                                    disabled={busy || restoreBusy}
+                                    disabled={busy}
                                     onPress={handleDenyExisting}
                                     style={styles.confirmSecondary}
                                     title="No, use a different handle"
-                                    variant="outline"
-                                />
-                                <VexButton
-                                    disabled={busy || restoreBusy}
-                                    loading={restoreBusy}
-                                    onPress={handleRestoreFromBackupOnConfirm}
-                                    style={styles.confirmSecondary}
-                                    title="Restore from key backup"
                                     variant="outline"
                                 />
                             </View>
 
                             <Text style={styles.bottomHint}>
                                 {
-                                    'Other devices are only notified after you tap "Yes". If this isn\u2019t you, nothing is sent — you can use a different handle or restore from backup.'
+                                    'Other devices are only notified after you tap "Yes". If this isn\u2019t you, nothing is sent — you can use a different handle.'
                                 }
                             </Text>
                         </Animated.View>

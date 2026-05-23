@@ -42,7 +42,6 @@
         "expo-background-fetch": "catalog:",
         "expo-background-task": "catalog:",
         "expo-blur": "~55.0.14",
-        "expo-clipboard": "catalog:",
         "expo-constants": "catalog:",
         "expo-crypto": "catalog:",
         "expo-document-picker": "catalog:",
