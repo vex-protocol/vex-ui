@@ -28,6 +28,9 @@ import { getServerUrl } from "./config";
 
 const DB_KEY_PREFIX = "vex-db-key";
 const DB_KEY_MIGRATION_PREFIX = "vex-db-key-migration";
+const DB_MIGRATION_BACKUP_DIR = "vex-db-backups";
+const LEGACY_IDENTITY_BACKUP_CACHE_PREFIX = "vex-identity-";
+const LEGACY_IDENTITY_BACKUP_CACHE_SUFFIX = ".json";
 
 interface DbBackupFile {
     backupUri: string;
@@ -37,11 +40,34 @@ interface DbBackupFile {
 
 interface DbKeyMigrationJournal {
     backupFiles: DbBackupFile[];
-    dbKeyHex: string;
     dbName: string;
     startedAt: string;
     username: string;
     version: 1;
+}
+
+export async function cleanupLegacyLocalKeyMaterialArtifacts(): Promise<void> {
+    await cleanupLegacyIdentityBackupCacheFiles();
+}
+
+export async function clearLocalDatabaseKeyMaterial(
+    username: string,
+): Promise<void> {
+    let journal: DbKeyMigrationJournal | null = null;
+    try {
+        journal = await readMigrationJournal(username);
+    } catch (err: unknown) {
+        console.warn(
+            "[vex-mobile] deleting unreadable DB key migration journal",
+            err,
+        );
+    }
+    if (journal) {
+        await cleanupMigrationBackups(journal.backupFiles);
+    }
+    await SecureStore.deleteItemAsync(dbKeyMigrationKey(username));
+    await SecureStore.deleteItemAsync(dbKeyKey(username));
+    await cleanupOrphanedDbKeyMigrationBackups(username);
 }
 
 export function mobileConfig(): BootstrapConfig {
@@ -51,6 +77,7 @@ export function mobileConfig(): BootstrapConfig {
             username: string,
         ): Promise<Storage> {
             await recoverPendingDbKeyMigration(username);
+            await cleanupOrphanedDbKeyMigrationBackups(username);
 
             const { Kysely } = await import("kysely");
             const { ExpoDialect } = await import("kysely-expo");
@@ -116,8 +143,8 @@ async function backupDatabaseFiles(
         joinUriPath(sqliteDir, `${dbName}-shm`),
     ];
     const backupDir =
-        `${documentDirectory}vex-db-backups/` +
-        `${sanitize(getServerUrl())}.${sanitize(username)}.${Date.now()}/`;
+        `${documentDirectory}${DB_MIGRATION_BACKUP_DIR}/` +
+        `${backupDirectoryPrefix(username)}${Date.now()}/`;
     await FileSystem.makeDirectoryAsync(backupDir, { intermediates: true });
 
     const files: DbBackupFile[] = [];
@@ -134,6 +161,47 @@ async function backupDatabaseFiles(
     return files;
 }
 
+function backupDirectoryPrefix(username: string): string {
+    return `${sanitize(getServerUrl())}.${sanitize(username)}.`;
+}
+
+async function cleanupLegacyIdentityBackupCacheFiles(): Promise<void> {
+    const cacheDirectory = FileSystem.cacheDirectory;
+    if (!cacheDirectory) {
+        return;
+    }
+
+    let entries: string[];
+    try {
+        entries = await FileSystem.readDirectoryAsync(cacheDirectory);
+    } catch (err: unknown) {
+        console.warn(
+            "[vex-mobile] failed to inspect legacy identity backup cache",
+            err,
+        );
+        return;
+    }
+
+    for (const entry of entries) {
+        if (
+            !entry.startsWith(LEGACY_IDENTITY_BACKUP_CACHE_PREFIX) ||
+            !entry.endsWith(LEGACY_IDENTITY_BACKUP_CACHE_SUFFIX)
+        ) {
+            continue;
+        }
+        try {
+            await FileSystem.deleteAsync(`${cacheDirectory}${entry}`, {
+                idempotent: true,
+            });
+        } catch (err: unknown) {
+            console.warn(
+                "[vex-mobile] failed to delete legacy identity backup cache",
+                err,
+            );
+        }
+    }
+}
+
 async function cleanupMigrationBackups(files: DbBackupFile[]): Promise<void> {
     if (files.length === 0) {
         return;
@@ -145,6 +213,49 @@ async function cleanupMigrationBackups(files: DbBackupFile[]): Promise<void> {
             "[vex-mobile] failed to delete DB key migration backups",
             err,
         );
+    }
+}
+
+async function cleanupOrphanedDbKeyMigrationBackups(
+    username: string,
+): Promise<void> {
+    const documentDirectory = FileSystem.documentDirectory;
+    if (!documentDirectory) {
+        return;
+    }
+
+    const rootUri = `${documentDirectory}${DB_MIGRATION_BACKUP_DIR}/`;
+    const root = await FileSystem.getInfoAsync(rootUri);
+    if (!root.exists || !root.isDirectory) {
+        return;
+    }
+
+    let entries: string[];
+    try {
+        entries = await FileSystem.readDirectoryAsync(rootUri);
+    } catch (err: unknown) {
+        console.warn(
+            "[vex-mobile] failed to inspect DB key migration backups",
+            err,
+        );
+        return;
+    }
+
+    const prefix = backupDirectoryPrefix(username);
+    for (const entry of entries) {
+        if (!entry.startsWith(prefix)) {
+            continue;
+        }
+        try {
+            await FileSystem.deleteAsync(`${rootUri}${entry}`, {
+                idempotent: true,
+            });
+        } catch (err: unknown) {
+            console.warn(
+                "[vex-mobile] failed to delete stale DB key migration backup",
+                err,
+            );
+        }
     }
 }
 
@@ -217,7 +328,6 @@ async function readMigrationJournal(
         const parsed = JSON.parse(raw) as Partial<DbKeyMigrationJournal>;
         if (
             parsed.version === 1 &&
-            typeof parsed.dbKeyHex === "string" &&
             typeof parsed.dbName === "string" &&
             typeof parsed.startedAt === "string" &&
             typeof parsed.username === "string" &&
@@ -268,6 +378,7 @@ async function recoverPendingDbKeyMigration(username: string): Promise<void> {
     }
 
     await restoreDatabaseBackup(journal.backupFiles);
+    await cleanupMigrationBackups(journal.backupFiles);
     await SecureStore.deleteItemAsync(dbKeyMigrationKey(username));
     await SecureStore.deleteItemAsync(dbKeyKey(username));
     console.warn("[vex-mobile] recovered interrupted DB key migration", {
@@ -308,7 +419,6 @@ async function resolveAtRestAesKey({
         backupFiles = await backupDatabaseFiles(dbName, username);
         journal = {
             backupFiles,
-            dbKeyHex: encodeVexDbAtRestKey(nextKey),
             dbName,
             startedAt: new Date().toISOString(),
             username,
@@ -347,7 +457,10 @@ async function resolveAtRestAesKey({
     }
 
     try {
-        await SecureStore.setItemAsync(dbKeyKey(username), journal.dbKeyHex);
+        await SecureStore.setItemAsync(
+            dbKeyKey(username),
+            encodeVexDbAtRestKey(nextKey),
+        );
     } catch (err: unknown) {
         console.error(
             "[vex-mobile] DB key migration committed but SecureStore save failed; backup journal kept for restart recovery",
