@@ -1,7 +1,7 @@
 # vex-ui
 
 [![Node](https://img.shields.io/badge/node-%3E%3D24.0.0-339933?style=flat-square&logo=nodedotjs)](./package.json)
-[![pnpm](https://img.shields.io/badge/pnpm-10.33.0-F69220?style=flat-square&logo=pnpm)](./package.json)
+[![pnpm](https://img.shields.io/badge/pnpm-11.1.3-F69220?style=flat-square&logo=pnpm)](./package.json)
 [![npm audit](https://img.shields.io/github/actions/workflow/status/vex-protocol/vex-ui/npm-audit.yml?branch=master&style=flat-square&logo=npm&label=npm%20audit)](https://github.com/vex-protocol/vex-ui/actions/workflows/npm-audit.yml)
 [![CI](https://img.shields.io/github/actions/workflow/status/vex-protocol/vex-ui/ci.yml?branch=master&event=push&style=flat-square&logo=github&label=CI)](https://github.com/vex-protocol/vex-ui/actions/workflows/ci.yml)
 [![Socket](https://img.shields.io/github/actions/workflow/status/vex-protocol/vex-ui/socket.yml?branch=master&style=flat-square&label=Socket)](https://github.com/vex-protocol/vex-ui/actions/workflows/socket.yml)
@@ -33,7 +33,7 @@ Every message is encrypted on your device before it leaves. The server stores on
 ### Prerequisites
 
 - [mise](https://mise.jdx.dev/) — manages Node.js and pnpm versions automatically
-- Or manually: Node.js 24.x and pnpm 10.x
+- Or manually: Node.js 24.x and pnpm 11.1.3
 
 ```bash
 # Install mise, then let it pick up the pinned versions from mise.toml

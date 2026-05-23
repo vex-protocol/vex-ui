@@ -41,5 +41,8 @@ apps/mobile/google-services*.json
 package-lock.json
 yarn.lock
 
+# Local Storybook static builds
+packages/ui/storybook-static/
+
 # Local registry config — points to localhost:4873, breaks without Verdaccio running
 .npmrc

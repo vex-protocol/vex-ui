@@ -5,7 +5,7 @@ Quick reference for running development tasks in the vex-chat monorepo.
 ## Prerequisites
 
 - **Node.js** 24.x (via [mise](https://mise.jdx.dev/))
-- **pnpm** 10.30.3 (pinned in package.json)
+- **pnpm** 11.1.3 (pinned in package.json)
 - **Rust** 1.77.2+ (desktop only)
 
 ```bash
@@ -65,26 +65,24 @@ Native iOS and Android client via Expo Prebuild (CNG). `ios/` and `android/` dir
 - Android: Android SDK, emulator or device
 - `npx expo prebuild` generates native projects from config
 
-### First-time setup
-
-```bash
-cd apps/mobile
-npx expo prebuild          # generates ios/ and android/
-```
-
 ### Development build (recommended)
 
 ```bash
-npx expo run:ios           # builds native + launches on iOS simulator
-npx expo run:android       # builds native + launches on Android emulator
+pnpm -F mobile ios         # builds native + launches on iOS simulator
+pnpm -F mobile android     # builds native + launches on Android emulator
 ```
 
-After the first build (~2-5 min), subsequent launches are fast. JS changes hot-reload instantly.
+The package scripts select the Vex Developer app variant with
+`VEX_APP_ENV=development`. When a platform native directory does not exist,
+Expo CLI prebuilds that platform before the local build. After app config,
+native dependencies, config plugins, or the Expo SDK change, regenerate the
+development native projects with `pnpm -F mobile prebuild` and rebuild the
+native app. `prebuild` does not compile or install a build by itself.
 
 ### Expo Go (quick JS-only testing)
 
 ```bash
-npx expo start             # opens in Expo Go on device/simulator
+pnpm -F mobile start       # opens in Expo Go on device/simulator
 ```
 
 Expo Go has a fixed set of native modules. Packages with custom native code (`expo-sqlite`, `expo-notifications`, etc.) will crash in Expo Go — use a development build instead. See `docs/explanation/platform-strategy.md` for the full Expo Go vs dev build comparison.
@@ -92,18 +90,43 @@ Expo Go has a fixed set of native modules. Packages with custom native code (`ex
 ### Metro bundler (standalone)
 
 ```bash
-npx expo start --dev-client   # connects to an existing development build
+pnpm -F mobile dev         # connects to an existing Vex Developer build
 ```
 
-Useful if the app needs to reconnect to the bundler after the native binary is already running.
+Useful after the development build is installed and native code has not
+changed. The default `dev` script sets `VEX_APP_ENV=development`; no copied env
+file is needed for the Vex Developer build to default to the deployed dev API.
+
+### Legacy Android helpers
+
+The default local flow is now `android`, `ios`, `prebuild`, and `dev`. Existing
+Android wrapper scripts stay available during the transition for the extra work
+they still own:
+
+- `pnpm -F mobile legacy:android` keeps the prior Android wrapper behind the
+  old default `android` command.
+- `pnpm -F mobile android:dev` validates dev Firebase config and performs its
+  scripted clean Android prebuild before using the legacy Android runner.
+- `pnpm -F mobile android:multi`, `android:emulator`, `android:prod`, install
+  helpers, and Android reset/log scripts remain available for specialized
+  device workflows.
+
+See [ADR-013](./architecture/adr-013-expo-native-mobile-dev-workflow.md) for
+the phased migration rationale.
 
 ### Server URL configuration
 
-The mobile app always defaults to the production API at `api.vex.wtf`. To point at a different server, set `EXPO_PUBLIC_SERVER_URL` before starting Metro — **do not** edit `src/lib/config.ts`. Release builds throw at startup if the resolved URL looks like a dev host, so a forgotten localhost can never ship.
+The production app variant defaults to the production API at `api.vex.wtf`.
+The Vex Developer variant selected by `pnpm -F mobile dev`, `android`, and
+`ios` defaults to `dev.vex.wtf` from app metadata. To point at a different
+server, set both `EXPO_PUBLIC_ENABLE_DEV_SERVER=1` and
+`EXPO_PUBLIC_SERVER_URL` before starting Metro - **do not** edit
+`src/lib/config.ts`. Release builds throw at startup if the resolved URL looks
+like a dev host, so a forgotten localhost can never ship.
 
 | Target                              | Command                              |
 | ----------------------------------- | ------------------------------------ |
-| Production (default)                | `pnpm -F mobile dev`                 |
+| Deployed dev API                    | `pnpm -F mobile dev`                 |
 | iOS simulator → local spire         | `pnpm -F mobile dev:local`           |
 | Android emulator → local spire      | `pnpm -F mobile dev:android-reverse` |
 | Physical device, same Wi-Fi         | `pnpm -F mobile dev:lan`             |

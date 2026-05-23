@@ -9,7 +9,6 @@ import Constants from "expo-constants";
 // app.config.js metadata and defaults to the dev API even for OTA updates.
 const PROD_SERVER_URL = "api.vex.wtf";
 const DEV_SERVER_URL = "dev.vex.wtf";
-const DEV_OVERRIDE_FLAG = "EXPO_PUBLIC_ENABLE_DEV_SERVER";
 
 type VexExpoConfig = {
     extra?: {
@@ -78,10 +77,8 @@ function normalizeHost(raw: string): string {
 
 function readOverride(): string | undefined {
     const allowDevOverride =
-        (process.env[DEV_OVERRIDE_FLAG] as string | undefined)?.trim() === "1";
-    const raw = (
-        process.env["EXPO_PUBLIC_SERVER_URL"] as string | undefined
-    )?.trim();
+        process.env.EXPO_PUBLIC_ENABLE_DEV_SERVER?.trim() === "1";
+    const raw = process.env.EXPO_PUBLIC_SERVER_URL?.trim();
     if (!raw || raw.length === 0) {
         return undefined;
     }
