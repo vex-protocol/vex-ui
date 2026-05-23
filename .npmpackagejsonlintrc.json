@@ -1,16 +1,6 @@
 {
     "rules": {
-        "prefer-absolute-version-dependencies": [
-            "error",
-            {
-                "exceptions": ["@vex-chat/store"]
-            }
-        ],
-        "prefer-absolute-version-devDependencies": [
-            "error",
-            {
-                "exceptions": ["@vex-chat/eslint-config"]
-            }
-        ]
+        "prefer-absolute-version-dependencies": "error",
+        "prefer-absolute-version-devDependencies": "error"
     }
 }

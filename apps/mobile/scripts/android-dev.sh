@@ -76,4 +76,4 @@ EOF
   exit 1
 fi
 
-pnpm run legacy:android
+pnpm run android

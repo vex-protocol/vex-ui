@@ -10,11 +10,5 @@
         "noEmit": true,
         "allowImportingTsExtensions": true
     },
-    "include": [
-        "src",
-        "scripts",
-        ".storybook/main.ts",
-        ".storybook-react/main.ts",
-        ".storybook-svelte/main.ts"
-    ]
+    "include": ["src", "scripts"]
 }

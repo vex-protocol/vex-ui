@@ -2,11 +2,10 @@
 // profile-conditional fields so `development` and `production` EAS build
 // profiles can produce two distinct APKs that can coexist on one device.
 //
-//   default (all profiles)                  → production flavor
-//   VEX_APP_ENV=development                → development flavor
-//   legacy VEX_ENABLE_DEV_BUILD + profile  → development flavor
-//   env override                           → VEX_IOS_BUNDLE_IDENTIFIER (optional)
-//   local personal-team iOS builds         → VEX_DISABLE_IOS_CAPABILITIES=1
+//   default (all profiles)             → production flavor
+//   VEX_ENABLE_DEV_BUILD=1 + profile=development → dev flavor (opt-in)
+//   env override                        → VEX_IOS_BUNDLE_IDENTIFIER (optional)
+//   local personal-team iOS builds      → VEX_DISABLE_IOS_CAPABILITIES=1
 //
 // Dev and production APKs both use EAS Update. Runtime compatibility is
 // fingerprint-based, so JS/assets can ship OTA while native changes still
@@ -154,12 +153,6 @@ module.exports = ({ config }) => {
                 return pluginName !== "expo-notifications";
             }),
             [ANDROID_ASSET_STATEMENTS_PLUGIN, { hosts: [passkeyRpHost] }],
-            [
-                "expo-dev-client",
-                {
-                    addGeneratedScheme: devMode,
-                },
-            ],
             [
                 "expo-audio",
                 {

@@ -2,52 +2,63 @@ packages:
     - apps/*
     - packages/*
 
-pmOnFail: error
-
-overrides:
-    # @expo/config-plugins currently resolves xcode@3.0.1 with uuid@^7.0.3,
-    # which is flagged by GHSA-w5hq-g745-h8pq. Remove this override after
-    # xcode drops the uuid dependency or Expo picks up a patched xcode release.
-    "xcode>uuid": 11.1.1
+blockExoticSubdeps: true
 
 catalog:
-    "@sveltejs/vite-plugin-svelte": 6.2.4
-    "@types/node": 24.12.2
+    "@expo/vector-icons": ^15.1.1
+    "@nanostores/react": ^1.1.0
+    "@notifee/react-native": ^9.1.8
+    "@types/node": ^24.10.1
     "@vex-chat/crypto": 6.0.0
     "@vex-chat/libvex": 6.8.0
-    concurrently: 9.2.1
-    eslint-config-prettier: 10.1.8
-    highlight.js: 11.11.1
-    kysely: 0.28.17
-    nanostores: 1.2.0
-    prettier-plugin-svelte: 3.5.1
+    "@vex-chat/spire": 1.11.5
+    "@vex-chat/types": 3.3.1
+    dompurify: ^3.4.0
+    expo-background-fetch: ~55.0.15
+    expo-background-task: ~55.0.17
+    expo-audio: ~55.0.14
+    expo-clipboard: ~55.0.13
+    expo-constants: ~55.0.13
+    expo-crypto: ~55.0.14
+    expo-document-picker: ~55.0.13
+    expo-file-system: ~55.0.17
+    expo-image-manipulator: ^55.0.15
+    expo-intent-launcher: ~55.0.12
+    expo-sharing: ~55.0.18
+    expo-task-manager: ~55.0.15
+    expo-video: ~55.0.17
+    highlight.js: ^11.11.1
+    kysely: ^0.28.17
+    marked: ^15.0.12
+    msgpackr: ^1.11.5
+    nanostores: ^1.2.0
     react: 19.2.0
-    svelte: 5.55.7
-    tsx: 4.21.0
-    typescript: 5.9.3
-    typescript-eslint: 8.58.1
-    uuid: 14.0.0
-    vite: 7.3.2
+    react-dom: 19.2.0
+    react-native-passkey: 3.3.3
+    svelte: ^5.55.7
+    typescript: ~5.9.3
+    uuid: ^14.0.0
     vitest: 3.2.4
+    zod: ^4.1.12
 
-catalogMode: prefer
-cleanupUnusedCatalogs: true
-savePrefix: ""
+catalogMode: strict
 
-minimumReleaseAge: 1440
+minimumReleaseAge: 10080
 
 minimumReleaseAgeExclude:
-    - "@vex-chat/*"
-peerDependencyRules:
-    allowedVersions:
-        expo-sqlite: ">=16"
-        typescript: ">=5"
-        "@sveltejs/vite-plugin-svelte": ">=2"
-allowBuilds:
-    esbuild: true
-    msgpackr-extract: true
-    svelte-preprocess: false
-patchedDependencies:
-    "@builder.io/mitosis-cli@0.13.0": patches/@builder.io__mitosis-cli@0.13.0.patch
-    "@builder.io/mitosis@0.13.0": patches/@builder.io__mitosis@0.13.0.patch
-    "@vex-chat/libvex@6.8.0": patches/@vex-chat__libvex@6.8.0.patch
+    - "@vex-chat/libvex"
+    - "@vex-chat/types"
+    - "@vex-chat/crypto"
+    - "@vex-chat/spire"
+    - expo-background-fetch
+    - expo-background-task
+    - expo-task-manager
+    - unimodules-app-loader
+    - uuid
+    - dompurify
+    - qs
+    - svelte
+    - devalue
+    - fast-xml-builder
+    - kysely
+    - ws
