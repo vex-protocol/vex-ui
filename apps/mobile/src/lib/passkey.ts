@@ -71,6 +71,7 @@ export interface PublicKeyCredentialRequestOptionsJSON {
 
 interface PasskeyNativeError {
     code?: string;
+    error?: string;
     message?: string;
     name?: string;
 }
@@ -228,6 +229,7 @@ function asPasskeyNativeError(err: unknown): null | PasskeyNativeError {
     const obj = err as Record<string, unknown>;
     const out: PasskeyNativeError = {};
     if (typeof obj["code"] === "string") out.code = obj["code"];
+    if (typeof obj["error"] === "string") out.error = obj["error"];
     if (typeof obj["message"] === "string") out.message = obj["message"];
     if (typeof obj["name"] === "string") out.name = obj["name"];
     return out;
@@ -238,11 +240,13 @@ function normalizePasskeyError(err: unknown): Error {
     if (!native) {
         return new PasskeyError("Passkey ceremony failed.");
     }
-    const code = native.code ?? "";
+    const code = native.code ?? native.error ?? "";
     const message = native.message ?? "";
     const lowered = (code + " " + message).toLowerCase();
     if (
+        lowered.includes("abort") ||
         lowered.includes("cancel") ||
+        lowered.includes("usercancel") ||
         lowered.includes("user_cancel") ||
         lowered.includes("dismissed") ||
         lowered.includes("interrupted")
