@@ -15,6 +15,7 @@ import {
 } from "react-native";
 
 import {
+    $authStatus,
     $groupMessages,
     $hydrationStatus,
     $keyReplaced,
@@ -49,7 +50,6 @@ import {
     keychainKeyStore,
     setUserIDForUsername,
 } from "./src/lib/keychain";
-import { authenticatePasskey, registerPasskey } from "./src/lib/passkey";
 import {
     clearNotifiedApprovalRequestIDs,
     dismissDeviceApprovalNotification,
@@ -58,6 +58,7 @@ import {
     showDeviceApprovalNotification,
     showMessageNotification,
 } from "./src/lib/notifications";
+import { authenticatePasskey, registerPasskey } from "./src/lib/passkey";
 import { mobileConfig } from "./src/lib/platform";
 import {
     hydratePushNotificationPreference,
@@ -525,6 +526,11 @@ function App() {
                 return;
             }
             if ($user.get()) {
+                return;
+            }
+            if ($authStatus.get() === "checking") {
+                // Native passkey sheets can resume the app before signup has
+                // finished setting $user; don't start a competing autoLogin.
                 return;
             }
             const now = Date.now();
