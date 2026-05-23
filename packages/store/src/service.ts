@@ -1868,8 +1868,9 @@ class VexService {
         this.stopPendingApprovalWatcher();
         $pendingApprovalStageWritable.set("signing_in");
 
-        let approvedDevice: Device;
+        let approvedDevice: Device | null = null;
         let deletedDeviceCount = 0;
+        const deletedDeviceFailures: string[] = [];
         try {
             const begin = await client.passkeys.beginAuthentication(
                 pending.username,
@@ -1888,7 +1889,7 @@ class VexService {
             for (const device of devices) {
                 if (
                     device.deleted ||
-                    device.deviceID === approvedDevice.deviceID
+                    device.deviceID === approvedDevice?.deviceID
                 ) {
                     continue;
                 }
@@ -1896,6 +1897,7 @@ class VexService {
                     await client.passkeys.deleteDevice(device.deviceID);
                     deletedDeviceCount += 1;
                 } catch (err: unknown) {
+                    deletedDeviceFailures.push(device.deviceID);
                     debugAuth("passkeyRestore:deleteDevice:failed", {
                         deviceID: device.deviceID,
                         message: errorMessage(err),
@@ -1935,6 +1937,15 @@ class VexService {
             this.activePendingDeviceApproval = null;
             this.deferredDeviceApproval = null;
 
+            if (deletedDeviceFailures.length > 0) {
+                return {
+                    approvedDeviceID: approvedDevice.deviceID,
+                    deletedDeviceCount,
+                    error: `This device was restored, but ${String(deletedDeviceFailures.length)} old device${deletedDeviceFailures.length === 1 ? "" : "s"} could not be removed. Review your devices in Settings.`,
+                    ok: false,
+                };
+            }
+
             return {
                 approvedDeviceID: approvedDevice.deviceID,
                 deletedDeviceCount,
@@ -1943,7 +1954,14 @@ class VexService {
         } catch (err: unknown) {
             return { error: errorMessage(err), ok: false };
         } finally {
-            $pendingApprovalStageWritable.set("idle");
+            if (
+                approvedDevice === null &&
+                this.activePendingDeviceApproval?.requestID === requestID
+            ) {
+                this.startPendingApprovalWatcher(pending);
+            } else {
+                $pendingApprovalStageWritable.set("idle");
+            }
         }
     }
 

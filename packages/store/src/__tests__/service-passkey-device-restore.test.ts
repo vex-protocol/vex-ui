@@ -22,6 +22,7 @@ type MockClient = {
     close: ReturnType<typeof vi.fn>;
     connect: ReturnType<typeof vi.fn>;
     devices: {
+        pollPendingRegistration: ReturnType<typeof vi.fn>;
         publishPendingRegistration: ReturnType<typeof vi.fn>;
     };
     getKeys: ReturnType<typeof vi.fn>;
@@ -64,6 +65,15 @@ function makeClient(): MockClient {
         close: vi.fn(async () => undefined),
         connect: vi.fn(async () => undefined),
         devices: {
+            pollPendingRegistration: vi.fn(async () => ({
+                createdAt: "2026-05-22T00:00:00.000Z",
+                deviceName: "android",
+                expiresAt: "2026-05-22T00:10:00.000Z",
+                requestID: "pending-request",
+                signKey: "new-device-sign-key",
+                status: "pending",
+                username: "blood",
+            })),
             publishPendingRegistration: vi.fn(async () => undefined),
         },
         getKeys: vi.fn(() => ({ public: "new-device-sign-key" })),
@@ -253,6 +263,76 @@ describe("vexService passkey device restore", () => {
             token: "",
             username: "blood",
         });
+        expect(client.loginWithDeviceKey).toHaveBeenCalledWith("new-device");
+        expect(client.connect).toHaveBeenCalledOnce();
+    });
+
+    test("resumes pending approval polling when passkey restore fails before approval", async () => {
+        const client = makeClient();
+        const config = makeConfig();
+        const { keyStore } = makeKeyStore();
+        const options: ServerOptions = { host: "dev.vex.wtf" };
+        vexService.setPasskeyCeremonyDriver({
+            authenticate: vi.fn(async () => {
+                throw new Error("cancelled");
+            }),
+            register: vi.fn(),
+        });
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        await vexService.register("Blood", "", config, options, keyStore);
+        vi.useFakeTimers();
+        await expect(
+            vexService.publishDeferredDeviceApprovalAndStartWatching(keyStore),
+        ).resolves.toEqual({ ok: true });
+
+        const restored =
+            await vexService.passkeyRestorePendingDevice("pending-request");
+
+        expect(restored).toEqual({ error: "cancelled", ok: false });
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(client.devices.pollPendingRegistration).toHaveBeenCalledWith({
+            challenge: "a".repeat(64),
+            requestID: "pending-request",
+        });
+        expect(client.passkeys.approveDeviceRequest).not.toHaveBeenCalled();
+    });
+
+    test("reports partial restore when old device deletion fails", async () => {
+        const client = makeClient();
+        client.passkeys.deleteDevice.mockImplementation(
+            async (deviceID: string) => {
+                if (deviceID === "old-device-1") {
+                    throw new Error("delete failed");
+                }
+            },
+        );
+        const config = makeConfig();
+        const { keyStore } = makeKeyStore();
+        const options: ServerOptions = { host: "dev.vex.wtf" };
+        const authenticate = vi.fn(async () => ({ id: "assertion" }));
+        vexService.setPasskeyCeremonyDriver({
+            authenticate,
+            register: vi.fn(),
+        });
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        await vexService.register("Blood", "", config, options, keyStore);
+        vi.useFakeTimers();
+        await expect(
+            vexService.publishDeferredDeviceApprovalAndStartWatching(keyStore),
+        ).resolves.toEqual({ ok: true });
+
+        const restored =
+            await vexService.passkeyRestorePendingDevice("pending-request");
+
+        expect(restored).toMatchObject({
+            approvedDeviceID: "new-device",
+            deletedDeviceCount: 1,
+            ok: false,
+        });
+        expect(restored.error).toContain("1 old device");
+        expect(client.passkeys.deleteDevice).toHaveBeenCalledTimes(2);
         expect(client.loginWithDeviceKey).toHaveBeenCalledWith("new-device");
         expect(client.connect).toHaveBeenCalledOnce();
     });
