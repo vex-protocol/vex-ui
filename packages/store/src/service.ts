@@ -84,6 +84,12 @@ export interface AuthResult {
     error?: string;
     keyReplaced?: boolean;
     ok: boolean;
+    /**
+     * Set when signup created the account/device, but the required first
+     * passkey did not finish. Credentials have been saved so callers should
+     * retry auth/passkey setup instead of submitting another registration.
+     */
+    passkeySetupRequired?: boolean;
     pendingDeviceApproval?: boolean;
     pendingRequestID?: string;
     /**
@@ -381,6 +387,7 @@ interface WebSocketDebugLike {
 }
 
 const REGISTER_STEP_TIMEOUT_MS = 12000;
+const PASSKEY_SETUP_TIMEOUT_MS = 5 * 60 * 1000;
 const DEVICE_AUTH_REFRESH_THRESHOLD_MS = 6 * 24 * 60 * 60 * 1000;
 const DEVICE_AUTH_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const LOCAL_DECRYPT_RECOVERY_ERROR =
@@ -707,6 +714,15 @@ class VexService {
                         });
                         return { ok: true };
                     } catch (recoveryErr: unknown) {
+                        if (isPasskeySetupRequiredError(recoveryErr)) {
+                            return {
+                                error: initialPasskeySetupErrorMessage(
+                                    recoveryErr,
+                                ),
+                                ok: false,
+                                passkeySetupRequired: true,
+                            };
+                        }
                         try {
                             await this.close();
                         } catch {
@@ -721,6 +737,13 @@ class VexService {
                             ok: false,
                         };
                     }
+                }
+                if (isPasskeySetupRequiredError(err)) {
+                    return {
+                        error: initialPasskeySetupErrorMessage(err),
+                        ok: false,
+                        passkeySetupRequired: true,
+                    };
                 }
                 try {
                     await this.close();
@@ -884,6 +907,45 @@ class VexService {
                 // Ignore close errors — the Client may have a
                 // half-open WebSocket that throws on teardown.
             }
+        }
+    }
+
+    async completeInitialPasskeySetup(
+        config: BootstrapConfig,
+    ): Promise<AuthResult> {
+        try {
+            const client = this.requireClient();
+            await withTimeout(
+                this.registerInitialPasskeyForCurrentClient(
+                    config.deviceName || "This device",
+                ),
+                PASSKEY_SETUP_TIMEOUT_MS,
+                "Signup stalled while adding a passkey.",
+            );
+
+            await withTimeout(
+                client.connect(),
+                REGISTER_STEP_TIMEOUT_MS,
+                "Signup stalled while opening realtime connection.",
+            );
+            $userWritable.set(client.me.user());
+            this.setAuthStatus("authenticated");
+            this.kickPopulateState();
+            return { ok: true };
+        } catch (err: unknown) {
+            debugAuth("passkey:registerInitial:retry:failed", {
+                message: errorMessage(err),
+            });
+            if (isUnauthorizedError(err)) {
+                this.setAuthStatus("unauthorized");
+            } else if (isNetworkError(err)) {
+                this.setAuthStatus("offline");
+            }
+            return {
+                error: initialPasskeySetupErrorMessage(err),
+                ok: false,
+                passkeySetupRequired: true,
+            };
         }
     }
 
@@ -1614,6 +1676,13 @@ class VexService {
                     ok: false,
                 };
             }
+            if (isPasskeySetupRequiredError(err)) {
+                return {
+                    error: initialPasskeySetupErrorMessage(err),
+                    ok: false,
+                    passkeySetupRequired: true,
+                };
+            }
             if (isStaleCredentialError(err)) {
                 this.setAuthStatus("unauthorized");
             } else if (isNetworkError(err)) {
@@ -2068,13 +2137,32 @@ class VexService {
                 };
             }
 
-            await withTimeout(
-                this.registerInitialPasskeyForCurrentClient(
-                    config.deviceName || "This device",
-                ),
-                REGISTER_STEP_TIMEOUT_MS,
-                "Signup stalled while adding a passkey.",
-            );
+            await this.saveCredentials(keyStore, {
+                deviceID: client.me.device().deviceID,
+                deviceKey: privateKey,
+                token: "",
+                username: client.me.user().username,
+            });
+
+            try {
+                await withTimeout(
+                    this.registerInitialPasskeyForCurrentClient(
+                        config.deviceName || "This device",
+                    ),
+                    PASSKEY_SETUP_TIMEOUT_MS,
+                    "Signup stalled while adding a passkey.",
+                );
+            } catch (passkeyErr: unknown) {
+                debugAuth("register:passkeySetup:failed", {
+                    message: errorMessage(passkeyErr),
+                });
+                this.setAuthStatus("unauthorized");
+                return {
+                    error: initialPasskeySetupErrorMessage(passkeyErr),
+                    ok: false,
+                    passkeySetupRequired: true,
+                };
+            }
 
             await withTimeout(
                 client.connect(),
@@ -2084,13 +2172,6 @@ class VexService {
             debugAuth("register:connect:ok", undefined);
             $userWritable.set(client.me.user());
             this.setAuthStatus("authenticated");
-
-            await this.saveCredentials(keyStore, {
-                deviceID: client.me.device().deviceID,
-                deviceKey: privateKey,
-                token: "",
-                username: client.me.user().username,
-            });
 
             this.kickPopulateState();
             debugAuth("register:populateState:kick", undefined);
@@ -3434,14 +3515,30 @@ class VexService {
             );
         }
         const client = this.requireClient();
+        debugAuth("passkey:registerInitial:begin", { name });
         const begin = await client.passkeys.beginRegistration(name);
+        debugAuth("passkey:registerInitial:challenge", {
+            hasRpID:
+                typeof (
+                    begin.options as {
+                        rp?: { id?: unknown };
+                    }
+                ).rp?.id === "string",
+            requestID: begin.requestID,
+        });
         const response = await driver.register(
             begin.options as PublicKeyCredentialCreationOptionsJSON,
         );
+        debugAuth("passkey:registerInitial:native:ok", {
+            hasCredentialID: typeof response["id"] === "string",
+        });
         await client.passkeys.finishRegistration({
             name,
             requestID: begin.requestID,
             response,
+        });
+        debugAuth("passkey:registerInitial:finish:ok", {
+            requestID: begin.requestID,
         });
     }
 
@@ -4091,7 +4188,7 @@ class VexService {
         try {
             begin = await client.passkeys.beginAuthentication(username);
         } catch (err: unknown) {
-            if (isUnauthorizedError(err)) {
+            if (isUnauthorizedError(err) || isPasskeySetupRequiredError(err)) {
                 return "not_registered";
             }
             throw err;
@@ -4785,6 +4882,22 @@ function hasSyncInboxNow(client: Client): client is Client & {
     return typeof maybeClient.syncInboxNow === "function";
 }
 
+function initialPasskeySetupErrorMessage(err: unknown): string {
+    const message = errorMessage(err).trim();
+    const retry = "Tap Retry to finish passkey setup for this account.";
+    if (message.length === 0) {
+        return `Passkey setup did not finish. ${retry}`;
+    }
+    if (
+        /abort|cancel|interrupt|timed out/i.test(message) ||
+        isPasskeySetupRequiredError(err)
+    ) {
+        return `Passkey setup did not finish. ${retry}`;
+    }
+    const normalizedMessage = message.replace(/\.+$/, "");
+    return `Passkey setup failed: ${normalizedMessage}. ${retry}`;
+}
+
 function isDecryptMismatchError(err: unknown): boolean {
     if (!(err instanceof Error)) {
         return false;
@@ -4825,6 +4938,18 @@ function isPasskeyRequiredError(err: unknown): boolean {
         hasHttpStatus(err) &&
         err.response.status === 403 &&
         /passkey verification required/i.test(errorMessage(err))
+    );
+}
+
+function isPasskeySetupRequiredError(err: unknown): boolean {
+    if (hasHttpStatus(err) && err.response.status !== 403) {
+        return false;
+    }
+    const message = errorMessage(err);
+    return (
+        /passkey/i.test(message) &&
+        /register|registered|setup|set up/i.test(message) &&
+        /allow|allowed|before|connect/i.test(message)
     );
 }
 
