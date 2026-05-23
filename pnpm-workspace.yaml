@@ -48,3 +48,6 @@ allowBuilds:
     esbuild: true
     msgpackr-extract: true
     svelte-preprocess: false
+patchedDependencies:
+    "@builder.io/mitosis-cli@0.13.0": patches/@builder.io__mitosis-cli@0.13.0.patch
+    "@builder.io/mitosis@0.13.0": patches/@builder.io__mitosis@0.13.0.patch
