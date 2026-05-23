@@ -4,8 +4,15 @@
         "appVersionSource": "remote"
     },
     "build": {
-        "development": {
+        "dev": {
             "developmentClient": true,
+            "distribution": "internal",
+            "env": {
+                "VEX_APP_ENV": "development"
+            },
+            "android": { "buildType": "apk" }
+        },
+        "development": {
             "channel": "development",
             "distribution": "internal",
             "env": {

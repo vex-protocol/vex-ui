@@ -2,11 +2,13 @@
 // profile-conditional fields so `development` and `production` EAS build
 // profiles can produce two distinct APKs that can coexist on one device.
 //
-//   default (all profiles)                  → production flavor
-//   VEX_APP_ENV=development                → development flavor
-//   legacy VEX_ENABLE_DEV_BUILD + profile  → development flavor
-//   env override                           → VEX_IOS_BUNDLE_IDENTIFIER (optional)
-//   local personal-team iOS builds         → VEX_DISABLE_IOS_CAPABILITIES=1
+//   default (all profiles)                  -> production flavor
+//   EAS_BUILD_PROFILE=dev                   -> local dev-client flavor
+//   EAS_BUILD_PROFILE=development           -> CI development APK flavor
+//   VEX_APP_ENV=development                 -> development flavor
+//   legacy VEX_ENABLE_DEV_BUILD             -> development flavor
+//   env override                            -> VEX_IOS_BUNDLE_IDENTIFIER (optional)
+//   local personal-team iOS builds          -> VEX_DISABLE_IOS_CAPABILITIES=1
 //
 // Dev and production APKs both use EAS Update. Runtime compatibility is
 // fingerprint-based, so JS/assets can ship OTA while native changes still
@@ -56,14 +58,14 @@ function resolveHost(value) {
 }
 
 module.exports = ({ config }) => {
+    const buildProfile = process.env.EAS_BUILD_PROFILE;
     const requestedEnvironment = process.env.VEX_APP_ENV;
-    const devFlavorEnabled =
+    const devClientMode = buildProfile === "dev";
+    const devMode =
+        buildProfile === "dev" ||
+        buildProfile === "development" ||
         process.env.VEX_ENABLE_DEV_BUILD === "1" ||
         requestedEnvironment === "development";
-    const devMode =
-        devFlavorEnabled &&
-        (process.env.EAS_BUILD_PROFILE === "development" ||
-            requestedEnvironment === "development");
     const iosCapabilitiesEnabled =
         process.env.VEX_DISABLE_IOS_CAPABILITIES !== "1";
     const appDisplayName =
@@ -154,12 +156,16 @@ module.exports = ({ config }) => {
                 return pluginName !== "expo-notifications";
             }),
             [ANDROID_ASSET_STATEMENTS_PLUGIN, { hosts: [passkeyRpHost] }],
-            [
-                "expo-dev-client",
-                {
-                    addGeneratedScheme: devMode,
-                },
-            ],
+            ...(devClientMode
+                ? [
+                      [
+                          "expo-dev-client",
+                          {
+                              addGeneratedScheme: true,
+                          },
+                      ],
+                  ]
+                : []),
             [
                 "expo-audio",
                 {

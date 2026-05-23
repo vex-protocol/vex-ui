@@ -79,23 +79,22 @@ native dependencies, config plugins, or the Expo SDK change, regenerate the
 development native projects with `pnpm -F mobile prebuild` and rebuild the
 native app. `prebuild` does not compile or install a build by itself.
 
-### Expo Go (quick JS-only testing)
+### Expo Go unsupported
 
-```bash
-pnpm -F mobile start       # opens in Expo Go on device/simulator
-```
-
-Expo Go has a fixed set of native modules. Packages with custom native code (`expo-sqlite`, `expo-notifications`, etc.) will crash in Expo Go — use a development build instead. See `docs/explanation/platform-strategy.md` for the full Expo Go vs dev build comparison.
+Vex mobile does not support Expo Go. The app relies on native modules and
+config plugins outside Expo Go's fixed runtime, so all local mobile work should
+use the Vex Developer development build.
 
 ### Metro bundler (standalone)
 
 ```bash
-pnpm -F mobile dev         # connects to an existing Vex Developer build
+pnpm -F mobile dev         # connects to an existing Vex Developer dev-client
 ```
 
-Useful after the development build is installed and native code has not
-changed. The default `dev` script sets `VEX_APP_ENV=development`; no copied env
-file is needed for the Vex Developer build to default to the deployed dev API.
+Useful after the local `dev` development build is installed and native code has
+not changed. The default `dev` script sets `VEX_APP_ENV=development` and
+`EAS_BUILD_PROFILE=dev`; no copied env file is needed for the Vex Developer
+build to default to the deployed dev API.
 
 ### Legacy Android helpers
 

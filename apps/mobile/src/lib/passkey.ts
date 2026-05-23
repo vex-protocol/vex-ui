@@ -7,8 +7,8 @@
  * All errors are normalized into one of three buckets:
  *
  *   - `PasskeyUnsupportedError` — the OS can't run a WebAuthn
- *     ceremony at all (e.g. iOS 14, very old Android, Expo Go without
- *     a prebuild).
+ *     ceremony at all (e.g. iOS 14, very old Android, or a runtime
+ *     missing native passkey support).
  *   - `PasskeyCancelledError` — the user dismissed the system
  *     prompt. The caller should treat this as "noop, try again
  *     later" rather than a hard failure.
