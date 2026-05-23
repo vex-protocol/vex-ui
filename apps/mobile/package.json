@@ -23,6 +23,7 @@
         "dev:local": "EXPO_PUBLIC_ENABLE_DEV_SERVER=1 EXPO_PUBLIC_SERVER_URL=localhost:16777 pnpm run dev",
         "dev:lan": "EXPO_PUBLIC_ENABLE_DEV_SERVER=1 EXPO_PUBLIC_SERVER_URL=$(ipconfig getifaddr en0):16777 pnpm run dev",
         "dev:android-reverse": "adb reverse tcp:16777 tcp:16777 && EXPO_PUBLIC_ENABLE_DEV_SERVER=1 EXPO_PUBLIC_SERVER_URL=localhost:16777 pnpm run dev",
+        "passkeys:doctor": "node ./scripts/passkeys-doctor.cjs",
         "development:android": "VEX_MOBILE_TARGET=development eas build --profile development --platform android --local --non-interactive --output ../../vex-development-local.apk",
         "development:android:gradle-install": "bash ./scripts/android-dev-install.sh",
         "development:prebuild": "VEX_MOBILE_TARGET=development EAS_BUILD_PROFILE=development expo prebuild --clean",

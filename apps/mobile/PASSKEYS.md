@@ -36,6 +36,9 @@ production setup). Substitute your own host wherever you see it.
    `associatedDomains: ["webcredentials:<RP host>"]` for the selected
    environment. Production defaults to `api.vex.wtf`; development
    defaults to `dev.vex.wtf`; set `VEX_PASSKEY_RP_HOST` to override.
+   Local `dev` builds append `?mode=developer` so development-signed
+   apps can fetch the AASA file directly instead of waiting on Apple's
+   CDN cache.
 2. Android — `app.config.js` writes the matching Digital Asset Links
    include for the selected RP host. The static `app.json` value is
    only the production base; prebuild output comes from the dynamic
@@ -72,6 +75,17 @@ flavor uses `chat.vex.mobile.dev`). The file must be served as
 `application/json` over HTTPS with a valid certificate — Apple
 will _silently_ refuse a self-signed cert and the system prompt
 will never appear.
+
+For local `dev` iOS builds, the generated Associated Domains entry is
+`webcredentials:<RP host>?mode=developer`. On a physical iPhone you
+must also enable Associated Domains Development in the device's
+Developer settings. The simulator still needs the domain to serve an
+AASA file whose `webcredentials.apps` entry matches the signed app id.
+This does not require signing in to Vex or iCloud inside the app, but
+it does require the app to be signed with an identifier Apple can match:
+`<APPLE_TEAM_ID>.chat.vex.mobile.dev`. If you build with
+`VEX_DISABLE_IOS_CAPABILITIES=1`, the Associated Domains entitlement is
+removed and native iOS passkeys are expected to fail.
 
 After deploying the file, install a fresh build via
 `npx expo prebuild -p ios && npx expo run:ios`. The prebuild step
@@ -181,8 +195,9 @@ RP host, package, and EAS signing fingerprint instead:
 ```
 SPIRE_PASSKEY_RP_ID=dev.vex.wtf
 SPIRE_PASSKEY_ORIGINS=https://dev.vex.wtf,ios:bundle-id:chat.vex.mobile.dev
+SPIRE_PASSKEY_IOS_APP_IDS=<APPLE_TEAM_ID>.chat.vex.mobile.dev
 SPIRE_PASSKEY_ANDROID_PACKAGE=chat.vex.mobile.dev
-SPIRE_PASSKEY_ANDROID_FINGERPRINTS=<dev EAS SHA-256 fingerprint>
+SPIRE_PASSKEY_ANDROID_FINGERPRINTS=<dev EAS SHA-256 fingerprint>,<local debug SHA-256 fingerprint>
 ```
 
 After setting them and restarting spire:
@@ -205,6 +220,28 @@ a different deployment from spire, you have two options:
 2. **Self-host on the apex** — commit the two JSON files into
    whatever serves the apex and don't set the spire env vars at
    all.
+
+## Doctor script
+
+Run this before chasing platform-specific errors:
+
+```sh
+pnpm -F mobile passkeys:doctor
+```
+
+The script reads the resolved Expo config, checks the generated native
+projects when `ios/` or `android/` exists, checks the iOS AASA file,
+checks the Android Digital Asset Links file, and compares the local
+Android debug keystore fingerprint when `android/app/debug.keystore`
+exists. It intentionally defaults to `VEX_MOBILE_TARGET=dev`; set
+`VEX_MOBILE_TARGET=development` or `production` in front of the
+command when checking another build target.
+
+`EXPO_PUBLIC_SERVER_URL` is only for changing the API/WebSocket server
+used by local app code. It does not change the native passkey RP host.
+Native passkeys require an HTTPS host that publishes the platform
+association files, so use `VEX_PASSKEY_RP_HOST` only when pointing at
+another controlled RP host.
 
 ## Local development
 

@@ -116,10 +116,12 @@ module.exports = ({ config }) => {
         : undefined;
     const appVersion = process.env.VEX_APP_VERSION || pkg.version;
     const passkeyRpHost =
-        resolveHost(
-            process.env.VEX_PASSKEY_RP_HOST ||
-                process.env.EXPO_PUBLIC_SERVER_URL,
-        ) || (developmentMode ? DEV_PASSKEY_RP_HOST : PROD_PASSKEY_RP_HOST);
+        resolveHost(process.env.VEX_PASSKEY_RP_HOST) ||
+        (developmentMode ? DEV_PASSKEY_RP_HOST : PROD_PASSKEY_RP_HOST);
+    const iosAssociatedDomain =
+        target === "dev"
+            ? `webcredentials:${passkeyRpHost}?mode=developer`
+            : `webcredentials:${passkeyRpHost}`;
 
     // Permissions required for the optional "Always-on connection"
     // foreground-service mode (Settings → Connection). Even when the
@@ -149,7 +151,7 @@ module.exports = ({ config }) => {
             ...config.ios,
             bundleIdentifier: iosBundleIdentifier,
             associatedDomains: iosCapabilitiesEnabled
-                ? [`webcredentials:${passkeyRpHost}`]
+                ? [iosAssociatedDomain]
                 : undefined,
         },
         android: {
