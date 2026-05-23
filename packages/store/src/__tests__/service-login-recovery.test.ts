@@ -122,6 +122,29 @@ describe("vexService.login decrypt-mismatch recovery", () => {
         libvexMock.generateSecretKey.mockReturnValue("generated-private-key");
     });
 
+    test("clears the auth-flow guard after an autoLogin key store load failure", async () => {
+        const keyStore: KeyStore = {
+            clear: vi.fn(async () => undefined),
+            load: vi.fn(async () => {
+                throw new Error("keychain unavailable");
+            }),
+            save: vi.fn(async () => undefined),
+        };
+        const config: BootstrapConfig = {
+            createStorage: vi.fn(async () => makeStorage()),
+            deviceName: "test-device",
+        };
+        const options: ServerOptions = { host: "dev.vex.wtf" };
+
+        const result = await vexService.autoLogin(keyStore, config, options);
+
+        expect(result).toEqual({
+            error: "keychain unavailable",
+            ok: false,
+        });
+        expect(vexService.isAuthFlowInFlight()).toBe(false);
+    });
+
     test("purges local key data and retries login after sealed-column mismatch", async () => {
         const creds: StoredCredentials = {
             deviceID: "device-blood",

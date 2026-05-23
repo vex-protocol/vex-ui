@@ -15,7 +15,6 @@ import {
 } from "react-native";
 
 import {
-    $authStatus,
     $groupMessages,
     $hydrationStatus,
     $keyReplaced,
@@ -528,9 +527,9 @@ function App() {
             if ($user.get()) {
                 return;
             }
-            if ($authStatus.get() === "checking") {
-                // Native passkey sheets can resume the app before signup has
-                // finished setting $user; don't start a competing autoLogin.
+            if (vexService.isAuthFlowInFlight()) {
+                // Native auth sheets can resume the app before signup/login
+                // has finished setting $user; don't start a competing retry.
                 return;
             }
             const now = Date.now();
