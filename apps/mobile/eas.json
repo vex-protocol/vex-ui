@@ -5,12 +5,8 @@
     },
     "build": {
         "development": {
-            "developmentClient": true,
             "channel": "development",
             "distribution": "internal",
-            "env": {
-                "VEX_APP_ENV": "development"
-            },
             "android": { "buildType": "apk" },
             "autoIncrement": true
         },
