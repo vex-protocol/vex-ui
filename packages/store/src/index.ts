@@ -156,6 +156,7 @@ export type {
     JoinInviteResult,
     OperationResult,
     PasskeyCeremonyDriver,
+    PasskeyDeviceRestoreResult,
     PasskeySignInBegin,
     ResumeNetworkStatus,
     SendMessageOptions,

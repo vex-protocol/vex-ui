@@ -184,6 +184,11 @@ export interface PasskeyCeremonyDriver {
     ): Promise<Record<string, unknown>>;
 }
 
+export interface PasskeyDeviceRestoreResult extends OperationResult {
+    approvedDeviceID?: string;
+    deletedDeviceCount?: number;
+}
+
 /**
  * Result of {@link VexService.beginPasskeySignIn}. Hands back the
  * options the host needs to drive the platform WebAuthn ceremony,
@@ -441,6 +446,13 @@ class Disposable {
 }
 
 class VexService {
+    private activePendingDeviceApproval: null | {
+        challenge: null | string;
+        deviceKey: string;
+        keyStore: KeyStore;
+        requestID: string;
+        username: string;
+    } = null;
     private autoLoginInFlight: null | Promise<AuthResult> = null;
     private backgroundConnectionRecoverySuspended = false;
     private client: Client | null = null;
@@ -879,6 +891,8 @@ class VexService {
      */
     cancelPendingApproval(): void {
         this.stopPendingApprovalWatcher();
+        this.activePendingDeviceApproval = null;
+        this.deferredDeviceApproval = null;
         $pendingApprovalStageWritable.set("idle");
     }
 
@@ -1817,6 +1831,137 @@ class VexService {
             return { ok: true };
         } catch (err: unknown) {
             return { error: errorMessage(err), ok: false };
+        }
+    }
+
+    /**
+     * Recover the pending "new device" enrollment with a registered passkey.
+     * This is used when the user has no other signed-in device to approve from:
+     * the passkey session approves this device, deletes the older devices, then
+     * the same client swaps into a normal device-key session.
+     */
+    async passkeyRestorePendingDevice(
+        requestID: string,
+    ): Promise<PasskeyDeviceRestoreResult> {
+        const pending = this.activePendingDeviceApproval;
+        if (!pending || pending.requestID !== requestID) {
+            return {
+                error: "No pending device enrollment is available to restore.",
+                ok: false,
+            };
+        }
+        const driver = this.passkeyCeremonyDriver;
+        if (!driver) {
+            return {
+                error: "Passkeys aren't available on this device.",
+                ok: false,
+            };
+        }
+
+        let client: Client;
+        try {
+            client = this.requireClient();
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+
+        this.stopPendingApprovalWatcher();
+        $pendingApprovalStageWritable.set("signing_in");
+
+        let approvedDevice: Device | null = null;
+        let deletedDeviceCount = 0;
+        const deletedDeviceFailures: string[] = [];
+        try {
+            const begin = await client.passkeys.beginAuthentication(
+                pending.username,
+            );
+            const response = await driver.authenticate(
+                begin.options as PublicKeyCredentialRequestOptionsJSON,
+            );
+            await client.passkeys.finishAuthentication({
+                requestID: begin.requestID,
+                response,
+            });
+
+            approvedDevice =
+                await client.passkeys.approveDeviceRequest(requestID);
+            const devices = await client.passkeys.listDevices();
+            for (const device of devices) {
+                if (
+                    device.deleted ||
+                    device.deviceID === approvedDevice?.deviceID
+                ) {
+                    continue;
+                }
+                try {
+                    await client.passkeys.deleteDevice(device.deviceID);
+                    deletedDeviceCount += 1;
+                } catch (err: unknown) {
+                    deletedDeviceFailures.push(device.deviceID);
+                    debugAuth("passkeyRestore:deleteDevice:failed", {
+                        deviceID: device.deviceID,
+                        message: errorMessage(err),
+                    });
+                }
+            }
+
+            await this.saveCredentials(pending.keyStore, {
+                deviceID: approvedDevice.deviceID,
+                deviceKey: pending.deviceKey,
+                token: "",
+                username: pending.username,
+            });
+
+            let authErr = await this.loginWithDeviceKeyWithRetry(
+                client,
+                approvedDevice.deviceID,
+            );
+            if (isPasskeyRequiredError(authErr)) {
+                const retryUsername =
+                    passkeyRequiredUsername(authErr) ?? pending.username;
+                await this.satisfyPasskeyForCurrentClient(retryUsername);
+                authErr = await this.loginWithDeviceKeyWithRetry(
+                    client,
+                    approvedDevice.deviceID,
+                );
+            }
+            if (authErr) {
+                return { error: errorMessage(authErr), ok: false };
+            }
+
+            $pendingApprovalStageWritable.set("loading_account");
+            await client.connect();
+            $userWritable.set(client.me.user());
+            this.setAuthStatus("authenticated");
+            this.kickPopulateState();
+            this.activePendingDeviceApproval = null;
+            this.deferredDeviceApproval = null;
+
+            if (deletedDeviceFailures.length > 0) {
+                return {
+                    approvedDeviceID: approvedDevice.deviceID,
+                    deletedDeviceCount,
+                    error: `This device was restored, but ${String(deletedDeviceFailures.length)} old device${deletedDeviceFailures.length === 1 ? "" : "s"} could not be removed. Review your devices in Settings.`,
+                    ok: false,
+                };
+            }
+
+            return {
+                approvedDeviceID: approvedDevice.deviceID,
+                deletedDeviceCount,
+                ok: true,
+            };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        } finally {
+            if (
+                approvedDevice === null &&
+                this.activePendingDeviceApproval?.requestID === requestID
+            ) {
+                this.startPendingApprovalWatcher(pending);
+            } else {
+                $pendingApprovalStageWritable.set("idle");
+            }
         }
     }
 
@@ -3607,6 +3752,7 @@ class VexService {
 
     private resetAll(): void {
         this.stopPendingApprovalWatcher();
+        this.activePendingDeviceApproval = null;
         this.deferredDeviceApproval = null;
         this.detachWebsocketDebug();
         this.stopWebsocketWatchdog();
@@ -4309,6 +4455,13 @@ class VexService {
         username: string;
     }): void {
         this.stopPendingApprovalWatcher();
+        this.activePendingDeviceApproval = {
+            challenge,
+            deviceKey,
+            keyStore,
+            requestID,
+            username,
+        };
         let cancelled = false;
         this.pendingApprovalWatchCancel = () => {
             cancelled = true;
@@ -4429,6 +4582,12 @@ class VexService {
                     } finally {
                         $pendingApprovalStageWritable.set("idle");
                         this.stopPendingApprovalWatcher();
+                        if (
+                            this.activePendingDeviceApproval?.requestID ===
+                            requestID
+                        ) {
+                            this.activePendingDeviceApproval = null;
+                        }
                     }
                     return;
                 }
@@ -4437,11 +4596,17 @@ class VexService {
                 });
                 $pendingApprovalStageWritable.set("idle");
                 this.stopPendingApprovalWatcher();
+                if (this.activePendingDeviceApproval?.requestID === requestID) {
+                    this.activePendingDeviceApproval = null;
+                }
                 return;
             }
             debugAuth("approvalWatcher:givingUp", { requestID });
             $pendingApprovalStageWritable.set("idle");
             this.stopPendingApprovalWatcher();
+            if (this.activePendingDeviceApproval?.requestID === requestID) {
+                this.activePendingDeviceApproval = null;
+            }
         };
         void run();
     }
