@@ -43,8 +43,6 @@ peerDependencyRules:
         typescript: ">=5"
         "@sveltejs/vite-plugin-svelte": ">=2"
 allowBuilds:
-    sharp: true
-    better-sqlite3: true
     esbuild: true
     msgpackr-extract: true
     svelte-preprocess: false
