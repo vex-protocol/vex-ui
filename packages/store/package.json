@@ -22,7 +22,6 @@
     "dependencies": {
         "@vex-chat/crypto": "catalog:",
         "@vex-chat/libvex": "catalog:",
-        "@vex-chat/types": "catalog:",
         "kysely": "catalog:",
         "nanostores": "catalog:",
         "uuid": "catalog:"

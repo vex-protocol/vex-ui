@@ -1,12 +1,17 @@
 import type { StorybookConfig } from "@storybook/svelte-vite";
 
+import { svelte } from "@sveltejs/vite-plugin-svelte";
+
 const config: StorybookConfig = {
-    stories: ["../output/svelte/src/**/*.stories.@(ts|svelte)"],
     framework: {
         name: "@storybook/svelte-vite",
         options: {},
     },
-    addons: ["@storybook/addon-essentials"],
+    stories: ["../output/svelte/src/**/*.stories.@(ts|svelte)"],
+    viteFinal: (config) => ({
+        ...config,
+        plugins: [svelte(), ...(config.plugins ?? [])],
+    }),
 };
 
 export default config;

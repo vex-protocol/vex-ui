@@ -15,15 +15,13 @@ import type {
     Message,
     Passkey,
     Permission,
+    PublicKeyCredentialCreationOptionsJSON,
+    PublicKeyCredentialRequestOptionsJSON,
     Server,
     Storage,
     StoredCredentials,
     User,
 } from "@vex-chat/libvex";
-import type {
-    PublicKeyCredentialCreationOptionsJSON,
-    PublicKeyCredentialRequestOptionsJSON,
-} from "@vex-chat/types";
 
 import { Client, msgpack } from "@vex-chat/libvex";
 
