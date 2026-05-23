@@ -911,8 +911,14 @@ class VexService {
     async completeInitialPasskeySetup(
         config: BootstrapConfig,
     ): Promise<AuthResult> {
+        let client: Client;
         try {
-            const client = this.requireClient();
+            client = this.requireClient();
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+
+        try {
             await withTimeout(
                 this.registerInitialPasskeyForCurrentClient(
                     config.deviceName || "This device",
@@ -920,16 +926,6 @@ class VexService {
                 PASSKEY_SETUP_TIMEOUT_MS,
                 "Signup stalled while adding a passkey.",
             );
-
-            await withTimeout(
-                client.connect(),
-                REGISTER_STEP_TIMEOUT_MS,
-                "Signup stalled while opening realtime connection.",
-            );
-            $userWritable.set(client.me.user());
-            this.setAuthStatus("authenticated");
-            this.kickPopulateState();
-            return { ok: true };
         } catch (err: unknown) {
             debugAuth("passkey:registerInitial:retry:failed", {
                 message: errorMessage(err),
@@ -943,6 +939,31 @@ class VexService {
                 error: initialPasskeySetupErrorMessage(err),
                 ok: false,
                 passkeySetupRequired: true,
+            };
+        }
+
+        try {
+            await withTimeout(
+                client.connect(),
+                REGISTER_STEP_TIMEOUT_MS,
+                "Signup stalled while opening realtime connection.",
+            );
+            $userWritable.set(client.me.user());
+            this.setAuthStatus("authenticated");
+            this.kickPopulateState();
+            return { ok: true };
+        } catch (err: unknown) {
+            debugAuth("passkey:registerInitial:retryConnect:failed", {
+                message: errorMessage(err),
+            });
+            if (isUnauthorizedError(err)) {
+                this.setAuthStatus("unauthorized");
+            } else if (isNetworkError(err)) {
+                this.setAuthStatus("offline");
+            }
+            return {
+                error: errorMessage(err),
+                ok: false,
             };
         }
     }

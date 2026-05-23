@@ -187,6 +187,50 @@ describe("vexService.register passkey setup", () => {
         expect(client.connect).toHaveBeenCalledOnce();
     });
 
+    test("does not require another passkey when reconnect fails after setup retry", async () => {
+        const client = makeClient();
+        const config = makeConfig();
+        const { keyStore } = makeKeyStore();
+        const options: ServerOptions = { host: "api.vex.wtf" };
+        const response = { id: "credential-blood" };
+        const registerPasskey = vi
+            .fn()
+            .mockRejectedValueOnce(new Error("aborted"))
+            .mockResolvedValueOnce(response);
+        client.connect.mockRejectedValueOnce(new Error("network error"));
+        vexService.setPasskeyCeremonyDriver({
+            authenticate: vi.fn(),
+            register: registerPasskey,
+        });
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        const first = await vexService.register(
+            "blood",
+            "",
+            config,
+            options,
+            keyStore,
+        );
+        const second = await vexService.completeInitialPasskeySetup(config);
+
+        expect(first).toMatchObject({
+            ok: false,
+            passkeySetupRequired: true,
+        });
+        expect(second).toEqual({
+            error: "network error",
+            ok: false,
+        });
+        expect(second).not.toHaveProperty("passkeySetupRequired");
+        expect(client.passkeys.beginRegistration).toHaveBeenCalledTimes(2);
+        expect(client.passkeys.finishRegistration).toHaveBeenCalledWith({
+            name: "test-device",
+            requestID: "passkey-request",
+            response,
+        });
+        expect(client.connect).toHaveBeenCalledOnce();
+    });
+
     test("finishes signup when the required passkey is registered", async () => {
         const client = makeClient();
         const config = makeConfig();
