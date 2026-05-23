@@ -1,4 +1,6 @@
 <script lang="ts">
+    import type { Message } from "@vex-chat/libvex";
+
     import { buildMessageBodyWithAttachment } from "../lib/attachments.js";
     import ChatInput from "../lib/ChatInput.svelte";
     // Route: /server/:serverID/:channelID
@@ -22,6 +24,8 @@
 
     let sending = $state(false);
     let sendError = $state("");
+    let composerValue = $state("");
+    let editingMessage: Message | null = $state(null);
     let usernames: Record<string, string> = $state({});
 
     // Load channel members to resolve userIDs → usernames.
@@ -44,6 +48,25 @@
         sending = true;
         sendError = "";
         try {
+            if (editingMessage) {
+                const pendingEdit = editingMessage;
+                const result = await vexService.editMessage(
+                    channelID,
+                    pendingEdit.mailID,
+                    true,
+                    content,
+                );
+                if (!result.ok) {
+                    sendError = result.error ?? "Failed to edit message";
+                    composerValue = content;
+                    editingMessage = pendingEdit;
+                    return;
+                }
+                editingMessage = null;
+                composerValue = "";
+                return;
+            }
+
             const body = await buildMessageBodyWithAttachment(
                 vexService,
                 content,
@@ -66,6 +89,33 @@
         } finally {
             sending = false;
         }
+    }
+
+    function handleDeleteMessageForEveryone(message: Message): void {
+        void vexService
+            .deleteMessageForEveryone(channelID, message.mailID, true)
+            .then((result) => {
+                if (!result.ok) {
+                    sendError =
+                        result.error ?? "Failed to delete message for everyone";
+                }
+            });
+    }
+
+    function handleDeleteMessageForMe(message: Message): void {
+        void vexService
+            .deleteLocalMessage(channelID, message.mailID, true)
+            .then((deleted) => {
+                if (!deleted) {
+                    sendError = "Failed to delete local message";
+                }
+            });
+    }
+
+    function handleEditMessage(message: Message): void {
+        sendError = "";
+        editingMessage = message;
+        composerValue = message.message;
     }
 </script>
 
@@ -94,7 +144,13 @@
         </div>
     </header>
 
-    <MessageBox messages={channelMessages} {usernames} />
+    <MessageBox
+        messages={channelMessages}
+        onDeleteMessageForEveryone={handleDeleteMessageForEveryone}
+        onDeleteMessageForMe={handleDeleteMessageForMe}
+        onEditMessage={handleEditMessage}
+        {usernames}
+    />
 
     {#if sendError}
         <div class="channel-pane__error">{sendError}</div>
@@ -102,8 +158,17 @@
 
     <ChatInput
         onSend={handleSend}
+        onChange={(value: string) => {
+            composerValue = value;
+        }}
+        onCancelEdit={() => {
+            editingMessage = null;
+            composerValue = "";
+        }}
         disabled={!$user}
+        editing={editingMessage !== null}
         {sending}
+        value={composerValue}
         placeholder="Message #{channelName}"
     />
 </div>

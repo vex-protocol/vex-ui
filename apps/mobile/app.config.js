@@ -24,6 +24,9 @@ const { withEntitlementsPlist } = require("expo/config-plugins");
 // EAS Update requires a stable project id to resolve the update channel.
 // Created via the Expo dashboard — paired with EXPO_TOKEN in CI secrets.
 const EAS_PROJECT_ID = "e0d4cba7-1f2a-4c26-9e66-1fd60178ad20";
+const PROD_PASSKEY_RP_HOST = "api.vex.wtf";
+const DEV_PASSKEY_RP_HOST = "dev.vex.wtf";
+const ANDROID_ASSET_STATEMENTS_PLUGIN = "./plugins/withAndroidAssetStatements";
 
 const withoutPersonalTeamUnsupportedIosCapabilities = (config) =>
     withEntitlementsPlist(config, (modConfig) => {
@@ -31,6 +34,26 @@ const withoutPersonalTeamUnsupportedIosCapabilities = (config) =>
         delete modConfig.modResults["com.apple.developer.associated-domains"];
         return modConfig;
     });
+
+function getPluginName(plugin) {
+    return Array.isArray(plugin) ? plugin[0] : plugin;
+}
+
+function resolveHost(value) {
+    const raw = value?.trim();
+    if (!raw) return undefined;
+    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)
+        ? raw
+        : `https://${raw}`;
+    try {
+        return new URL(withScheme).hostname;
+    } catch {
+        return raw
+            .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+            .split("/")[0]
+            .split(":")[0];
+    }
+}
 
 module.exports = ({ config }) => {
     const requestedEnvironment = process.env.VEX_APP_ENV;
@@ -60,6 +83,11 @@ module.exports = ({ config }) => {
         config.android?.googleServicesFile;
     const appVersion = process.env.VEX_APP_VERSION || pkg.version;
     const environment = devMode ? "development" : "production";
+    const passkeyRpHost =
+        resolveHost(
+            process.env.VEX_PASSKEY_RP_HOST ||
+                process.env.EXPO_PUBLIC_SERVER_URL,
+        ) || (devMode ? DEV_PASSKEY_RP_HOST : PROD_PASSKEY_RP_HOST);
 
     // Permissions required for the optional "Always-on connection"
     // foreground-service mode (Settings → Connection). Even when the
@@ -89,7 +117,7 @@ module.exports = ({ config }) => {
             ...config.ios,
             bundleIdentifier: iosBundleIdentifier,
             associatedDomains: iosCapabilitiesEnabled
-                ? config.ios?.associatedDomains
+                ? [`webcredentials:${passkeyRpHost}`]
                 : undefined,
         },
         android: {
@@ -118,12 +146,14 @@ module.exports = ({ config }) => {
         },
         plugins: [
             ...(config.plugins ?? []).filter((plugin) => {
+                const pluginName = getPluginName(plugin);
+                if (pluginName === ANDROID_ASSET_STATEMENTS_PLUGIN) {
+                    return false;
+                }
                 if (iosCapabilitiesEnabled) return true;
-                if (plugin === "expo-notifications") return false;
-                return !(
-                    Array.isArray(plugin) && plugin[0] === "expo-notifications"
-                );
+                return pluginName !== "expo-notifications";
             }),
+            [ANDROID_ASSET_STATEMENTS_PLUGIN, { hosts: [passkeyRpHost] }],
             [
                 "expo-dev-client",
                 {

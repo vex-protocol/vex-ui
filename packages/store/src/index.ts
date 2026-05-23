@@ -57,6 +57,14 @@ export {
 
 // ── Utilities (pure functions, no state) ────────────────────────────────────
 
+export { createCachedLinkPreviewLoader } from "./link-preview-cache.ts";
+export type {
+    CachedLinkPreviewLoader,
+    LinkPreviewCacheRecord,
+    LinkPreviewCacheSnapshot,
+    LinkPreviewCacheStorage,
+    LinkPreviewLoaderOptions,
+} from "./link-preview-cache.ts";
 export {
     extractLinkPreviewUrl,
     fetchLinkPreviewMetadata,
@@ -68,23 +76,38 @@ export type {
     LinkPreviewHtmlResult,
     LinkPreviewMetadata,
 } from "./link-preview.ts";
-
 export {
     applyEmoji,
+    applyMessageDeleteEvent,
     applyMessageReactionEvent,
+    applyMessageUpdateEvent,
     avatarHue,
+    buildMessageReplyReference,
     chunkMessages,
+    createDeleteBatchEventExtra,
+    createDeleteEventExtra,
     createReactionEventExtra,
+    createReplyExtra,
+    createReplyReferenceExtra,
     createUnicodeReactionEmoji,
+    createUpdateEventExtra,
     emojiReactionKey,
     emojiReactionLabel,
+    foldMessageEvents,
     foldMessageReactionEvents,
     formatFileAttachmentMarkdown,
     formatFileSize,
     formatTime,
     isImageType,
+    messageDeleteEvent,
+    messageDeleteEventTargetMailIDs,
+    messageEmbed,
+    messageFirstAttachment,
     messageReactionEvent,
     messageReactions,
+    messageReply,
+    messageReplyPreviewText,
+    messageUpdateEvent,
     parseFileExtra,
     parseMessageExtra,
     parseMessageMarkdown,
@@ -92,26 +115,36 @@ export {
     serializeMessageExtra,
     toggleMessageReactionExtra,
 } from "./message-utils.ts";
+
 export type {
     EncryptedFileAttachment,
     FileAttachment,
     MarkdownInlineSegment,
     MessageChunk,
+    MessageDeleteEvent,
+    MessageEmbed,
+    MessageEmbedAction,
+    MessageEmbedBlock,
+    MessageEmbedField,
+    MessageEmbedMediaItem,
+    MessageEmbedSource,
     MessageEmoji,
     MessageExtra,
     MessageMarkdownNode,
     MessageReaction,
     MessageReactionEvent,
+    MessageReplyReference,
+    MessageUpdateEvent,
 } from "./message-utils.ts";
-
 export {
     formatDmNotificationSubtitle,
     formatGroupNotificationSubtitle,
     shouldNotify,
 } from "./notifications.ts";
-export type { NotificationPayload } from "./notifications.ts";
 
+export type { NotificationPayload } from "./notifications.ts";
 export { vexService } from "./service.ts";
+
 export type {
     AuthProbeStatus,
     AuthResult,
@@ -122,8 +155,17 @@ export type {
     InvitePreview,
     JoinInviteResult,
     OperationResult,
+    PasskeyCeremonyDriver,
     PasskeySignInBegin,
     ResumeNetworkStatus,
+    SendMessageOptions,
     ServerOptions,
     SessionInfo,
 } from "./service.ts";
+export {
+    decodeVexDbAtRestKey,
+    deriveLegacyMobileAtRestAesKey,
+    encodeVexDbAtRestKey,
+    generateVexDbAtRestKey,
+    rewrapVexSqliteAtRestKey,
+} from "./sqlite-at-rest-migration.ts";

@@ -4,19 +4,33 @@ import { describe, expect, test } from "vitest";
 
 import {
     applyEmoji,
+    applyMessageDeleteEvent,
     applyMessageReactionEvent,
+    applyMessageUpdateEvent,
     avatarHue,
+    buildMessageReplyReference,
     chunkMessages,
+    createDeleteBatchEventExtra,
+    createDeleteEventExtra,
     createReactionEventExtra,
+    createReplyExtra,
     createUnicodeReactionEmoji,
+    createUpdateEventExtra,
     emojiReactionLabel,
+    foldMessageEvents,
     foldMessageReactionEvents,
     formatFileAttachmentMarkdown,
     formatFileSize,
     formatTime,
     isImageType,
+    messageDeleteEvent,
+    messageDeleteEventTargetMailIDs,
+    messageEmbed,
     messageReactionEvent,
     messageReactions,
+    messageReply,
+    messageReplyPreviewText,
+    messageUpdateEvent,
     parseFileExtra,
     parseMessageExtra,
     parseMessageMarkdown,
@@ -100,6 +114,7 @@ describe("isImageType", () => {
         expect(isImageType("image/jpeg")).toBe(true);
         expect(isImageType("image/webp")).toBe(true);
         expect(isImageType("image/gif")).toBe(true);
+        expect(isImageType("Image/PNG")).toBe(true);
     });
 
     test("rejects non-image content types", () => {
@@ -152,6 +167,130 @@ describe("parseFileExtra", () => {
             fileName: "photo.png",
             fileSize: 2048,
         });
+    });
+});
+
+describe("message embeds", () => {
+    test("parses encrypted media embed metadata", () => {
+        const extra = JSON.stringify({
+            embed: {
+                blocks: [
+                    {
+                        attachment: {
+                            contentType: "image/svg+xml",
+                            fileID: "file-1",
+                            fileName: "summary.svg",
+                            fileSize: 2048,
+                            key: "secret",
+                        },
+                        mediaType: "svg",
+                        title: "Summary",
+                        type: "media",
+                    },
+                    {
+                        source: "message",
+                        type: "markdown",
+                    },
+                ],
+                display: "decorate",
+                iconAttachment: {
+                    contentType: "image/png",
+                    fileID: "icon-1",
+                    fileName: "favicon.png",
+                    fileSize: 512,
+                    key: "icon-secret",
+                },
+                kind: "git.push",
+                title: "Push to master",
+                version: 1,
+            },
+            version: 1,
+        });
+        const embed = messageEmbed(makeMessage({ extra } as Partial<Message>));
+
+        expect(embed?.kind).toBe("git.push");
+        expect(embed?.iconAttachment).toMatchObject({
+            fileID: "icon-1",
+            fileName: "favicon.png",
+        });
+        expect(embed?.blocks?.[0]).toMatchObject({
+            mediaType: "svg",
+            title: "Summary",
+            type: "media",
+        });
+    });
+
+    test("drops malformed embed metadata", () => {
+        const extra = JSON.stringify({
+            embed: {
+                display: "replace",
+                kind: 123,
+            },
+            version: 1,
+        });
+
+        expect(parseMessageExtra(extra).embed).toBeUndefined();
+    });
+});
+
+describe("message replies", () => {
+    test("serializes and parses reply references with compact snapshots", () => {
+        const attachment = {
+            contentType: "image/png",
+            fileID: "file-123",
+            fileName: "screen.png",
+            fileSize: 2048,
+            key: "secret",
+        };
+        const target = makeMessage({
+            authorID: "bob",
+            mailID: "m-target",
+            message: `look at this\n\n${formatFileAttachmentMarkdown(
+                attachment,
+            )}`,
+            timestamp: "2026-04-10T12:01:00.000Z",
+        });
+        const extra = createReplyExtra(target, "Bob");
+        const reply = messageReply(makeMessage({ extra }));
+
+        expect(reply).toEqual({
+            targetAttachment: attachment,
+            targetAuthorID: "bob",
+            targetAuthorName: "Bob",
+            targetMailID: "m-target",
+            targetPreview: "look at this",
+            targetTimestamp: "2026-04-10T12:01:00.000Z",
+        });
+    });
+
+    test("uses attachment names when the target has no text preview", () => {
+        const attachment = {
+            contentType: "image/jpeg",
+            fileID: "file-456",
+            fileName: "photo.jpg",
+            fileSize: 4096,
+            key: "secret",
+        };
+        const target = makeMessage({
+            mailID: "m-target",
+            message: formatFileAttachmentMarkdown(attachment),
+        });
+
+        expect(buildMessageReplyReference(target).targetPreview).toBe(
+            "photo.jpg",
+        );
+        expect(messageReplyPreviewText(target.message)).toBe("");
+    });
+
+    test("drops malformed reply metadata", () => {
+        const parsed = parseMessageExtra(
+            JSON.stringify({
+                reply: { targetMailID: "" },
+                version: 1,
+            }),
+        );
+
+        expect(parsed.reply).toBeUndefined();
     });
 });
 
@@ -666,6 +805,135 @@ describe("message reactions", () => {
                 userIDs: ["bob"],
             },
         ]);
+    });
+
+    test("serializes and applies message update events", () => {
+        const extra = createUpdateEventExtra("m-target", "edited");
+        const target = makeMessage({
+            authorID: "alice",
+            mailID: "m-target",
+            message: "original",
+        });
+        const event = messageUpdateEvent(
+            makeMessage({ extra, mailID: "m-event" } as Partial<Message>),
+        );
+
+        expect(event).toEqual({
+            action: "update",
+            message: "edited",
+            targetMailID: "m-target",
+        });
+        if (!event) {
+            throw new Error("Expected update event");
+        }
+        expect(
+            applyMessageUpdateEvent([target], event, "alice")[0]?.message,
+        ).toBe("edited");
+        expect(
+            applyMessageUpdateEvent([target], event, "mallory")[0]?.message,
+        ).toBe("original");
+    });
+
+    test("serializes and applies message delete events", () => {
+        const extra = createDeleteEventExtra("m-target");
+        const target = makeMessage({
+            authorID: "alice",
+            mailID: "m-target",
+        });
+        const event = messageDeleteEvent(
+            makeMessage({ extra, mailID: "m-event" } as Partial<Message>),
+        );
+
+        expect(event).toEqual({
+            action: "delete",
+            targetMailID: "m-target",
+        });
+        if (!event) {
+            throw new Error("Expected delete event");
+        }
+        expect(applyMessageDeleteEvent([target], event, "alice")).toEqual([]);
+        expect(applyMessageDeleteEvent([target], event, "mallory")).toEqual([
+            target,
+        ]);
+    });
+
+    test("serializes and applies batched message delete events", () => {
+        const extra = createDeleteBatchEventExtra([
+            "m-one",
+            "m-two",
+            "m-one",
+            "",
+        ]);
+        const first = makeMessage({
+            authorID: "alice",
+            mailID: "m-one",
+        });
+        const second = makeMessage({
+            authorID: "alice",
+            mailID: "m-two",
+        });
+        const otherAuthor = makeMessage({
+            authorID: "bob",
+            mailID: "m-three",
+        });
+        const event = messageDeleteEvent(
+            makeMessage({ extra, mailID: "m-event" } as Partial<Message>),
+        );
+
+        expect(event).toEqual({
+            action: "delete",
+            targetMailIDs: ["m-one", "m-two"],
+        });
+        if (!event) {
+            throw new Error("Expected delete event");
+        }
+        expect(messageDeleteEventTargetMailIDs(event)).toEqual([
+            "m-one",
+            "m-two",
+        ]);
+        expect(
+            applyMessageDeleteEvent(
+                [first, second, otherAuthor],
+                event,
+                "alice",
+            ),
+        ).toEqual([otherAuthor]);
+    });
+
+    test("folds edit and delete event messages out of visible history", () => {
+        const keep = makeMessage({
+            authorID: "alice",
+            mailID: "m-keep",
+            message: "before",
+        });
+        const remove = makeMessage({
+            authorID: "alice",
+            mailID: "m-remove",
+            message: "gone",
+        });
+        const editEvent = makeMessage({
+            authorID: "alice",
+            extra: createUpdateEventExtra("m-keep", "after"),
+            mailID: "m-edit-event",
+            message: "",
+        } as Partial<Message>);
+        const deleteEvent = makeMessage({
+            authorID: "alice",
+            extra: createDeleteEventExtra("m-remove"),
+            mailID: "m-delete-event",
+            message: "",
+        } as Partial<Message>);
+
+        const folded = foldMessageEvents([
+            keep,
+            remove,
+            editEvent,
+            deleteEvent,
+        ]);
+
+        expect(folded).toHaveLength(1);
+        expect(folded[0]?.mailID).toBe("m-keep");
+        expect(folded[0]?.message).toBe("after");
     });
 });
 

@@ -13,7 +13,8 @@ overrides:
 catalog:
     "@sveltejs/vite-plugin-svelte": 6.2.4
     "@types/node": 24.12.2
-    "@vex-chat/libvex": 6.7.0
+    "@vex-chat/crypto": 6.0.0
+    "@vex-chat/libvex": 6.8.0
     concurrently: 9.2.1
     eslint-config-prettier: 10.1.8
     highlight.js: 11.11.1
@@ -49,3 +50,4 @@ allowBuilds:
 patchedDependencies:
     "@builder.io/mitosis-cli@0.13.0": patches/@builder.io__mitosis-cli@0.13.0.patch
     "@builder.io/mitosis@0.13.0": patches/@builder.io__mitosis@0.13.0.patch
+    "@vex-chat/libvex@6.8.0": patches/@vex-chat__libvex@6.8.0.patch

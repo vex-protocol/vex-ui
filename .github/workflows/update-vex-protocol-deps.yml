@@ -101,6 +101,7 @@ jobs:
                   base: ${{ env.TARGET_BRANCH }}
                   branch: chore/update-vex-protocol-dependencies
                   delete-branch: false
+                  sign-commits: true
                   commit-message: "chore: bump vex-protocol dependencies"
                   title: "chore: bump vex-protocol dependencies"
                   body: |

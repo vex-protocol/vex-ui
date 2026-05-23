@@ -57,6 +57,7 @@ import {
     showDeviceApprovalNotification,
     showMessageNotification,
 } from "./src/lib/notifications";
+import { authenticatePasskey, registerPasskey } from "./src/lib/passkey";
 import { mobileConfig } from "./src/lib/platform";
 import {
     hydratePushNotificationPreference,
@@ -79,6 +80,10 @@ import { colors, fontFamilies } from "./src/theme";
 const BACKGROUND_NETWORK_SYNC_TASK = "vex-background-network-sync";
 const BACKGROUND_PUSH_NOTIFICATION_TASK = "vex-background-push-notification";
 const BACKGROUND_NOTIFICATION_LIMIT = 8;
+vexService.setPasskeyCeremonyDriver({
+    authenticate: authenticatePasskey,
+    register: registerPasskey,
+});
 // Cap on the in-memory mailID dedup sets. Long-lived FGS sessions
 // would otherwise grow these without bound — every message ever
 // notified, retained for the life of the process. 1k is a generous
