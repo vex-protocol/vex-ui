@@ -78,10 +78,10 @@ The mobile package scripts will mean:
 
 | Command | Responsibility |
 | --- | --- |
-| `pnpm -F mobile dev` | Build/install the local Android dev-client and start Metro through Expo CLI. |
-| `pnpm -F mobile dev:metro` | Start Metro for an already-installed local dev-client. |
-| `pnpm -F mobile android` | Build and install a local Android development build with Expo CLI. |
-| `pnpm -F mobile ios` | Build and install a local iOS development build with Expo CLI. |
+| `pnpm -F mobile dev` | Start Metro with `expo start --dev-client` for an installed local dev-client. |
+| `pnpm -F mobile dev:metro` | Backwards-compatible alias for `pnpm -F mobile dev`. |
+| `pnpm -F mobile android` | Build, install, and launch a local Android development build with Expo CLI, without starting Metro. |
+| `pnpm -F mobile ios` | Build, install, and launch a local iOS development build with Expo CLI, without starting Metro. |
 | `pnpm -F mobile prebuild` | Regenerate generated development native projects with clean CNG output. |
 | `pnpm -F mobile development:android` | Opt into the full EAS local development APK path that mirrors CI capabilities. |
 
@@ -89,7 +89,9 @@ The mobile package scripts will mean:
 `VEX_MOBILE_TARGET=dev` so local app-config evaluation selects the Vex
 Developer variant, includes the dev-client launcher, and disables paths that
 require the full development APK such as remote push registration and the
-always-on foreground service.
+always-on foreground service. The native build commands intentionally pass
+`--no-bundler`; Metro is owned by `dev` so JavaScript hot reload has one stable
+command for Android and iOS.
 
 ### EAS profiles
 
@@ -145,9 +147,10 @@ default path to Expo and preserves wrapper access:
   `android:emulator`, `android:reset-db`, log fanout, and release install
   helpers stay available.
 - `android:dev` remains a backwards-compatible alias for the local Expo
-  Android dev-client path. `development:android` is the explicit full EAS
-  local development APK path. `development:android:gradle-install` keeps the
-  older direct-Gradle installer available while it is being phased out.
+  Android dev-client build/install path. `dev:metro` remains an alias for
+  `dev`. `development:android` is the explicit full EAS local development APK
+  path. `development:android:gradle-install` keeps the older direct-Gradle
+  installer available while it is being phased out.
 - Legacy scripts may still perform Firebase validation, multi-device APK
   install, Gradle release builds, emulator bootstrapping, log fanout, or SDK
   setup that Expo CLI does not attempt to own.

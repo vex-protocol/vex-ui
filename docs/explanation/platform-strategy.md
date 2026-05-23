@@ -247,19 +247,18 @@ cd apps/mobile
 
 # Local dev-client testing
 pnpm -F mobile prebuild # Regenerates ios/ and android/ from app config + plugins
-pnpm -F mobile android  # Builds and launches the local Android dev-client
-pnpm -F mobile ios      # Builds and launches the local iOS dev-client
-pnpm -F mobile dev      # Builds/launches Android dev-client and starts Metro
-pnpm -F mobile dev:metro # Starts Metro for an installed dev-client
+pnpm -F mobile android  # Builds/installs/launches Android dev-client
+pnpm -F mobile ios      # Builds/installs/launches iOS dev-client
+pnpm -F mobile dev      # Starts Metro for an installed dev-client
+pnpm -F mobile dev:metro # Alias for pnpm -F mobile dev
 
 # Full development APK testing
 pnpm -F mobile development:android # EAS local build -> vex-development-local.apk
 ```
 
-After the first native build, `pnpm -F mobile dev:metro` hot-reloads
-JavaScript through the Vex Developer dev-client. The default `dev` command is
-the one-shot Android emulator/device workflow for contributors who want Expo
-CLI to build, install, launch, and attach Metro from one command.
+After the first native build, `pnpm -F mobile dev` hot-reloads JavaScript
+through the Vex Developer dev-client. Native build/install remains explicit via
+`android` and `ios` so the same Metro command serves both platforms.
 
 **When to use which:**
 - **Local `dev` build**: Daily mobile development against Metro and native modules.

@@ -68,17 +68,19 @@ Native iOS and Android client via Expo Prebuild (CNG). `ios/` and `android/` dir
 ### Development build (recommended)
 
 ```bash
-pnpm -F mobile ios         # builds native + launches on iOS simulator
-pnpm -F mobile android     # builds native + launches on Android emulator
-pnpm -F mobile dev         # Android emulator/device build + Metro
+pnpm -F mobile dev         # starts Metro for an installed Vex Developer dev-client
+pnpm -F mobile ios         # builds/installs/launches iOS dev-client, no Metro
+pnpm -F mobile android     # builds/installs/launches Android dev-client, no Metro
 ```
 
 The package scripts select the Vex Developer app variant with
-`VEX_MOBILE_TARGET=dev`. When a platform native directory does not exist, Expo
-CLI prebuilds that platform before the local build. After app config, native
-dependencies, config plugins, or the Expo SDK change, regenerate the
-development native projects with `pnpm -F mobile prebuild` and rebuild the
-native app. `prebuild` does not compile or install a build by itself.
+`VEX_MOBILE_TARGET=dev`. Build or reinstall the local native dev-client with
+`ios` or `android`, then keep `dev` running for hot reload through Expo start.
+When a platform native directory does not exist, Expo CLI prebuilds that
+platform before the local build. After app config, native dependencies, config
+plugins, or the Expo SDK change, regenerate the development native projects
+with `pnpm -F mobile prebuild` and rebuild the native app. `prebuild` does not
+compile or install a build by itself.
 
 ### Expo Go unsupported
 
@@ -89,12 +91,12 @@ use the Vex Developer development build.
 ### Metro bundler (standalone)
 
 ```bash
-pnpm -F mobile dev:metro   # connects to an existing Vex Developer dev-client
+pnpm -F mobile dev:metro   # backwards-compatible alias for pnpm -F mobile dev
 ```
 
-Useful after the local `dev` development build is installed and native code has
-not changed. `dev:metro` sets `VEX_MOBILE_TARGET=dev`; no copied env file is
-needed for the Vex Developer build to default to the deployed dev API.
+Useful after the local development build is installed and native code has not
+changed. `dev` sets `VEX_MOBILE_TARGET=dev`; no copied env file is needed for
+the Vex Developer build to default to the deployed dev API.
 
 ### Full development APK
 
@@ -109,9 +111,9 @@ build and writes `vex-development-local.apk` at the repo root.
 
 ### Legacy Android helpers
 
-The default local flow is now `dev`, `android`, `ios`, `prebuild`, and
-`dev:metro`. Existing Android wrapper scripts stay available during the
-transition for the extra work they still own:
+The default local flow is now `dev` for Metro plus `android`, `ios`, and
+`prebuild` for native install/regeneration. Existing Android wrapper scripts
+stay available during the transition for the extra work they still own:
 
 - `pnpm -F mobile legacy:android` keeps the prior Android wrapper behind the
   old default `android` command.
@@ -132,11 +134,16 @@ the phased migration rationale.
 
 The production app variant defaults to the production API at `api.vex.wtf`.
 The Vex Developer variant selected by `pnpm -F mobile dev`, `dev:metro`,
-`android`, and `ios` defaults to `dev.vex.wtf` from app metadata. To point at a
-different server, set both `EXPO_PUBLIC_ENABLE_DEV_SERVER=1` and
+`android`, and `ios` defaults to `dev.vex.wtf` from app metadata. To point app
+traffic at a different server, set both `EXPO_PUBLIC_ENABLE_DEV_SERVER=1` and
 `EXPO_PUBLIC_SERVER_URL` before starting Metro - **do not** edit
 `src/lib/config.ts`. Release builds throw at startup if the resolved URL looks
 like a dev host, so a forgotten localhost can never ship.
+
+`EXPO_PUBLIC_SERVER_URL` does not change the native passkey relying-party
+host. Native passkeys remain bound to `dev.vex.wtf` unless
+`VEX_PASSKEY_RP_HOST` selects another HTTPS domain with valid iOS AASA and
+Android Digital Asset Links files.
 
 | Target                              | Command                              |
 | ----------------------------------- | ------------------------------------ |
