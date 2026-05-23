@@ -52,6 +52,7 @@ interface PendingApprovalSnapshot {
 }
 
 type Phase = "boot" | "confirmExisting" | "error" | "form";
+type RetryMode = "auth" | "passkeySetup";
 
 const HANDLE_PATTERN = /^[A-Za-z0-9_]{3,19}$/;
 
@@ -70,6 +71,7 @@ export function HangTightScreen({
     const [busy, setBusy] = useState(true);
     const [username, setUsername] = useState("");
     const [phase, setPhase] = useState<Phase>("boot");
+    const [retryMode, setRetryMode] = useState<RetryMode>("auth");
     const [focused, setFocused] = useState(false);
     const [pendingApproval, setPendingApproval] =
         useState<null | PendingApprovalSnapshot>(null);
@@ -323,6 +325,15 @@ export function HangTightScreen({
                 keychainKeyStore,
             )
             .then((result) => {
+                if (!result.ok && result.passkeySetupRequired) {
+                    setRetryMode("passkeySetup");
+                    setBootError(
+                        result.error ??
+                            "Passkey setup did not finish. Tap Retry to continue.",
+                    );
+                    setPhase("error");
+                    return;
+                }
                 if (
                     !result.ok &&
                     result.pendingDeviceApproval &&
@@ -351,11 +362,13 @@ export function HangTightScreen({
                     return;
                 }
                 if (!result.ok) {
+                    setRetryMode("auth");
                     setBootError(result.error ?? "Could not sign in.");
                     playInvalidShake();
                 }
             })
             .catch((err: unknown) => {
+                setRetryMode("auth");
                 setBootError(
                     err instanceof Error ? err.message : "Could not sign in.",
                 );
@@ -409,6 +422,7 @@ export function HangTightScreen({
             setPendingApproval(null);
             setBootError("");
             setBusy(false);
+            setRetryMode("auth");
             setUsername("");
             setPhase("form");
         })();
@@ -418,15 +432,32 @@ export function HangTightScreen({
         setBusy(true);
         setBootError("");
         setPhase("boot");
-        void (async () => {
-            await hydrateLocalMessageRetention();
-            return vexService.autoLogin(
-                keychainKeyStore,
-                mobileConfig(),
-                getServerOptions(),
-            );
-        })()
+        const runRetry =
+            retryMode === "passkeySetup"
+                ? vexService.completeInitialPasskeySetup(mobileConfig())
+                : (async () => {
+                      await hydrateLocalMessageRetention();
+                      return vexService.autoLogin(
+                          keychainKeyStore,
+                          mobileConfig(),
+                          getServerOptions(),
+                      );
+                  })();
+        void runRetry
             .then(async (result) => {
+                if (result.ok) {
+                    setRetryMode("auth");
+                    return;
+                }
+                if (result.passkeySetupRequired) {
+                    setRetryMode("passkeySetup");
+                    setBootError(
+                        result.error ??
+                            "Passkey setup did not finish. Tap Retry to continue.",
+                    );
+                    setPhase("error");
+                    return;
+                }
                 // Mirror the bootstrap path: a successful "no creds" or a
                 // requireReauth result both belong on the picker/form, not
                 // back in the error phase that dropped us here.
@@ -435,13 +466,16 @@ export function HangTightScreen({
                 if (noActiveCreds) {
                     const accounts = await listKnownAccounts();
                     if (accounts.length > 0) {
+                        setRetryMode("auth");
                         navigation.replace("AccountSelector");
                         return;
                     }
+                    setRetryMode("auth");
                     setPhase("form");
                     return;
                 }
                 if (!result.ok) {
+                    setRetryMode("auth");
                     setBootError(
                         result.error ?? "Could not initialize account.",
                     );
@@ -449,6 +483,7 @@ export function HangTightScreen({
                 }
             })
             .catch((err: unknown) => {
+                setRetryMode("auth");
                 setBootError(
                     err instanceof Error
                         ? err.message
