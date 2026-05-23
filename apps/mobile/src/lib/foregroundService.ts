@@ -6,6 +6,8 @@ import notifee, { AndroidImportance } from "@notifee/react-native";
 import * as SecureStore from "expo-secure-store";
 import { atom } from "nanostores";
 
+import { buildInfo } from "./buildInfo";
+
 /**
  * "Always-on connection" mode keeps the libvex WebSocket alive while
  * the app is backgrounded. Implemented as an Android foreground service
@@ -97,7 +99,9 @@ export async function hydrateAlwaysOnPreference(): Promise<void> {
 }
 
 export function isAlwaysOnSupported(): boolean {
-    return Platform.OS === "android";
+    return (
+        buildInfo.capabilities.alwaysOnConnection && Platform.OS === "android"
+    );
 }
 
 /**

@@ -70,12 +70,13 @@ Native iOS and Android client via Expo Prebuild (CNG). `ios/` and `android/` dir
 ```bash
 pnpm -F mobile ios         # builds native + launches on iOS simulator
 pnpm -F mobile android     # builds native + launches on Android emulator
+pnpm -F mobile dev         # Android emulator/device build + Metro
 ```
 
 The package scripts select the Vex Developer app variant with
-`VEX_APP_ENV=development`. When a platform native directory does not exist,
-Expo CLI prebuilds that platform before the local build. After app config,
-native dependencies, config plugins, or the Expo SDK change, regenerate the
+`VEX_MOBILE_TARGET=dev`. When a platform native directory does not exist, Expo
+CLI prebuilds that platform before the local build. After app config, native
+dependencies, config plugins, or the Expo SDK change, regenerate the
 development native projects with `pnpm -F mobile prebuild` and rebuild the
 native app. `prebuild` does not compile or install a build by itself.
 
@@ -88,24 +89,38 @@ use the Vex Developer development build.
 ### Metro bundler (standalone)
 
 ```bash
-pnpm -F mobile dev         # connects to an existing Vex Developer dev-client
+pnpm -F mobile dev:metro   # connects to an existing Vex Developer dev-client
 ```
 
 Useful after the local `dev` development build is installed and native code has
-not changed. The default `dev` script sets `VEX_APP_ENV=development` and
-`EAS_BUILD_PROFILE=dev`; no copied env file is needed for the Vex Developer
-build to default to the deployed dev API.
+not changed. `dev:metro` sets `VEX_MOBILE_TARGET=dev`; no copied env file is
+needed for the Vex Developer build to default to the deployed dev API.
+
+### Full development APK
+
+```bash
+pnpm -F mobile development:android
+```
+
+This opt-in path mirrors the CI release-candidate APK more closely. Use it
+when testing behavior that local `dev` intentionally disables, such as remote
+push registration or always-on foreground-service behavior. It uses EAS local
+build and writes `vex-development-local.apk` at the repo root.
 
 ### Legacy Android helpers
 
-The default local flow is now `android`, `ios`, `prebuild`, and `dev`. Existing
-Android wrapper scripts stay available during the transition for the extra work
-they still own:
+The default local flow is now `dev`, `android`, `ios`, `prebuild`, and
+`dev:metro`. Existing Android wrapper scripts stay available during the
+transition for the extra work they still own:
 
 - `pnpm -F mobile legacy:android` keeps the prior Android wrapper behind the
   old default `android` command.
-- `pnpm -F mobile android:dev` validates dev Firebase config and performs its
-  scripted clean Android prebuild before using the legacy Android runner.
+- `pnpm -F mobile android:dev` is a backwards-compatible alias for the local
+  Android dev-client build.
+- `pnpm -F mobile development:android` runs the EAS local build for the full
+  development APK.
+- `pnpm -F mobile development:android:gradle-install` keeps the older direct
+  Gradle full-development installer available while it is being phased out.
 - `pnpm -F mobile android:multi`, `android:emulator`, `android:prod`, install
   helpers, and Android reset/log scripts remain available for specialized
   device workflows.
@@ -116,9 +131,9 @@ the phased migration rationale.
 ### Server URL configuration
 
 The production app variant defaults to the production API at `api.vex.wtf`.
-The Vex Developer variant selected by `pnpm -F mobile dev`, `android`, and
-`ios` defaults to `dev.vex.wtf` from app metadata. To point at a different
-server, set both `EXPO_PUBLIC_ENABLE_DEV_SERVER=1` and
+The Vex Developer variant selected by `pnpm -F mobile dev`, `dev:metro`,
+`android`, and `ios` defaults to `dev.vex.wtf` from app metadata. To point at a
+different server, set both `EXPO_PUBLIC_ENABLE_DEV_SERVER=1` and
 `EXPO_PUBLIC_SERVER_URL` before starting Metro - **do not** edit
 `src/lib/config.ts`. Release builds throw at startup if the resolved URL looks
 like a dev host, so a forgotten localhost can never ship.

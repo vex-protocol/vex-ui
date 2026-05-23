@@ -8,6 +8,8 @@ import { AndroidImportance, IosAuthorizationStatus } from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import { atom } from "nanostores";
 
+import { buildInfo } from "./buildInfo";
+
 const ENABLED_STORE_KEY = "vex.pushNotifications.enabled.v1";
 const SUBSCRIPTION_KEY_PREFIX = "vex.pushNotifications.subscription.v1";
 const CLEANUP_KEY_PREFIX = "vex.pushNotifications.cleanup.v1";
@@ -20,7 +22,8 @@ export type PushNotificationStatus =
     | "idle"
     | "permission_needed"
     | "subscribed"
-    | "subscribing";
+    | "subscribing"
+    | "unsupported";
 
 interface ExpoConfigWithProjectID {
     extra?: {
@@ -35,12 +38,21 @@ interface StoredSubscription {
     token: string;
 }
 
-export const $pushNotificationsEnabled = atom<boolean>(true);
-export const $pushNotificationStatus = atom<PushNotificationStatus>("idle");
+export const $pushNotificationsEnabled = atom<boolean>(
+    buildInfo.capabilities.remotePushNotifications,
+);
+export const $pushNotificationStatus = atom<PushNotificationStatus>(
+    buildInfo.capabilities.remotePushNotifications ? "idle" : "unsupported",
+);
 
 let preferenceHydration: null | Promise<void> = null;
 
 export async function hydratePushNotificationPreference(): Promise<void> {
+    if (!buildInfo.capabilities.remotePushNotifications) {
+        $pushNotificationsEnabled.set(false);
+        $pushNotificationStatus.set("unsupported");
+        return;
+    }
     if (!preferenceHydration) {
         preferenceHydration = readPushNotificationPreference();
     }
@@ -49,6 +61,14 @@ export async function hydratePushNotificationPreference(): Promise<void> {
 
 export async function reconcilePushNotificationSubscription(): Promise<void> {
     await hydratePushNotificationPreference();
+    if (!buildInfo.capabilities.remotePushNotifications) {
+        $pushNotificationsEnabled.set(false);
+        $pushNotificationStatus.set("unsupported");
+        logPush("subscription skipped; remote push unsupported in this build", {
+            target: buildInfo.target,
+        });
+        return;
+    }
     if (!$pushNotificationsEnabled.get()) {
         const cleanupSucceeded =
             await cleanupStoredPushNotificationSubscription();
@@ -124,6 +144,11 @@ export async function setPushNotificationsEnabled(
     enabled: boolean,
 ): Promise<void> {
     await hydratePushNotificationPreference();
+    if (!buildInfo.capabilities.remotePushNotifications) {
+        $pushNotificationsEnabled.set(false);
+        $pushNotificationStatus.set("unsupported");
+        return;
+    }
     $pushNotificationsEnabled.set(enabled);
     await SecureStore.setItemAsync(ENABLED_STORE_KEY, enabled ? "1" : "0");
     if (enabled) {

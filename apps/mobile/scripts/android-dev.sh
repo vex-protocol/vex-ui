@@ -6,9 +6,8 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 export EXPO_PUBLIC_ENABLE_DEV_SERVER=1
 export EXPO_PUBLIC_SERVER_URL=dev.vex.wtf
-export VEX_APP_ENV=development
-export VEX_ENABLE_DEV_BUILD=1
-export EAS_BUILD_PROFILE=dev
+export VEX_MOBILE_TARGET=development
+export EAS_BUILD_PROFILE=development
 export APP_PACKAGE=chat.vex.mobile.dev
 
 EXPECTED_ANDROID_PACKAGE="chat.vex.mobile.dev"
@@ -71,7 +70,7 @@ expo prebuild --clean --platform android
 if ! grep -q "applicationId '$EXPECTED_ANDROID_PACKAGE'" ./android/app/build.gradle; then
   cat >&2 <<EOF
 Android prebuild did not generate applicationId '$EXPECTED_ANDROID_PACKAGE'.
-Check VEX_ENABLE_DEV_BUILD and EAS_BUILD_PROFILE before running the dev build.
+Check VEX_MOBILE_TARGET and EAS_BUILD_PROFILE before running the development build.
 EOF
   exit 1
 fi

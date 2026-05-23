@@ -33,6 +33,7 @@ import * as TaskManager from "expo-task-manager";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { type AppUpdateState, checkForAppUpdates } from "./src/lib/appUpdates";
+import { buildInfo } from "./src/lib/buildInfo";
 import { getServerOptions } from "./src/lib/config";
 import { hydrateDevOptionsUnlocked } from "./src/lib/devMode";
 import {
@@ -406,6 +407,9 @@ function App() {
 
     useEffect(() => {
         if (Platform.OS !== "android") {
+            return;
+        }
+        if (!buildInfo.capabilities.remotePushNotifications) {
             return;
         }
         const registerBackgroundPushTask = async () => {
@@ -976,7 +980,11 @@ function App() {
         userPresentRef.current = present;
         previousUserIDRef.current = userID ?? null;
         if (wasPresent && !present && previousUserID) {
-            void unsubscribeStoredPushNotificationSubscription(previousUserID);
+            if (buildInfo.capabilities.remotePushNotifications) {
+                void unsubscribeStoredPushNotificationSubscription(
+                    previousUserID,
+                );
+            }
         }
         if (!isAlwaysOnSupported()) {
             return;
@@ -1009,7 +1017,7 @@ function App() {
     }, [user, userID]);
 
     useEffect(() => {
-        if (!userID) {
+        if (!userID || !buildInfo.capabilities.remotePushNotifications) {
             return;
         }
         void reconcilePushNotificationSubscription();

@@ -199,7 +199,7 @@ export async function downloadAndInstallApkUpdate(): Promise<void> {
 }
 
 export async function fetchOtaUpdate(): Promise<AppUpdateState> {
-    if (!Updates.isEnabled || __DEV__) {
+    if (!buildInfo.capabilities.otaUpdates || !Updates.isEnabled || __DEV__) {
         throw new Error("OTA updates are not enabled in this build.");
     }
     const current = $appUpdateState.get();
@@ -238,7 +238,7 @@ export async function openUnknownAppSourcesSettings(): Promise<void> {
 }
 
 export async function restartForOtaUpdate(): Promise<void> {
-    if (!Updates.isEnabled || __DEV__) {
+    if (!buildInfo.capabilities.otaUpdates || !Updates.isEnabled || __DEV__) {
         throw new Error("OTA restart is not available in this build.");
     }
     await Updates.reloadAsync();
@@ -264,7 +264,7 @@ async function checkOtaUpdate(): Promise<{
     error?: string;
     isAvailable: boolean;
 }> {
-    if (!Updates.isEnabled || __DEV__) {
+    if (!buildInfo.capabilities.otaUpdates || !Updates.isEnabled || __DEV__) {
         return {
             error: "expo-updates disabled",
             isAvailable: false,

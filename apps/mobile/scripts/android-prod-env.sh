@@ -6,8 +6,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 export EXPO_PUBLIC_ENABLE_DEV_SERVER=0
 export EXPO_PUBLIC_SERVER_URL=api.vex.wtf
-export VEX_APP_ENV=production
-export VEX_ENABLE_DEV_BUILD=0
+export VEX_MOBILE_TARGET=production
 export EAS_BUILD_PROFILE=production
 export VEX_APP_DISPLAY_NAME="${VEX_APP_DISPLAY_NAME:-Vex Beta}"
 export APP_PACKAGE=chat.vex.mobile
@@ -72,7 +71,7 @@ validate_android_prod_prebuild() {
   if ! grep -q "applicationId '$EXPECTED_ANDROID_PACKAGE'" ./android/app/build.gradle; then
     cat >&2 <<EOF
 Android prebuild did not generate applicationId '$EXPECTED_ANDROID_PACKAGE'.
-Check VEX_ENABLE_DEV_BUILD and EAS_BUILD_PROFILE before running the prod build.
+Check VEX_MOBILE_TARGET and EAS_BUILD_PROFILE before running the prod build.
 EOF
     exit 1
   fi

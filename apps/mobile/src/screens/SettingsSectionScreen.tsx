@@ -50,6 +50,7 @@ import { getServerUrl } from "../lib/config";
 import { $devOptionsUnlocked, setDevOptionsUnlocked } from "../lib/devMode";
 import {
     $alwaysOnEnabled,
+    isAlwaysOnSupported,
     openBatteryOptimizationSettings,
     startAlwaysOn,
     stopAlwaysOn,
@@ -273,7 +274,11 @@ export function SettingsSectionScreen({
                         setLoggingOut(true);
                         void (async () => {
                             try {
-                                if (user?.userID) {
+                                if (
+                                    user?.userID &&
+                                    buildInfo.capabilities
+                                        .remotePushNotifications
+                                ) {
                                     try {
                                         await unsubscribeStoredPushNotificationSubscription(
                                             user.userID,
@@ -461,6 +466,9 @@ export function SettingsSectionScreen({
     }
 
     function pushNotificationDescription(): string {
+        if (!buildInfo.capabilities.remotePushNotifications) {
+            return "Use the development APK to test remote push";
+        }
         if (!pushNotificationsEnabled) {
             return "Push notifications are off";
         }
@@ -475,6 +483,8 @@ export function SettingsSectionScreen({
                 return "Push notifications are active";
             case "subscribing":
                 return "Subscribing this device...";
+            case "unsupported":
+                return "Use the development APK to test remote push";
             default:
                 return "Notify this device when new mail arrives";
         }
@@ -518,6 +528,9 @@ export function SettingsSectionScreen({
             } to unlock developer options`
           : undefined;
     const homeserver = getServerUrl();
+    const alwaysOnSupported = isAlwaysOnSupported();
+    const pushNotificationsSupported =
+        buildInfo.capabilities.remotePushNotifications;
     const serverCount = Object.keys(servers).length;
     const channelCount = Object.values(channelsByServer).reduce(
         (total, channels) => total + channels.length,
@@ -973,6 +986,11 @@ export function SettingsSectionScreen({
                                 value={buildInfo.label}
                             />
                             <MenuRow
+                                icon="options-outline"
+                                label="Target"
+                                value={buildInfo.target}
+                            />
+                            <MenuRow
                                 icon="git-commit-outline"
                                 label="Commit"
                                 monoBlock={buildInfo.commit}
@@ -1118,13 +1136,19 @@ export function SettingsSectionScreen({
                             <MenuRow
                                 accessory={
                                     <Switch
-                                        disabled={pushNotificationsBusy}
+                                        disabled={
+                                            pushNotificationsBusy ||
+                                            !pushNotificationsSupported
+                                        }
                                         onValueChange={(value) => {
                                             void handlePushNotificationsToggle(
                                                 value,
                                             );
                                         }}
-                                        value={pushNotificationsEnabled}
+                                        value={
+                                            pushNotificationsSupported &&
+                                            pushNotificationsEnabled
+                                        }
                                     />
                                 }
                                 description={pushNotificationDescription()}
@@ -1144,17 +1168,21 @@ export function SettingsSectionScreen({
                             <MenuRow
                                 accessory={
                                     <Switch
-                                        disabled={alwaysOnBusy}
+                                        disabled={
+                                            alwaysOnBusy || !alwaysOnSupported
+                                        }
                                         onValueChange={(value) => {
                                             void handleAlwaysOnToggle(value);
                                         }}
-                                        value={alwaysOn}
+                                        value={alwaysOnSupported && alwaysOn}
                                     />
                                 }
                                 description={
-                                    alwaysOn
-                                        ? "Background connection is active"
-                                        : "Background connection is off"
+                                    !alwaysOnSupported
+                                        ? "Use the development APK to test background service behavior"
+                                        : alwaysOn
+                                          ? "Background connection is active"
+                                          : "Background connection is off"
                                 }
                                 icon="wifi-outline"
                                 label="Always-on connection"

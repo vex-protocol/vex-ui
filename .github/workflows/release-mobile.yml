@@ -119,10 +119,9 @@ jobs:
               working-directory: apps/mobile
               env:
                   EAS_BUILD_PROFILE: production
-                  VEX_APP_ENV: production
+                  VEX_MOBILE_TARGET: production
                   VEX_APP_DISPLAY_NAME: Vex Beta
                   VEX_APP_VERSION: ${{ steps.baseline.outputs.base_version }}
-                  VEX_ENABLE_DEV_BUILD: "0"
               run: |
                   npx @expo/fingerprint@latest . > /tmp/current-fingerprint.json
                   HASH=$(node -pe "require('/tmp/current-fingerprint.json').hash")
@@ -173,10 +172,9 @@ jobs:
                   EXPO_PUBLIC_SERVER_URL: api.vex.wtf
                   EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.baseline.outputs.base_version }}
                   EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
-                  VEX_APP_ENV: production
+                  VEX_MOBILE_TARGET: production
                   VEX_APP_DISPLAY_NAME: Vex Beta
                   VEX_APP_VERSION: ${{ steps.baseline.outputs.base_version }}
-                  VEX_ENABLE_DEV_BUILD: "0"
               run: |
                   eas update \
                     --channel production \
@@ -238,10 +236,9 @@ jobs:
               working-directory: apps/mobile
               env:
                   EAS_BUILD_PROFILE: production
-                  VEX_APP_ENV: production
+                  VEX_MOBILE_TARGET: production
                   VEX_APP_DISPLAY_NAME: Vex Beta
                   VEX_APP_VERSION: ${{ steps.version.outputs.version }}
-                  VEX_ENABLE_DEV_BUILD: "0"
               run: |
                   npx @expo/fingerprint@latest . > /tmp/current-fingerprint.json
                   HASH=$(node -pe "require('/tmp/current-fingerprint.json').hash")
@@ -285,10 +282,9 @@ jobs:
                   EXPO_PUBLIC_SERVER_URL: api.vex.wtf
                   EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.version.outputs.version }}
                   EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
-                  VEX_APP_ENV: production
+                  VEX_MOBILE_TARGET: production
                   VEX_APP_DISPLAY_NAME: Vex Beta
                   VEX_APP_VERSION: ${{ steps.version.outputs.version }}
-                  VEX_ENABLE_DEV_BUILD: "0"
               run: |
                   eas build \
                     --profile production \

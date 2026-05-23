@@ -92,8 +92,7 @@ jobs:
               working-directory: apps/mobile
               env:
                   EAS_BUILD_PROFILE: development
-                  VEX_APP_ENV: development
-                  VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_MOBILE_TARGET: development
               run: |
                   npx @expo/fingerprint@latest . > /tmp/current-fingerprint.json
                   HASH=$(node -pe "require('/tmp/current-fingerprint.json').hash")
@@ -147,8 +146,7 @@ jobs:
                   EXPO_PUBLIC_ENABLE_DEV_SERVER: "1"
                   EXPO_PUBLIC_SERVER_URL: dev.vex.wtf
                   EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
-                  VEX_APP_ENV: development
-                  VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_MOBILE_TARGET: development
               run: |
                   export EXPO_PUBLIC_VEX_APP_VERSION="$(node -pe "require('./package.json').version")"
                   eas update \
@@ -194,8 +192,7 @@ jobs:
                   EXPO_PUBLIC_ENABLE_DEV_SERVER: "1"
                   EXPO_PUBLIC_SERVER_URL: dev.vex.wtf
                   EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
-                  VEX_APP_ENV: development
-                  VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_MOBILE_TARGET: development
               run: |
                   export EXPO_PUBLIC_VEX_APP_VERSION="$(node -pe "require('./package.json').version")"
                   eas build \

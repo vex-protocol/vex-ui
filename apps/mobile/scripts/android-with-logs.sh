@@ -13,9 +13,12 @@ source "$SCRIPT_DIR/ensure-android-sdk.sh"
 # Optional:
 #   LOG_FILTER='ReactNativeJS|vex-msg|vex-auth' pnpm -F mobile android:with-logs
 
+export VEX_MOBILE_TARGET="${VEX_MOBILE_TARGET:-dev}"
+export EAS_BUILD_PROFILE="${EAS_BUILD_PROFILE:-$VEX_MOBILE_TARGET}"
+
 LOG_SCRIPT="./scripts/logcat-all-devices.sh"
 if [[ -z "${APP_PACKAGE:-}" ]]; then
-    if [[ "${VEX_ENABLE_DEV_BUILD:-}" == "1" && ( "${EAS_BUILD_PROFILE:-}" == "dev" || "${EAS_BUILD_PROFILE:-}" == "development" ) ]]; then
+    if [[ "${VEX_MOBILE_TARGET:-}" == "dev" || "${VEX_MOBILE_TARGET:-}" == "development" || "${EAS_BUILD_PROFILE:-}" == "dev" || "${EAS_BUILD_PROFILE:-}" == "development" ]]; then
         APP_PACKAGE="chat.vex.mobile.dev"
     else
         APP_PACKAGE="chat.vex.mobile"
@@ -272,7 +275,7 @@ if [ "$START_METRO" = "1" ]; then
         fi
     fi
     echo "Starting Metro dev server on tcp:8081..."
-    EXPO_NO_INTERACTIVE=1 pnpm exec expo start --dev-client --port 8081 --host lan >/tmp/vex-mobile-metro.log 2>&1 &
+    EXPO_NO_INTERACTIVE=1 VEX_MOBILE_TARGET="$VEX_MOBILE_TARGET" EAS_BUILD_PROFILE="$EAS_BUILD_PROFILE" pnpm exec expo start --dev-client --port 8081 --host lan >/tmp/vex-mobile-metro.log 2>&1 &
     METRO_PID=$!
     for _ in $(seq 1 25); do
         if lsof -ti tcp:8081 >/dev/null 2>&1; then

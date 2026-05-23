@@ -8,7 +8,7 @@
             "developmentClient": true,
             "distribution": "internal",
             "env": {
-                "VEX_APP_ENV": "development"
+                "VEX_MOBILE_TARGET": "dev"
             },
             "android": { "buildType": "apk" }
         },
@@ -16,7 +16,7 @@
             "channel": "development",
             "distribution": "internal",
             "env": {
-                "VEX_APP_ENV": "development"
+                "VEX_MOBILE_TARGET": "development"
             },
             "android": { "buildType": "apk" },
             "autoIncrement": true
@@ -24,6 +24,9 @@
         "production": {
             "channel": "production",
             "distribution": "internal",
+            "env": {
+                "VEX_MOBILE_TARGET": "production"
+            },
             "android": { "buildType": "apk" },
             "autoIncrement": true
         }
