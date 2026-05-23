@@ -388,6 +388,31 @@ async function fetchNativeRelease(
     };
 }
 
+async function fetchReleaseCandidateRunPending(
+    commit: string | undefined,
+): Promise<boolean> {
+    const sha = normalizeSha(commit);
+    if (!sha) return false;
+    const params = new URLSearchParams({
+        branch: "development",
+        event: "push",
+        head_sha: sha,
+        per_page: "1",
+    });
+    const record = asRecord(
+        await fetchGitHubJson(
+            `${GITHUB_API_BASE}/actions/workflows/dev-mobile.yml/runs?${params.toString()}`,
+        ),
+    );
+    const run = arrayField(record, "workflow_runs")
+        .map(asRecord)
+        .find((candidate) =>
+            sameCommit(stringField(candidate, "head_sha"), sha),
+        );
+    const status = stringField(run ?? {}, "status");
+    return status != null && status !== "completed";
+}
+
 async function fetchSha256(
     url: string | undefined,
 ): Promise<string | undefined> {
@@ -426,6 +451,7 @@ function isNativeReleaseNewer(
     release: NativeReleaseInfo | undefined,
     latestCommit: GitHubCommitInfo | undefined,
     releaseCompareStatus: GitHubCompareStatus | undefined,
+    releaseCandidateRunPending: boolean,
 ): boolean {
     if (!release) return false;
     if (
@@ -437,6 +463,9 @@ function isNativeReleaseNewer(
     // APK releases are native baselines and may lag branch HEAD after OTA-only
     // commits. Only suppress one when the running app already contains it.
     if (releaseCompareStatus === "ahead") {
+        return false;
+    }
+    if (releaseCandidateRunPending) {
         return false;
     }
 
@@ -494,6 +523,14 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
                   buildInfo.commit,
               ).catch(() => undefined)
             : undefined;
+    const releaseCandidateRunPending =
+        target === "development" &&
+        latestCommit != null &&
+        nativeRelease?.targetCommit != null &&
+        !sameCommit(nativeRelease.targetCommit, latestCommit.sha) &&
+        (await fetchReleaseCandidateRunPending(latestCommit.sha).catch(
+            () => false,
+        ));
     const ota =
         otaResult.status === "fulfilled"
             ? otaResult.value
@@ -508,6 +545,7 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
         nativeRelease,
         latestCommit,
         releaseCompareStatus,
+        releaseCandidateRunPending,
     );
     const otaUpdateAvailable = ota.isAvailable && !runningLatestCommit;
 
@@ -555,9 +593,11 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
         checkedAt,
         latestCommit,
         message:
-            latestCommit != null && !runningLatestCommit
-                ? "GitHub has a newer commit, but no compatible OTA is published for this runtime yet."
-                : "Vex is up to date.",
+            releaseCandidateRunPending && latestCommit != null
+                ? `APK build is still running for ${latestCommit.shortSha}. Check again shortly.`
+                : latestCommit != null && !runningLatestCommit
+                  ? "GitHub has a newer commit, but no compatible OTA is published for this runtime yet."
+                  : "Vex is up to date.",
         nativeRelease,
         otaCheckError: ota.error,
         otaUpdateAvailable: false,
