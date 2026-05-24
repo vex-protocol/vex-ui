@@ -32,6 +32,22 @@ jobs:
                   cache: pnpm
 
             - name: Socket security scan
-              run: pnpm dlx @socketsecurity/cli@1.1.84 ci
+              shell: bash
+              run: |
+                  set +e
+                  pnpm dlx @socketsecurity/cli@1.1.84 ci 2>&1 | tee socket.log
+                  status=${PIPESTATUS[0]}
+                  set -e
+
+                  if [ "$status" -eq 0 ]; then
+                    exit 0
+                  fi
+
+                  if grep -Eiq '(quota|rate limit|free tier|plan limit|payment required|upgrade.*plan|monthly.*limit|limit.*exceeded|too many requests|HTTP (402|429)|status (402|429))' socket.log; then
+                    echo "::warning::Socket scan hit a Socket quota/rate-limit response. Treating this vendor-capacity failure as non-blocking so dependency/update PRs can merge."
+                    exit 0
+                  fi
+
+                  exit "$status"
               env:
                   SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_API_KEY }}
