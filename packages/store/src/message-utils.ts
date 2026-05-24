@@ -27,12 +27,20 @@ export interface MessageChunk {
     messages: Message[];
 }
 
+export interface MessageDeleteEvent {
+    action: "delete";
+    deletedAt?: string;
+    targetMailID?: string;
+    targetMailIDs?: string[];
+}
+
 export interface MessageEmbed {
     actions?: MessageEmbedAction[];
     blocks?: MessageEmbedBlock[];
     display: "decorate" | "replace";
     fields?: MessageEmbedField[];
     icon?: string;
+    iconAttachment?: EncryptedFileAttachment;
     kind: string;
     source?: MessageEmbedSource;
     subtitle?: string;
@@ -101,8 +109,11 @@ export type MessageEmoji =
 export interface MessageExtra {
     [key: string]: unknown;
     embed?: MessageEmbed;
+    messageDeleteEvent?: MessageDeleteEvent;
+    messageUpdateEvent?: MessageUpdateEvent;
     reactionEvent?: MessageReactionEvent;
     reactions?: MessageReaction[];
+    reply?: MessageReplyReference;
     version: 1;
 }
 
@@ -124,6 +135,22 @@ export interface MessageReaction {
 export interface MessageReactionEvent {
     action: "toggle";
     emoji: MessageEmoji;
+    targetMailID: string;
+}
+
+export interface MessageReplyReference {
+    targetAttachment?: EncryptedFileAttachment;
+    targetAuthorID?: string;
+    targetAuthorName?: string;
+    targetMailID: string;
+    targetPreview?: string;
+    targetTimestamp?: string;
+}
+
+export interface MessageUpdateEvent {
+    action: "update";
+    editedAt?: string;
+    message: string;
     targetMailID: string;
 }
 
@@ -157,6 +184,25 @@ export function avatarHue(id: string): number {
     return Math.abs(h) % 360;
 }
 
+export function buildMessageReplyReference(
+    target: MessageWithClientExtra,
+    targetAuthorName?: string,
+): MessageReplyReference {
+    const targetAttachment = messageFirstAttachment(target.message);
+    const preview =
+        messageReplyPreviewText(target.message) ||
+        targetAttachment?.fileName ||
+        "Message";
+    return {
+        ...(targetAttachment ? { targetAttachment } : {}),
+        targetAuthorID: target.authorID,
+        ...(targetAuthorName ? { targetAuthorName } : {}),
+        targetMailID: target.mailID,
+        targetPreview: preview,
+        targetTimestamp: target.timestamp,
+    };
+}
+
 export function formatFileSize(bytes: number): string {
     if (bytes < 1024) return String(bytes) + " B";
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
@@ -164,7 +210,7 @@ export function formatFileSize(bytes: number): string {
 }
 
 export function isImageType(contentType: string): boolean {
-    return contentType.startsWith("image/");
+    return contentType.toLowerCase().startsWith("image/");
 }
 
 // ── File attachment parsing ──────────────────────────────────────────────────
@@ -172,7 +218,31 @@ export function isImageType(contentType: string): boolean {
 const VEX_FILE_SCHEME = "vex-file://";
 
 const MESSAGE_EXTRA_VERSION = 1;
+const MESSAGE_REPLY_PREVIEW_MAX = 280;
 const INLINE_BARE_URL_RE = /^https?:\/\/[^\s<>\[\]{}"']+/i;
+
+export function applyMessageDeleteEvent(
+    messages: Message[],
+    event: MessageDeleteEvent,
+    actorUserID: string,
+): Message[] {
+    const targetMailIDs = new Set(messageDeleteEventTargetMailIDs(event));
+    if (targetMailIDs.size === 0) {
+        return messages;
+    }
+    let changed = false;
+    const nextMessages = messages.filter((message) => {
+        if (
+            !targetMailIDs.has(message.mailID) ||
+            message.authorID !== actorUserID
+        ) {
+            return true;
+        }
+        changed = true;
+        return false;
+    });
+    return changed ? nextMessages : messages;
+}
 
 export function applyMessageReactionEvent(
     messages: Message[],
@@ -198,6 +268,55 @@ export function applyMessageReactionEvent(
     return changed ? nextMessages : messages;
 }
 
+export function applyMessageUpdateEvent(
+    messages: Message[],
+    event: MessageUpdateEvent,
+    actorUserID: string,
+): Message[] {
+    let changed = false;
+    const nextMessages = messages.map((message) => {
+        if (message.mailID !== event.targetMailID) {
+            return message;
+        }
+        if (
+            message.authorID !== actorUserID ||
+            message.message === event.message
+        ) {
+            return message;
+        }
+        changed = true;
+        return {
+            ...message,
+            message: event.message,
+        };
+    });
+    return changed ? nextMessages : messages;
+}
+
+export function createDeleteBatchEventExtra(targetMailIDs: string[]): string {
+    return (
+        serializeMessageExtra({
+            messageDeleteEvent: {
+                action: "delete",
+                targetMailIDs,
+            },
+            version: MESSAGE_EXTRA_VERSION,
+        }) ?? JSON.stringify({ version: MESSAGE_EXTRA_VERSION })
+    );
+}
+
+export function createDeleteEventExtra(targetMailID: string): string {
+    return (
+        serializeMessageExtra({
+            messageDeleteEvent: {
+                action: "delete",
+                targetMailID,
+            },
+            version: MESSAGE_EXTRA_VERSION,
+        }) ?? JSON.stringify({ version: MESSAGE_EXTRA_VERSION })
+    );
+}
+
 export function createReactionEventExtra(
     targetMailID: string,
     emoji: MessageEmoji,
@@ -214,6 +333,30 @@ export function createReactionEventExtra(
     );
 }
 
+export function createReplyExtra(
+    target: MessageWithClientExtra,
+    targetAuthorName?: string,
+    currentExtra?: null | string,
+): string {
+    return (
+        createReplyReferenceExtra(
+            buildMessageReplyReference(target, targetAuthorName),
+            currentExtra,
+        ) ?? JSON.stringify({ version: MESSAGE_EXTRA_VERSION })
+    );
+}
+
+export function createReplyReferenceExtra(
+    reply: MessageReplyReference,
+    currentExtra?: null | string,
+): null | string {
+    return serializeMessageExtra({
+        ...parseMessageExtra(currentExtra),
+        reply,
+        version: MESSAGE_EXTRA_VERSION,
+    });
+}
+
 export function createUnicodeReactionEmoji(
     value: string,
     shortcode?: string,
@@ -223,6 +366,22 @@ export function createUnicodeReactionEmoji(
         ...(shortcode ? { shortcode } : {}),
         value,
     };
+}
+
+export function createUpdateEventExtra(
+    targetMailID: string,
+    message: string,
+): string {
+    return (
+        serializeMessageExtra({
+            messageUpdateEvent: {
+                action: "update",
+                message,
+                targetMailID,
+            },
+            version: MESSAGE_EXTRA_VERSION,
+        }) ?? JSON.stringify({ version: MESSAGE_EXTRA_VERSION })
+    );
 }
 
 export function emojiReactionKey(emoji: MessageEmoji): string {
@@ -239,21 +398,46 @@ export function emojiReactionLabel(emoji: MessageEmoji): string {
     return emoji.value;
 }
 
-export function foldMessageReactionEvents(messages: Message[]): Message[] {
+export function foldMessageEvents(messages: Message[]): Message[] {
     let visibleMessages: Message[] = [];
     for (const message of messages) {
-        const event = messageReactionEvent(message);
-        if (!event) {
-            visibleMessages.push(message);
+        const deleteEvent = messageDeleteEvent(message);
+        if (deleteEvent) {
+            visibleMessages = applyMessageDeleteEvent(
+                visibleMessages,
+                deleteEvent,
+                message.authorID,
+            );
             continue;
         }
-        visibleMessages = applyMessageReactionEvent(
-            visibleMessages,
-            event,
-            message.authorID,
-        );
+
+        const updateEvent = messageUpdateEvent(message);
+        if (updateEvent) {
+            visibleMessages = applyMessageUpdateEvent(
+                visibleMessages,
+                updateEvent,
+                message.authorID,
+            );
+            continue;
+        }
+
+        const reactionEvent = messageReactionEvent(message);
+        if (reactionEvent) {
+            visibleMessages = applyMessageReactionEvent(
+                visibleMessages,
+                reactionEvent,
+                message.authorID,
+            );
+            continue;
+        }
+
+        visibleMessages.push(message);
     }
     return visibleMessages;
+}
+
+export function foldMessageReactionEvents(messages: Message[]): Message[] {
+    return foldMessageEvents(messages);
 }
 
 export function formatFileAttachmentMarkdown(
@@ -275,10 +459,44 @@ export function formatFileAttachmentMarkdown(
     return `[${label}](${url})`;
 }
 
+export function messageDeleteEvent(
+    message: MessageWithClientExtra,
+): MessageDeleteEvent | null {
+    return parseMessageExtra(message.extra).messageDeleteEvent ?? null;
+}
+
+export function messageDeleteEventTargetMailIDs(
+    event: MessageDeleteEvent,
+): string[] {
+    const targetMailIDs: string[] = [];
+    const seen = new Set<string>();
+    const add = (targetMailID: string | undefined): void => {
+        if (!targetMailID || seen.has(targetMailID)) {
+            return;
+        }
+        seen.add(targetMailID);
+        targetMailIDs.push(targetMailID);
+    };
+    add(event.targetMailID);
+    for (const targetMailID of event.targetMailIDs ?? []) {
+        add(targetMailID);
+    }
+    return targetMailIDs;
+}
+
 export function messageEmbed(
     message: MessageWithClientExtra,
 ): MessageEmbed | null {
     return parseMessageExtra(message.extra).embed ?? null;
+}
+
+export function messageFirstAttachment(
+    content: string,
+): EncryptedFileAttachment | undefined {
+    return parseMessageMarkdown(content).find(
+        (node): node is Extract<MessageMarkdownNode, { type: "attachment" }> =>
+            node.type === "attachment",
+    )?.attachment;
 }
 
 export function messageReactionEvent(
@@ -291,6 +509,31 @@ export function messageReactions(
     message: MessageWithClientExtra,
 ): MessageReaction[] {
     return parseMessageExtra(message.extra).reactions ?? [];
+}
+
+export function messageReply(
+    message: MessageWithClientExtra,
+): MessageReplyReference | null {
+    return parseMessageExtra(message.extra).reply ?? null;
+}
+
+export function messageReplyPreviewText(content: string): string {
+    const text = parseMessageMarkdown(content)
+        .flatMap((node) =>
+            node.type === "text"
+                ? node.segments.map((segment) => segment.text)
+                : [],
+        )
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+    return truncateReplyPreview(text);
+}
+
+export function messageUpdateEvent(
+    message: MessageWithClientExtra,
+): MessageUpdateEvent | null {
+    return parseMessageExtra(message.extra).messageUpdateEvent ?? null;
 }
 
 export function parseFileExtra(extra: null | string): FileAttachment | null {
@@ -327,17 +570,30 @@ export function parseMessageExtra(
         }
 
         const embed = parseMessageEmbed(raw["embed"]);
+        const messageDelete = parseMessageDeleteEvent(
+            raw["messageDeleteEvent"],
+        );
+        const messageUpdate = parseMessageUpdateEvent(
+            raw["messageUpdateEvent"],
+        );
         const reactionEvent = parseMessageReactionEvent(raw["reactionEvent"]);
+        const reply = parseMessageReplyReference(raw["reply"]);
         const rest = { ...raw };
         delete rest["embed"];
+        delete rest["messageDeleteEvent"];
+        delete rest["messageUpdateEvent"];
         delete rest["reactionEvent"];
         delete rest["reactions"];
+        delete rest["reply"];
         delete rest["version"];
         return {
             ...rest,
             ...(embed ? { embed } : {}),
+            ...(messageDelete ? { messageDeleteEvent: messageDelete } : {}),
+            ...(messageUpdate ? { messageUpdateEvent: messageUpdate } : {}),
             ...(reactionEvent ? { reactionEvent } : {}),
             reactions: parseMessageReactions(raw["reactions"]),
+            ...(reply ? { reply } : {}),
             version: MESSAGE_EXTRA_VERSION,
         };
     } catch {
@@ -519,6 +775,21 @@ function copyString(
     const value = source[key];
     if (typeof value === "string") {
         Reflect.set(target, key, value);
+    }
+}
+
+function copyTrimmedString(
+    target: object,
+    source: Record<string, unknown>,
+    key: string,
+): void {
+    const value = source[key];
+    if (typeof value !== "string") {
+        return;
+    }
+    const trimmed = value.trim();
+    if (trimmed) {
+        Reflect.set(target, key, trimmed);
     }
 }
 
@@ -778,16 +1049,38 @@ function normalizeMessageExtra(extra: MessageExtra): MessageExtra {
     };
     const reactions = parseMessageReactions(normalized.reactions);
     const embed = parseMessageEmbed(normalized.embed);
+    const messageDeleteEvent = parseMessageDeleteEvent(
+        normalized.messageDeleteEvent,
+    );
+    const messageUpdateEvent = parseMessageUpdateEvent(
+        normalized.messageUpdateEvent,
+    );
     const reactionEvent = parseMessageReactionEvent(normalized.reactionEvent);
+    const reply = parseMessageReplyReference(normalized.reply);
     if (embed) {
         normalized.embed = embed;
     } else {
         delete normalized.embed;
     }
+    if (messageDeleteEvent) {
+        normalized.messageDeleteEvent = messageDeleteEvent;
+    } else {
+        delete normalized.messageDeleteEvent;
+    }
+    if (messageUpdateEvent) {
+        normalized.messageUpdateEvent = messageUpdateEvent;
+    } else {
+        delete normalized.messageUpdateEvent;
+    }
     if (reactionEvent) {
         normalized.reactionEvent = reactionEvent;
     } else {
         delete normalized.reactionEvent;
+    }
+    if (reply) {
+        normalized.reply = reply;
+    } else {
+        delete normalized.reply;
     }
     if (reactions.length > 0) {
         normalized.reactions = reactions;
@@ -924,6 +1217,49 @@ function parseInlineMarkdown(text: string): MarkdownInlineSegment[] {
     return segments;
 }
 
+function parseMessageDeleteEvent(
+    value: unknown,
+): MessageDeleteEvent | undefined {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    if (value["action"] !== "delete") {
+        return undefined;
+    }
+    const targetMailID =
+        typeof value["targetMailID"] === "string" &&
+        value["targetMailID"] !== ""
+            ? value["targetMailID"]
+            : undefined;
+    const targetMailIDs = parseMessageDeleteTargets(value["targetMailIDs"]);
+    if (!targetMailID && targetMailIDs.length === 0) {
+        return undefined;
+    }
+    const event: MessageDeleteEvent = {
+        action: "delete",
+        ...(targetMailID ? { targetMailID } : {}),
+        ...(targetMailIDs.length > 0 ? { targetMailIDs } : {}),
+    };
+    copyString(event, value, "deletedAt");
+    return event;
+}
+
+function parseMessageDeleteTargets(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    const targets: string[] = [];
+    const seen = new Set<string>();
+    for (const item of value) {
+        if (typeof item !== "string" || item === "" || seen.has(item)) {
+            continue;
+        }
+        seen.add(item);
+        targets.push(item);
+    }
+    return targets;
+}
+
 function parseMessageEmbed(value: unknown): MessageEmbed | null {
     if (!isRecord(value)) return null;
     const display = value["display"];
@@ -943,6 +1279,8 @@ function parseMessageEmbed(value: unknown): MessageEmbed | null {
         version: MESSAGE_EXTRA_VERSION,
     };
     copyString(embed, value, "icon");
+    const iconAttachment = parseAttachmentExtra(value["iconAttachment"]);
+    if (iconAttachment) embed.iconAttachment = iconAttachment;
     copyString(embed, value, "subtitle");
     copyBoolean(embed, value, "suppressLinkPreview");
     copyString(embed, value, "timestamp");
@@ -1222,6 +1560,62 @@ function parseMessageReactions(value: unknown): MessageReaction[] {
     return reactions;
 }
 
+function parseMessageReplyReference(
+    value: unknown,
+): MessageReplyReference | undefined {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const targetMailID =
+        typeof value["targetMailID"] === "string"
+            ? value["targetMailID"].trim()
+            : "";
+    if (!targetMailID) {
+        return undefined;
+    }
+
+    const reply: MessageReplyReference = { targetMailID };
+    const targetAttachment = parseAttachmentExtra(value["targetAttachment"]);
+    if (targetAttachment) {
+        reply.targetAttachment = targetAttachment;
+    }
+    copyTrimmedString(reply, value, "targetAuthorID");
+    copyTrimmedString(reply, value, "targetAuthorName");
+    copyTrimmedString(reply, value, "targetTimestamp");
+
+    const targetPreview =
+        typeof value["targetPreview"] === "string"
+            ? truncateReplyPreview(value["targetPreview"].replace(/\s+/g, " "))
+            : "";
+    if (targetPreview) {
+        reply.targetPreview = targetPreview;
+    }
+    return reply;
+}
+
+function parseMessageUpdateEvent(
+    value: unknown,
+): MessageUpdateEvent | undefined {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    if (
+        value["action"] !== "update" ||
+        typeof value["message"] !== "string" ||
+        typeof value["targetMailID"] !== "string" ||
+        value["targetMailID"] === ""
+    ) {
+        return undefined;
+    }
+    const event: MessageUpdateEvent = {
+        action: "update",
+        message: value["message"],
+        targetMailID: value["targetMailID"],
+    };
+    copyString(event, value, "editedAt");
+    return event;
+}
+
 function pushSegment(
     segments: MarkdownInlineSegment[],
     segment: MarkdownInlineSegment,
@@ -1261,6 +1655,14 @@ function trimInlineUrl(value: string): string {
         next = next.slice(0, -1);
     }
     return next;
+}
+
+function truncateReplyPreview(value: string): string {
+    const trimmed = value.trim();
+    if (trimmed.length <= MESSAGE_REPLY_PREVIEW_MAX) {
+        return trimmed;
+    }
+    return `${trimmed.slice(0, MESSAGE_REPLY_PREVIEW_MAX - 3).trimEnd()}...`;
 }
 
 function unescapeMarkdownLabel(value: string): string {

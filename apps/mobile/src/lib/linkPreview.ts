@@ -1,16 +1,33 @@
-import type { LinkPreviewMetadata } from "@vex-chat/store";
+import type {
+    LinkPreviewCacheSnapshot,
+    LinkPreviewMetadata,
+} from "@vex-chat/store";
 
 import {
-    extractLinkPreviewUrl,
-    fetchLinkPreviewMetadata,
+    createCachedLinkPreviewLoader,
     normalizeLinkPreviewUrl,
 } from "@vex-chat/store";
+
+import * as FileSystem from "expo-file-system/legacy";
 
 const LINK_PREVIEW_HTML_LIMIT = 512 * 1024;
 const LINK_PREVIEW_REDIRECT_LIMIT = 4;
 const LINK_PREVIEW_TIMEOUT_MS = 8_000;
+const LINK_PREVIEW_CACHE_DIRECTORY =
+    FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+const LINK_PREVIEW_CACHE_FILE = LINK_PREVIEW_CACHE_DIRECTORY
+    ? `${LINK_PREVIEW_CACHE_DIRECTORY}vex-link-preview-cache-v1.json`
+    : null;
 
-const previewCache = new Map<string, Promise<LinkPreviewMetadata | null>>();
+const linkPreviewLoader = createCachedLinkPreviewLoader({
+    fetchHtml,
+    storage: LINK_PREVIEW_CACHE_FILE
+        ? {
+              read: readLinkPreviewCache,
+              write: writeLinkPreviewCache,
+          }
+        : undefined,
+});
 
 interface LimitedResponseReader {
     cancel?: () => Promise<void>;
@@ -25,21 +42,10 @@ interface ReadableResponseBody {
 export function loadLinkPreviewForContent(
     content: string,
 ): Promise<LinkPreviewMetadata | null> {
-    const url = extractLinkPreviewUrl(content);
-    if (!url) {
-        return Promise.resolve(null);
-    }
-
-    let cached = previewCache.get(url);
-    if (!cached) {
-        cached = fetchLinkPreviewMetadata(url, fetchHtml).catch(() => {
-            previewCache.delete(url);
-            return null;
-        });
-        previewCache.set(url, cached);
-    }
-    return cached;
+    return linkPreviewLoader.loadForContent(content);
 }
+
+void linkPreviewLoader.hydrate();
 
 async function fetchHtml(
     url: string,
@@ -198,6 +204,21 @@ async function readLimitedResponseText(
     return new TextDecoder().decode(joinChunks(chunks, byteLength));
 }
 
+async function readLinkPreviewCache(): Promise<unknown> {
+    if (!LINK_PREVIEW_CACHE_FILE) {
+        return null;
+    }
+    try {
+        return JSON.parse(
+            await FileSystem.readAsStringAsync(LINK_PREVIEW_CACHE_FILE, {
+                encoding: FileSystem.EncodingType.UTF8,
+            }),
+        ) as unknown;
+    } catch {
+        return null;
+    }
+}
+
 function resolveRedirectUrl(
     location: null | string,
     baseUrl: string,
@@ -210,4 +231,17 @@ function resolveRedirectUrl(
     } catch {
         return null;
     }
+}
+
+async function writeLinkPreviewCache(
+    snapshot: LinkPreviewCacheSnapshot,
+): Promise<void> {
+    if (!LINK_PREVIEW_CACHE_FILE) {
+        return;
+    }
+    await FileSystem.writeAsStringAsync(
+        LINK_PREVIEW_CACHE_FILE,
+        JSON.stringify(snapshot),
+        { encoding: FileSystem.EncodingType.UTF8 },
+    );
 }

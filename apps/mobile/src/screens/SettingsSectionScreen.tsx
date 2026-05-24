@@ -46,6 +46,7 @@ import {
 } from "../lib/appUpdates";
 import { $avatarCropResult } from "../lib/avatarCropResult";
 import { buildInfo } from "../lib/buildInfo";
+import { getServerUrl } from "../lib/config";
 import { $devOptionsUnlocked, setDevOptionsUnlocked } from "../lib/devMode";
 import {
     $alwaysOnEnabled,
@@ -496,13 +497,19 @@ export function SettingsSectionScreen({
     const isLatestVerified =
         appUpdateState.status === "current" &&
         commitsMatch(buildInfo.commit, appUpdateState.latestCommit?.sha);
-    const aboutUpdateLabel = isLatestVerified
-        ? "No updates available"
-        : "Latest available";
-    const aboutUpdateDescription = latestVersionDescription;
-    const shouldShowAboutUpdateRow =
+    const aboutUpdateLoaded =
         appUpdateState.status !== "checking" &&
         appUpdateState.status !== "idle";
+    const aboutUpdateLabel = aboutUpdateLoaded
+        ? isLatestVerified
+            ? "No updates available"
+            : "Latest available"
+        : "Software Update";
+    const aboutUpdateDescription = aboutUpdateLoaded
+        ? latestVersionDescription
+        : appUpdateState.status === "checking"
+          ? "Checking for updates..."
+          : undefined;
     const versionTapDescription = devUnlocked
         ? "Developer options are unlocked"
         : versionTaps > 0
@@ -510,6 +517,7 @@ export function SettingsSectionScreen({
                 DEV_UNLOCK_TAPS - versionTaps === 1 ? "" : "s"
             } to unlock developer options`
           : undefined;
+    const homeserver = getServerUrl();
     const serverCount = Object.keys(servers).length;
     const channelCount = Object.values(channelsByServer).reduce(
         (total, channels) => total + channels.length,
@@ -833,26 +841,28 @@ export function SettingsSectionScreen({
                                 onPress={handleVersionTap}
                                 value={buildInfo.displayVersion}
                             />
-                            {shouldShowAboutUpdateRow ? (
-                                <MenuRow
-                                    accessory={renderUpdateAccessory()}
-                                    description={aboutUpdateDescription}
-                                    icon={
-                                        isLatestVerified
-                                            ? "checkmark-circle-outline"
-                                            : "cloud-download-outline"
-                                    }
-                                    label={aboutUpdateLabel}
-                                    onPress={
-                                        isLatestVerified
-                                            ? handleUpdateRowPress
-                                            : undefined
-                                    }
-                                    tone={
-                                        isLatestVerified ? "success" : "default"
-                                    }
-                                />
-                            ) : null}
+                            <MenuRow
+                                accessory={renderUpdateAccessory()}
+                                description={aboutUpdateDescription}
+                                icon={
+                                    isLatestVerified
+                                        ? "checkmark-circle-outline"
+                                        : "cloud-download-outline"
+                                }
+                                label={aboutUpdateLabel}
+                                onPress={
+                                    isLatestVerified
+                                        ? handleUpdateRowPress
+                                        : undefined
+                                }
+                                tone={isLatestVerified ? "success" : "default"}
+                            />
+                            <MenuRow
+                                icon="server-outline"
+                                label="Homeserver"
+                                monoValue
+                                value={homeserver}
+                            />
                         </MenuSection>
                     </>
                 ) : null}

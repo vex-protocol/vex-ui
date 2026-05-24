@@ -21,8 +21,17 @@
 
     let {
         messages,
+        onDeleteMessageForEveryone,
+        onDeleteMessageForMe,
+        onEditMessage,
         usernames,
-    }: { messages: Message[]; usernames?: Record<string, string> } = $props();
+    }: {
+        messages: Message[];
+        onDeleteMessageForEveryone?: (message: Message) => void;
+        onDeleteMessageForMe?: (message: Message) => void;
+        onEditMessage?: (message: Message) => void;
+        usernames?: Record<string, string>;
+    } = $props();
     // Fallback resolved outside the destructure — eslint --fix
     // silently strips destructure defaults on svelte files.
     const usernameMap = $derived(usernames ?? {});
@@ -106,7 +115,42 @@
 
             {#each chunk.messages as msg (msg.mailID)}
                 {@const embed = messageEmbed(msg)}
-                <div class="message">
+                {@const isOwn = msg.authorID === $user?.userID}
+                <div class="message" class:message--own={isOwn}>
+                    {#if onDeleteMessageForMe || (isOwn && (onEditMessage || onDeleteMessageForEveryone))}
+                        <div class="message__actions">
+                            {#if isOwn && onEditMessage}
+                                <button
+                                    class="message__action"
+                                    type="button"
+                                    onclick={() => onEditMessage?.(msg)}
+                                    aria-label="Edit message"
+                                    title="Edit message">Edit</button
+                                >
+                            {/if}
+                            {#if onDeleteMessageForMe}
+                                <button
+                                    class="message__action message__action--danger"
+                                    type="button"
+                                    onclick={() => onDeleteMessageForMe?.(msg)}
+                                    aria-label="Delete message for me"
+                                    title="Delete message for me"
+                                    >Delete for me</button
+                                >
+                            {/if}
+                            {#if isOwn && onDeleteMessageForEveryone}
+                                <button
+                                    class="message__action message__action--danger"
+                                    type="button"
+                                    onclick={() =>
+                                        onDeleteMessageForEveryone?.(msg)}
+                                    aria-label="Delete message for everyone"
+                                    title="Delete message for everyone"
+                                    >Delete for everyone</button
+                                >
+                            {/if}
+                        </div>
+                    {/if}
                     {#if embed}
                         <MessageEmbedCard message={msg} />
                     {/if}
@@ -187,11 +231,49 @@
     }
 
     .message {
+        position: relative;
         padding-left: 46px;
+        padding-right: 76px;
         font-size: 14px;
         line-height: 1.5;
         color: var(--text-secondary);
         word-break: break-word;
+    }
+
+    .message__actions {
+        position: absolute;
+        top: -2px;
+        right: 0;
+        display: none;
+        align-items: center;
+        gap: 4px;
+        padding: 2px;
+        background: var(--bg-primary);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+    }
+
+    .message:hover .message__actions,
+    .message:focus-within .message__actions {
+        display: flex;
+    }
+
+    .message__action {
+        border: 0;
+        background: transparent;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 11px;
+        line-height: 1;
+        padding: 4px 6px;
+    }
+
+    .message__action:hover {
+        color: var(--text-primary);
+    }
+
+    .message__action--danger:hover {
+        color: #ff7a7a;
     }
 
     /* ── File attachment styles ── */
