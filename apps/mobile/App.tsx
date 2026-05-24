@@ -49,7 +49,6 @@ import {
     keychainKeyStore,
     setUserIDForUsername,
 } from "./src/lib/keychain";
-import { authenticatePasskey, registerPasskey } from "./src/lib/passkey";
 import {
     clearNotifiedApprovalRequestIDs,
     dismissDeviceApprovalNotification,
@@ -58,6 +57,7 @@ import {
     showDeviceApprovalNotification,
     showMessageNotification,
 } from "./src/lib/notifications";
+import { authenticatePasskey, registerPasskey } from "./src/lib/passkey";
 import { mobileConfig } from "./src/lib/platform";
 import {
     hydratePushNotificationPreference,
@@ -525,6 +525,11 @@ function App() {
                 return;
             }
             if ($user.get()) {
+                return;
+            }
+            if (vexService.isAuthFlowInFlight()) {
+                // Native auth sheets can resume the app before signup/login
+                // has finished setting $user; don't start a competing retry.
                 return;
             }
             const now = Date.now();

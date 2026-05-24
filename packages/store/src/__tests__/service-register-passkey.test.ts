@@ -34,6 +34,14 @@ type MockClient = {
     xKeyRing: Record<string, never>;
 };
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((res) => {
+        resolve = res;
+    });
+    return { promise, resolve };
+}
+
 function makeClient(): MockClient {
     return {
         close: vi.fn(async () => undefined),
@@ -97,6 +105,16 @@ function makeKeyStore(): {
     };
 }
 
+async function waitForMockCall(mock: ReturnType<typeof vi.fn>): Promise<void> {
+    for (let i = 0; i < 20; i += 1) {
+        if (mock.mock.calls.length > 0) {
+            return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    throw new Error("Expected mock to be called.");
+}
+
 describe("vexService.register passkey setup", () => {
     beforeEach(async () => {
         await vexService.close();
@@ -146,6 +164,35 @@ describe("vexService.register passkey setup", () => {
         expect(registerPasskey).toHaveBeenCalledOnce();
         expect(client.passkeys.finishRegistration).not.toHaveBeenCalled();
         expect(client.connect).not.toHaveBeenCalled();
+    });
+
+    test("reports an auth flow while signup passkey setup is finishing", async () => {
+        const client = makeClient();
+        const config = makeConfig();
+        const { keyStore } = makeKeyStore();
+        const options: ServerOptions = { host: "api.vex.wtf" };
+        const passkey = deferred<{ id: string }>();
+        const registerPasskey = vi.fn(() => passkey.promise);
+        vexService.setPasskeyCeremonyDriver({
+            authenticate: vi.fn(),
+            register: registerPasskey,
+        });
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        const resultPromise = vexService.register(
+            "blood",
+            "",
+            config,
+            options,
+            keyStore,
+        );
+
+        await waitForMockCall(registerPasskey);
+        expect(vexService.isAuthFlowInFlight()).toBe(true);
+
+        passkey.resolve({ id: "credential-blood" });
+        await expect(resultPromise).resolves.toEqual({ ok: true });
+        expect(vexService.isAuthFlowInFlight()).toBe(false);
     });
 
     test("can complete required passkey setup after signup already created the account", async () => {
