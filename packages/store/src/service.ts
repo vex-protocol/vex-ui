@@ -975,6 +975,10 @@ class VexService {
             $serversWritable.setKey(server.serverID, server);
             const channels = await client.channels.retrieve(server.serverID);
             $channelsWritable.setKey(server.serverID, channels);
+            await this.cacheCurrentUserServerPermission(
+                client,
+                server.serverID,
+            );
             const firstChannel = channels[0];
             return {
                 ok: true,
@@ -2540,6 +2544,39 @@ class VexService {
             this.wsWatchdogInterval = setInterval(() => {
                 this.checkWebsocketWatchdog();
             }, WS_WATCHDOG_CHECK_INTERVAL_MS);
+        }
+    }
+
+    // ── Private ─────────────────────────────────────────────────────────
+
+    private async cacheCurrentUserServerPermission(
+        client: Client,
+        serverID: string,
+    ): Promise<void> {
+        try {
+            const userID = client.me.user().userID;
+            const permission = (await client.permissions.retrieve()).find(
+                (candidate) =>
+                    candidate.resourceID === serverID &&
+                    candidate.resourceType === "server" &&
+                    candidate.userID === userID,
+            );
+            if (permission) {
+                $permissionsWritable.setKey(
+                    permission.permissionID,
+                    permission,
+                );
+                return;
+            }
+            debugAuth("server:create:permission-missing", {
+                serverID,
+                userID,
+            });
+        } catch (err: unknown) {
+            debugAuth("server:create:permission-refresh:failed", {
+                message: errorMessage(err),
+                serverID,
+            });
         }
     }
 
