@@ -39,11 +39,9 @@ type MockClient = {
     off: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
     passkeys: {
-        approveDeviceRequest: ReturnType<typeof vi.fn>;
         beginAuthentication: ReturnType<typeof vi.fn>;
-        deleteDevice: ReturnType<typeof vi.fn>;
         finishAuthentication: ReturnType<typeof vi.fn>;
-        listDevices: ReturnType<typeof vi.fn>;
+        recoverDeviceRequest: ReturnType<typeof vi.fn>;
     };
     permissions: { retrieve: ReturnType<typeof vi.fn> };
     register: ReturnType<typeof vi.fn>;
@@ -90,7 +88,16 @@ function makeClient(): MockClient {
         off: vi.fn(),
         on: vi.fn(),
         passkeys: {
-            approveDeviceRequest: vi.fn(async () => ({
+            beginAuthentication: vi.fn(async () => ({
+                options: { challenge: "passkey-challenge" },
+                requestID: "passkey-request",
+            })),
+            finishAuthentication: vi.fn(async () => ({
+                passkeyID: "passkey-blood",
+                token: "passkey-token",
+                user: { userID: "user-blood", username: "blood" },
+            })),
+            recoverDeviceRequest: vi.fn(async () => ({
                 deleted: false,
                 deviceID: "new-device",
                 lastLogin: "2026-05-22T00:00:00.000Z",
@@ -98,42 +105,6 @@ function makeClient(): MockClient {
                 owner: "user-blood",
                 signKey: "new-device-sign-key",
             })),
-            beginAuthentication: vi.fn(async () => ({
-                options: { challenge: "passkey-challenge" },
-                requestID: "passkey-request",
-            })),
-            deleteDevice: vi.fn(async () => undefined),
-            finishAuthentication: vi.fn(async () => ({
-                passkeyID: "passkey-blood",
-                token: "passkey-token",
-                user: { userID: "user-blood", username: "blood" },
-            })),
-            listDevices: vi.fn(async () => [
-                {
-                    deleted: false,
-                    deviceID: "new-device",
-                    lastLogin: "2026-05-22T00:00:00.000Z",
-                    name: "android",
-                    owner: "user-blood",
-                    signKey: "new-device-sign-key",
-                },
-                {
-                    deleted: false,
-                    deviceID: "old-device-1",
-                    lastLogin: "2026-05-21T00:00:00.000Z",
-                    name: "ios",
-                    owner: "user-blood",
-                    signKey: "old-sign-key-1",
-                },
-                {
-                    deleted: false,
-                    deviceID: "old-device-2",
-                    lastLogin: "2026-05-20T00:00:00.000Z",
-                    name: "macos",
-                    owner: "user-blood",
-                    signKey: "old-sign-key-2",
-                },
-            ]),
         },
         permissions: { retrieve: vi.fn(async () => []) },
         register: vi.fn(async () => [
@@ -197,7 +168,7 @@ describe("vexService passkey device restore", () => {
         vi.useRealTimers();
     });
 
-    test("approves the pending device with passkey and deletes other devices", async () => {
+    test("recovers the pending device with passkey server-side", async () => {
         const client = makeClient();
         const config = makeConfig();
         const { keyStore, saveCredentials } = makeKeyStore();
@@ -227,9 +198,8 @@ describe("vexService passkey device restore", () => {
             await vexService.passkeyRestorePendingDevice("pending-request");
 
         expect(restored).toEqual({
-            approvedDeviceID: "new-device",
-            deletedDeviceCount: 2,
             ok: true,
+            recoveredDeviceID: "new-device",
         });
         expect(client.devices.publishPendingRegistration).toHaveBeenCalledWith({
             challenge: "a".repeat(64),
@@ -245,17 +215,8 @@ describe("vexService passkey device restore", () => {
             requestID: "passkey-request",
             response: { id: "assertion" },
         });
-        expect(client.passkeys.approveDeviceRequest).toHaveBeenCalledWith(
+        expect(client.passkeys.recoverDeviceRequest).toHaveBeenCalledWith(
             "pending-request",
-        );
-        expect(client.passkeys.deleteDevice).toHaveBeenCalledTimes(2);
-        expect(client.passkeys.deleteDevice).toHaveBeenNthCalledWith(
-            1,
-            "old-device-1",
-        );
-        expect(client.passkeys.deleteDevice).toHaveBeenNthCalledWith(
-            2,
-            "old-device-2",
         );
         expect(saveCredentials).toHaveBeenCalledWith({
             deviceID: "new-device",
@@ -295,20 +256,16 @@ describe("vexService passkey device restore", () => {
             challenge: "a".repeat(64),
             requestID: "pending-request",
         });
-        expect(client.passkeys.approveDeviceRequest).not.toHaveBeenCalled();
+        expect(client.passkeys.recoverDeviceRequest).not.toHaveBeenCalled();
     });
 
-    test("reports partial restore when old device deletion fails", async () => {
+    test("resumes pending approval polling when server-side recovery fails", async () => {
         const client = makeClient();
-        client.passkeys.deleteDevice.mockImplementation(
-            async (deviceID: string) => {
-                if (deviceID === "old-device-1") {
-                    throw new Error("delete failed");
-                }
-            },
+        client.passkeys.recoverDeviceRequest.mockRejectedValueOnce(
+            new Error("recover failed"),
         );
         const config = makeConfig();
-        const { keyStore } = makeKeyStore();
+        const { keyStore, saveCredentials } = makeKeyStore();
         const options: ServerOptions = { host: "dev.vex.wtf" };
         const authenticate = vi.fn(async () => ({ id: "assertion" }));
         vexService.setPasskeyCeremonyDriver({
@@ -326,14 +283,17 @@ describe("vexService passkey device restore", () => {
         const restored =
             await vexService.passkeyRestorePendingDevice("pending-request");
 
-        expect(restored).toMatchObject({
-            approvedDeviceID: "new-device",
-            deletedDeviceCount: 1,
-            ok: false,
+        expect(restored).toEqual({ error: "recover failed", ok: false });
+        expect(client.passkeys.recoverDeviceRequest).toHaveBeenCalledWith(
+            "pending-request",
+        );
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(client.devices.pollPendingRegistration).toHaveBeenCalledWith({
+            challenge: "a".repeat(64),
+            requestID: "pending-request",
         });
-        expect(restored.error).toContain("1 old device");
-        expect(client.passkeys.deleteDevice).toHaveBeenCalledTimes(2);
-        expect(client.loginWithDeviceKey).toHaveBeenCalledWith("new-device");
-        expect(client.connect).toHaveBeenCalledOnce();
+        expect(saveCredentials).not.toHaveBeenCalled();
+        expect(client.loginWithDeviceKey).not.toHaveBeenCalled();
+        expect(client.connect).not.toHaveBeenCalled();
     });
 });

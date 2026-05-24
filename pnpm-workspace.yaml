@@ -9,10 +9,10 @@ catalog:
     "@nanostores/react": ^1.1.0
     "@notifee/react-native": ^9.1.8
     "@types/node": ^24.10.1
-    "@vex-chat/crypto": 6.0.0
-    "@vex-chat/libvex": 6.8.0
-    "@vex-chat/spire": 1.11.5
-    "@vex-chat/types": 3.3.1
+    "@vex-chat/crypto": 7.0.0
+    "@vex-chat/libvex": 7.0.0
+    "@vex-chat/spire": 2.0.0
+    "@vex-chat/types": 4.0.0
     dompurify: ^3.4.0
     expo-background-fetch: ~55.0.15
     expo-background-task: ~55.0.17
