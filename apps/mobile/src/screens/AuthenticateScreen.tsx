@@ -366,7 +366,7 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                         <Text style={styles.modalBody}>
                             Use a passkey for{" "}
                             {username ? `@${username}` : "this account"} to
-                            approve this phone as a new device and remove every
+                            restore this phone as a new device and remove every
                             other device from the account.
                         </Text>
 

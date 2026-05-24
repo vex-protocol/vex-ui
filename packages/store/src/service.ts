@@ -185,8 +185,7 @@ export interface PasskeyCeremonyDriver {
 }
 
 export interface PasskeyDeviceRestoreResult extends OperationResult {
-    approvedDeviceID?: string;
-    deletedDeviceCount?: number;
+    recoveredDeviceID?: string;
 }
 
 /**
@@ -1299,11 +1298,11 @@ class VexService {
      * Finish a passkey authentication ceremony. Stage two of the
      * recovery flow. On success the libvex Client is in
      * "passkey-only" mode — it can call the `passkeys.*` admin
-     * routes (list/delete devices, approve/reject pending
+     * routes (list/delete devices, recover/reject pending
      * enrollment) but messaging is unavailable until a device key
      * takes over. The caller is expected to drive the user through
      * the recovery screen and either:
-     *   - approve a pending enrollment for a fresh device, then
+     *   - recover a pending enrollment for a fresh device, then
      *     swap to a normal device session via `login()`/`autoLogin()`
      *   - or just clean up old devices and sign back out.
      */
@@ -1600,24 +1599,6 @@ class VexService {
         };
     }
 
-    /**
-     * Approve a pending device-enrollment request using the
-     * passkey-only session. Mirrors {@link approveDeviceRequest}
-     * but bypasses the device-JWT requirement; the caller must have
-     * just completed {@link finishPasskeySignIn}.
-     */
-    async passkeyApproveDeviceRequest(
-        requestID: string,
-    ): Promise<OperationResult> {
-        try {
-            const client = this.requireClient();
-            await client.passkeys.approveDeviceRequest(requestID);
-            return { ok: true };
-        } catch (err: unknown) {
-            return { error: errorMessage(err), ok: false };
-        }
-    }
-
     // ── User operations ─────────────────────────────────────────────────
 
     /** Delete a device using the passkey-only session. */
@@ -1658,8 +1639,9 @@ class VexService {
     /**
      * Recover the pending "new device" enrollment with a registered passkey.
      * This is used when the user has no other signed-in device to approve from:
-     * the passkey session approves this device, deletes the older devices, then
-     * the same client swaps into a normal device-key session.
+     * the passkey session recovers this device and the server revokes every
+     * previously trusted device before this client swaps into a normal
+     * device-key session.
      */
     async passkeyRestorePendingDevice(
         requestID: string,
@@ -3306,9 +3288,7 @@ class VexService {
         this.stopPendingApprovalWatcher();
         $pendingApprovalStageWritable.set("signing_in");
 
-        let approvedDevice: Device | null = null;
-        let deletedDeviceCount = 0;
-        const deletedDeviceFailures: string[] = [];
+        let recoveredDevice: Device | null = null;
         try {
             const begin = await client.passkeys.beginAuthentication(
                 pending.username,
@@ -3321,30 +3301,11 @@ class VexService {
                 response,
             });
 
-            approvedDevice =
-                await client.passkeys.approveDeviceRequest(requestID);
-            const devices = await client.passkeys.listDevices();
-            for (const device of devices) {
-                if (
-                    device.deleted ||
-                    device.deviceID === approvedDevice?.deviceID
-                ) {
-                    continue;
-                }
-                try {
-                    await client.passkeys.deleteDevice(device.deviceID);
-                    deletedDeviceCount += 1;
-                } catch (err: unknown) {
-                    deletedDeviceFailures.push(device.deviceID);
-                    debugAuth("passkeyRestore:deleteDevice:failed", {
-                        deviceID: device.deviceID,
-                        message: errorMessage(err),
-                    });
-                }
-            }
+            recoveredDevice =
+                await client.passkeys.recoverDeviceRequest(requestID);
 
             await this.saveCredentials(pending.keyStore, {
-                deviceID: approvedDevice.deviceID,
+                deviceID: recoveredDevice.deviceID,
                 deviceKey: pending.deviceKey,
                 token: "",
                 username: pending.username,
@@ -3352,7 +3313,7 @@ class VexService {
 
             let authErr = await this.loginWithDeviceKeyWithRetry(
                 client,
-                approvedDevice.deviceID,
+                recoveredDevice.deviceID,
             );
             if (isPasskeyRequiredError(authErr)) {
                 const retryUsername =
@@ -3360,7 +3321,7 @@ class VexService {
                 await this.satisfyPasskeyForCurrentClient(retryUsername);
                 authErr = await this.loginWithDeviceKeyWithRetry(
                     client,
-                    approvedDevice.deviceID,
+                    recoveredDevice.deviceID,
                 );
             }
             if (authErr) {
@@ -3375,25 +3336,15 @@ class VexService {
             this.activePendingDeviceApproval = null;
             this.deferredDeviceApproval = null;
 
-            if (deletedDeviceFailures.length > 0) {
-                return {
-                    approvedDeviceID: approvedDevice.deviceID,
-                    deletedDeviceCount,
-                    error: `This device was restored, but ${String(deletedDeviceFailures.length)} old device${deletedDeviceFailures.length === 1 ? "" : "s"} could not be removed. Review your devices in Settings.`,
-                    ok: false,
-                };
-            }
-
             return {
-                approvedDeviceID: approvedDevice.deviceID,
-                deletedDeviceCount,
                 ok: true,
+                recoveredDeviceID: recoveredDevice.deviceID,
             };
         } catch (err: unknown) {
             return { error: errorMessage(err), ok: false };
         } finally {
             if (
-                approvedDevice === null &&
+                recoveredDevice === null &&
                 this.activePendingDeviceApproval?.requestID === requestID
             ) {
                 this.startPendingApprovalWatcher(pending);
