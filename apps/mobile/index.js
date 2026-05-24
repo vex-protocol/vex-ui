@@ -6,6 +6,7 @@ import { LogBox } from "react-native";
 import notifee, { EventType } from "@notifee/react-native";
 import { registerRootComponent } from "expo";
 
+import "./src/lib/backgroundTaskDefinitions";
 import App from "./App";
 import { enqueueNotificationRouteFromAndroidBackground } from "./src/lib/notificationRouteQueue";
 
