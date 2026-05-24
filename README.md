@@ -21,6 +21,7 @@ Every message is encrypted on your device before it leaves. The server stores on
 | ------------------------ | -------------------------------------------------------------- |
 | `apps/desktop`           | Desktop client — Tauri 2.0 + Svelte 5                          |
 | `apps/mobile`            | Mobile client — Expo + React Native                            |
+| `apps/website`           | Public website — Vite + Preact + Node API handlers             |
 | `packages/store`         | Shared state management (nanostores atoms) + VexService facade |
 | `packages/ui`            | Mitosis design primitives → Svelte + React                     |
 | `packages/eslint-config` | Shared ESLint base config + SDK-only import restrictions       |

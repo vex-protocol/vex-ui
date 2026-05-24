@@ -165,10 +165,33 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
         })();
     }
 
+    function deleteThreadForEveryone(user: User): void {
+        void (async () => {
+            const result = await vexService.deleteThreadForEveryone(
+                user.userID,
+                false,
+            );
+            if (!result.ok) {
+                Alert.alert(
+                    "Could not delete conversation",
+                    result.error ??
+                        "The delete request was not sent. Please try again.",
+                );
+                return;
+            }
+            if (!result.localDeleted) {
+                Alert.alert(
+                    "Remote delete sent",
+                    "Your messages were queued for deletion, but local history was not removed.",
+                );
+            }
+        })();
+    }
+
     function confirmDeleteThread(user: User): void {
         Alert.alert(
             "Delete conversation?",
-            `Delete local messages with ${user.username} on this device?`,
+            `Delete local messages with ${user.username}, or delete your messages for everyone?`,
             [
                 {
                     style: "cancel",
@@ -179,7 +202,14 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
                         deleteThread(user);
                     },
                     style: "destructive",
-                    text: "Delete",
+                    text: "Delete for me",
+                },
+                {
+                    onPress: () => {
+                        deleteThreadForEveryone(user);
+                    },
+                    style: "destructive",
+                    text: "Delete for everyone",
                 },
             ],
         );

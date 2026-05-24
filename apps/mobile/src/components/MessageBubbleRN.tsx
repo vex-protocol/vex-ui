@@ -8,8 +8,13 @@ import type {
     MessageEmoji,
     MessageMarkdownNode,
     MessageReaction,
+    MessageReplyReference,
 } from "@vex-chat/store";
-import type { GestureResponderEvent, TextStyle } from "react-native";
+import type {
+    DimensionValue,
+    GestureResponderEvent,
+    TextStyle,
+} from "react-native";
 
 import React from "react";
 import {
@@ -30,6 +35,7 @@ import {
 
 import {
     applyEmoji,
+    buildMessageReplyReference,
     createUnicodeReactionEmoji,
     emojiReactionKey,
     emojiReactionLabel,
@@ -39,12 +45,15 @@ import {
     isImageType,
     messageEmbed,
     messageReactions,
+    messageReply,
     parseMessageMarkdown,
     vexService,
 } from "@vex-chat/store";
 
 import { Ionicons } from "@expo/vector-icons";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as Sharing from "expo-sharing";
+import { useVideoPlayer, VideoView } from "expo-video";
 
 import { bytesToBase64, writeAttachmentToCache } from "../lib/attachments";
 import { haptic } from "../lib/haptics";
@@ -61,11 +70,21 @@ interface MessageBubbleRNProps {
     currentUserID?: string | undefined;
     isOwn: boolean;
     message: Message;
-    onDeleteMessage?: ((message: Message) => void) | undefined;
+    onDeleteMessageForEveryone?: ((message: Message) => void) | undefined;
+    onDeleteMessageForMe?: ((message: Message) => void) | undefined;
+    onEditMessage?: ((message: Message) => void) | undefined;
+    onPressReplyTarget?: ((mailID: string) => void) | undefined;
+    onReplyMessage?: ((message: Message) => void) | undefined;
     onToggleReaction?:
         | ((message: Message, emoji: MessageEmoji) => void)
         | undefined;
+    replyTarget?: MessageReplyTarget | null | undefined;
     showIdentity?: boolean;
+}
+
+interface MessageReplyTarget {
+    authorName: string;
+    message: Message;
 }
 
 const QUICK_REACTION_EMOJIS: MessageEmoji[] = [
@@ -166,8 +185,13 @@ export function MessageBubbleRN({
     currentUserID,
     isOwn,
     message,
-    onDeleteMessage,
+    onDeleteMessageForEveryone,
+    onDeleteMessageForMe,
+    onEditMessage,
+    onPressReplyTarget,
+    onReplyMessage,
     onToggleReaction,
+    replyTarget = null,
     showIdentity = true,
 }: MessageBubbleRNProps) {
     const { height: windowHeight, width: windowWidth } = useWindowDimensions();
@@ -189,12 +213,36 @@ export function MessageBubbleRN({
         () => Boolean(embed?.blocks?.some(usesMessageMarkdownSource)),
         [embed],
     );
+    const replyTargetAuthorName = replyTarget?.authorName;
+    const replyTargetMessage = replyTarget?.message;
+    const replyReference = React.useMemo(
+        () =>
+            replyTargetMessage
+                ? buildMessageReplyReference(
+                      replyTargetMessage,
+                      replyTargetAuthorName,
+                  )
+                : messageReply(message),
+        [message, replyTargetAuthorName, replyTargetMessage],
+    );
     const shouldRenderMessage =
         !embed || (embed.display !== "replace" && !embedConsumesMessage);
     const reactions = React.useMemo(() => messageReactions(message), [message]);
 
     const menuActions = React.useMemo(
         () => [
+            ...(onReplyMessage
+                ? [
+                      {
+                          id: "reply",
+                          label: "Reply",
+                          onPress: () => {
+                              onReplyMessage(message);
+                          },
+                          tone: "default" as const,
+                      },
+                  ]
+                : []),
             {
                 id: "copy",
                 label: "Copy text",
@@ -204,20 +252,51 @@ export function MessageBubbleRN({
                 },
                 tone: "default" as const,
             },
-            ...(onDeleteMessage
+            ...(isOwn && onEditMessage
                 ? [
                       {
-                          id: "delete",
-                          label: "Delete message",
+                          id: "edit",
+                          label: "Edit message",
                           onPress: () => {
-                              onDeleteMessage(message);
+                              onEditMessage(message);
+                          },
+                          tone: "default" as const,
+                      },
+                  ]
+                : []),
+            ...(onDeleteMessageForMe
+                ? [
+                      {
+                          id: "delete-for-me",
+                          label: "Delete for me",
+                          onPress: () => {
+                              onDeleteMessageForMe(message);
+                          },
+                          tone: "destructive" as const,
+                      },
+                  ]
+                : []),
+            ...(isOwn && onDeleteMessageForEveryone
+                ? [
+                      {
+                          id: "delete-for-everyone",
+                          label: "Delete for everyone",
+                          onPress: () => {
+                              onDeleteMessageForEveryone(message);
                           },
                           tone: "destructive" as const,
                       },
                   ]
                 : []),
         ],
-        [message, onDeleteMessage],
+        [
+            isOwn,
+            message,
+            onDeleteMessageForEveryone,
+            onDeleteMessageForMe,
+            onEditMessage,
+            onReplyMessage,
+        ],
     );
 
     const openContextMenuAt = (x: number, y: number) => {
@@ -493,66 +572,89 @@ export function MessageBubbleRN({
                         !showIdentity && styles.containerGrouped,
                     ]}
                 >
-                    {showIdentity ? (
-                        <Avatar
-                            displayName={authorName}
-                            size={32}
-                            userID={message.authorID}
-                        />
-                    ) : (
-                        <View style={styles.avatarSpacer} />
-                    )}
-
-                    <View style={styles.content}>
-                        {showIdentity && (
-                            <View style={styles.meta}>
-                                <Text
-                                    style={[
-                                        styles.author,
-                                        isOwn && styles.authorSelf,
-                                    ]}
-                                >
-                                    {authorName}
-                                </Text>
-                                <Text style={styles.timestamp}>
-                                    {formatTime(message.timestamp)}
-                                </Text>
-                            </View>
-                        )}
-                        {embed ? (
-                            <MessageEmbedCard
-                                embed={embed}
-                                messageText={message.message}
-                            />
-                        ) : null}
-                        {shouldRenderMessage ? (
-                            <MarkdownMessage
-                                grouped={!showIdentity}
-                                nodes={markdownNodes}
-                            />
-                        ) : null}
-                        {inviteID ? (
-                            <InvitePreviewCard
-                                inviteID={inviteID}
-                                isOwn={isOwn}
-                            />
-                        ) : null}
-                        {!inviteID && !embed?.suppressLinkPreview ? (
-                            <LinkPreviewCard content={message.message} />
-                        ) : null}
-                        {reactions.length > 0 ? (
-                            <ReactionRow
-                                currentUserID={currentUserID}
-                                onToggle={
-                                    onToggleReaction
-                                        ? (emoji) => {
-                                              onToggleReaction(message, emoji);
+                    {replyReference ? (
+                        <View style={styles.replyReferenceRow}>
+                            <View style={styles.avatarSpacer} />
+                            <ReplyReferencePreview
+                                onPress={
+                                    onPressReplyTarget
+                                        ? () => {
+                                              onPressReplyTarget(
+                                                  replyReference.targetMailID,
+                                              );
                                           }
                                         : undefined
                                 }
-                                reactions={reactions}
+                                reply={replyReference}
                             />
-                        ) : null}
+                        </View>
+                    ) : null}
+
+                    <View style={styles.messageRow}>
+                        {showIdentity ? (
+                            <Avatar
+                                displayName={authorName}
+                                size={32}
+                                userID={message.authorID}
+                            />
+                        ) : (
+                            <View style={styles.avatarSpacer} />
+                        )}
+
+                        <View style={styles.content}>
+                            {showIdentity && (
+                                <View style={styles.meta}>
+                                    <Text
+                                        style={[
+                                            styles.author,
+                                            isOwn && styles.authorSelf,
+                                        ]}
+                                    >
+                                        {authorName}
+                                    </Text>
+                                    <Text style={styles.timestamp}>
+                                        {formatTime(message.timestamp)}
+                                    </Text>
+                                </View>
+                            )}
+                            {embed ? (
+                                <MessageEmbedCard
+                                    embed={embed}
+                                    messageText={message.message}
+                                />
+                            ) : null}
+                            {shouldRenderMessage ? (
+                                <MarkdownMessage
+                                    grouped={!showIdentity}
+                                    nodes={markdownNodes}
+                                />
+                            ) : null}
+                            {inviteID ? (
+                                <InvitePreviewCard
+                                    inviteID={inviteID}
+                                    isOwn={isOwn}
+                                />
+                            ) : null}
+                            {!inviteID && !embed?.suppressLinkPreview ? (
+                                <LinkPreviewCard content={message.message} />
+                            ) : null}
+                            {reactions.length > 0 ? (
+                                <ReactionRow
+                                    currentUserID={currentUserID}
+                                    onToggle={
+                                        onToggleReaction
+                                            ? (emoji) => {
+                                                  onToggleReaction(
+                                                      message,
+                                                      emoji,
+                                                  );
+                                              }
+                                            : undefined
+                                    }
+                                    reactions={reactions}
+                                />
+                            ) : null}
+                        </View>
                     </View>
                 </View>
             </Pressable>
@@ -649,6 +751,26 @@ function AttachmentPreview({
     const imageAttachmentLabel = imageUri
         ? `Open image preview for ${attachment.fileName}`
         : `Open attachment for ${attachment.fileName}`;
+
+    if (isAudioType(attachment.contentType)) {
+        return (
+            <AudioAttachment
+                attachment={attachment}
+                onShare={openAttachment}
+                sharing={opening}
+            />
+        );
+    }
+
+    if (isVideoType(attachment.contentType)) {
+        return (
+            <VideoAttachment
+                attachment={attachment}
+                onShare={openAttachment}
+                sharing={opening}
+            />
+        );
+    }
 
     if (shouldRenderImage) {
         return (
@@ -754,6 +876,175 @@ function AttachmentPreview({
             </View>
             <Ionicons color={colors.muted} name="download-outline" size={18} />
         </Pressable>
+    );
+}
+
+function AudioAttachment({
+    attachment,
+    onShare,
+    sharing,
+}: {
+    attachment: EncryptedFileAttachment;
+    onShare: () => Promise<void>;
+    sharing: boolean;
+}) {
+    const player = useAudioPlayer(null, { updateInterval: 250 });
+    const status = useAudioPlayerStatus(player);
+    const mountedRef = React.useRef(true);
+    const [error, setError] = React.useState("");
+    const [loading, setLoading] = React.useState(false);
+    const [mediaUri, setMediaUri] = React.useState<null | string>(null);
+
+    React.useEffect(() => {
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
+
+    const loadAudio = React.useCallback(async (): Promise<void> => {
+        if (mediaUri) {
+            return;
+        }
+        setLoading(true);
+        setError("");
+        try {
+            const uri = await writeAttachmentDataToCache(attachment);
+            if (!mountedRef.current) {
+                return;
+            }
+            player.replace({ name: attachment.fileName, uri });
+            setMediaUri(uri);
+        } catch (err: unknown) {
+            const message =
+                err instanceof Error ? err.message : "Could not load audio";
+            if (mountedRef.current) {
+                setError(message);
+            }
+            throw new Error(message);
+        } finally {
+            if (mountedRef.current) {
+                setLoading(false);
+            }
+        }
+    }, [attachment, mediaUri, player]);
+
+    const togglePlayback = React.useCallback(async () => {
+        if (loading) return;
+        try {
+            if (status.playing) {
+                await Promise.resolve(player.pause());
+                return;
+            }
+            await loadAudio();
+            if (!mountedRef.current) {
+                return;
+            }
+            if (status.didJustFinish) {
+                await player.seekTo(0);
+            }
+            player.play();
+        } catch (err: unknown) {
+            const message =
+                err instanceof Error ? err.message : "Could not play audio";
+            if (mountedRef.current) {
+                setError(message);
+            }
+        }
+    }, [loadAudio, loading, player, status.didJustFinish, status.playing]);
+
+    const duration = Number.isFinite(status.duration) ? status.duration : 0;
+    const currentTime = Number.isFinite(status.currentTime)
+        ? status.currentTime
+        : 0;
+    const progress = duration > 0 ? clamp(currentTime / duration, 0, 1) : 0;
+    const progressWidth = `${String(progress * 100)}%` as DimensionValue;
+    const playIcon = status.playing ? "pause" : "play";
+    const loadingLabel = mediaUri ? "Buffering audio" : "Loading audio";
+
+    return (
+        <View style={styles.audioAttachment}>
+            <View style={styles.mediaHeader}>
+                <Pressable
+                    accessibilityLabel={
+                        status.playing
+                            ? `Pause ${attachment.fileName}`
+                            : `Play ${attachment.fileName}`
+                    }
+                    accessibilityRole="button"
+                    disabled={loading}
+                    onPress={() => {
+                        void togglePlayback();
+                    }}
+                    style={({ pressed }) => [
+                        styles.mediaPlayButton,
+                        pressed && styles.attachmentPressed,
+                    ]}
+                >
+                    {loading || status.isBuffering ? (
+                        <ActivityIndicator
+                            color={colors.textSecondary}
+                            size="small"
+                        />
+                    ) : (
+                        <Ionicons
+                            color={colors.textSecondary}
+                            name={playIcon}
+                            size={20}
+                        />
+                    )}
+                </Pressable>
+                <View style={styles.fileAttachmentMeta}>
+                    <Text numberOfLines={1} style={styles.attachmentName}>
+                        {attachment.fileName}
+                    </Text>
+                    <Text style={styles.attachmentSize}>
+                        {loading || status.isBuffering
+                            ? loadingLabel
+                            : formatFileSize(attachment.fileSize)}
+                    </Text>
+                </View>
+                <Pressable
+                    accessibilityLabel={`Share ${attachment.fileName}`}
+                    accessibilityRole="button"
+                    disabled={sharing}
+                    onPress={() => {
+                        void onShare();
+                    }}
+                    style={({ pressed }) => [
+                        styles.mediaIconButton,
+                        pressed && styles.attachmentPressed,
+                    ]}
+                >
+                    {sharing ? (
+                        <ActivityIndicator color={colors.muted} size="small" />
+                    ) : (
+                        <Ionicons
+                            color={colors.muted}
+                            name="share-outline"
+                            size={18}
+                        />
+                    )}
+                </Pressable>
+            </View>
+            <View style={styles.mediaProgressTrack}>
+                <View
+                    style={[styles.mediaProgressFill, { width: progressWidth }]}
+                />
+            </View>
+            <View style={styles.mediaTimeRow}>
+                <Text style={styles.attachmentSize}>
+                    {formatMediaTime(currentTime)}
+                </Text>
+                <Text style={styles.attachmentSize}>
+                    {duration > 0 ? formatMediaTime(duration) : "--:--"}
+                </Text>
+            </View>
+            {error ? (
+                <Text numberOfLines={2} style={styles.attachmentError}>
+                    {error}
+                </Text>
+            ) : null}
+        </View>
     );
 }
 
@@ -892,6 +1183,14 @@ async function fetchAttachmentData(
     return result.data;
 }
 
+function formatMediaTime(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
+    const totalSeconds = Math.floor(seconds);
+    const minutes = Math.floor(totalSeconds / 60);
+    const remainder = totalSeconds % 60;
+    return `${String(minutes)}:${String(remainder).padStart(2, "0")}`;
+}
+
 function inlineSegmentStyle(segment: MarkdownInlineSegment): null | TextStyle {
     switch (segment.type) {
         case "code":
@@ -905,6 +1204,10 @@ function inlineSegmentStyle(segment: MarkdownInlineSegment): null | TextStyle {
         case "text":
             return null;
     }
+}
+
+function isAudioType(contentType: string): boolean {
+    return contentType.toLowerCase().startsWith("audio/");
 }
 
 function isSingleEmojiGrapheme(value: string): boolean {
@@ -932,6 +1235,10 @@ function isSingleEmojiGrapheme(value: string): boolean {
         return false;
     }
     return /\p{Extended_Pictographic}/u.test(value);
+}
+
+function isVideoType(contentType: string): boolean {
+    return contentType.toLowerCase().startsWith("video/");
 }
 
 function MarkdownMessage({
@@ -1068,11 +1375,7 @@ function MessageEmbedCard({
         <View style={[styles.embedCard, embedToneStyle(embed.tone)]}>
             <View style={styles.embedHeader}>
                 <View style={styles.embedIcon}>
-                    <Ionicons
-                        color={colors.textSecondary}
-                        name={embedIconName(embed.icon, embed.kind)}
-                        size={16}
-                    />
+                    <MessageEmbedIcon embed={embed} />
                 </View>
                 <View style={styles.embedHeaderText}>
                     <Text numberOfLines={2} style={styles.embedTitle}>
@@ -1154,6 +1457,60 @@ function MessageEmbedCard({
                 </View>
             ) : null}
         </View>
+    );
+}
+
+function MessageEmbedIcon({ embed }: { embed: MessageEmbed }) {
+    const attachment = embed.iconAttachment;
+    const [iconImageFailed, setIconImageFailed] = React.useState(false);
+    const [iconUri, setIconUri] = React.useState<null | string>(null);
+
+    React.useEffect(() => {
+        setIconImageFailed(false);
+        if (!attachment || !isImageType(attachment.contentType)) {
+            setIconUri(null);
+            return;
+        }
+
+        let cancelled = false;
+        setIconUri(null);
+        void fetchAttachmentData(attachment)
+            .then((data) => {
+                if (cancelled) return;
+                setIconUri(
+                    `data:${attachment.contentType};base64,${bytesToBase64(
+                        data,
+                    )}`,
+                );
+            })
+            .catch(() => {
+                if (!cancelled) setIconUri(null);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [attachment]);
+
+    if (iconUri && !iconImageFailed) {
+        return (
+            <Image
+                accessibilityIgnoresInvertColors
+                onError={() => {
+                    setIconImageFailed(true);
+                }}
+                source={{ uri: iconUri }}
+                style={styles.embedIconImage}
+            />
+        );
+    }
+
+    return (
+        <Ionicons
+            color={colors.textSecondary}
+            name={embedIconName(embed.icon, embed.kind)}
+            size={16}
+        />
     );
 }
 
@@ -1244,9 +1601,292 @@ function ReactionRow({
     );
 }
 
+function ReplyAttachmentThumbnail({
+    attachment,
+}: {
+    attachment: EncryptedFileAttachment;
+}) {
+    const shouldRenderImage = isImageType(attachment.contentType);
+    const [imageUri, setImageUri] = React.useState<null | string>(null);
+
+    React.useEffect(() => {
+        if (!shouldRenderImage) {
+            setImageUri(null);
+            return;
+        }
+        let cancelled = false;
+        setImageUri(null);
+        void fetchAttachmentData(attachment)
+            .then((data) => {
+                if (cancelled) return;
+                setImageUri(
+                    `data:${attachment.contentType};base64,${bytesToBase64(
+                        data,
+                    )}`,
+                );
+            })
+            .catch(() => {
+                if (!cancelled) setImageUri(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [attachment, shouldRenderImage]);
+
+    if (imageUri) {
+        return (
+            <Image
+                accessibilityIgnoresInvertColors
+                source={{ uri: imageUri }}
+                style={styles.replyAttachmentImage}
+            />
+        );
+    }
+
+    return (
+        <View style={styles.replyAttachmentIcon}>
+            <Ionicons
+                color={colors.textSecondary}
+                name={shouldRenderImage ? "image-outline" : "document-outline"}
+                size={16}
+            />
+        </View>
+    );
+}
+
+function ReplyReferencePreview({
+    onPress,
+    reply,
+}: {
+    onPress?: (() => void) | undefined;
+    reply: MessageReplyReference;
+}) {
+    const author =
+        reply.targetAuthorName ??
+        (reply.targetAuthorID ? reply.targetAuthorID.slice(0, 8) : "Message");
+    const preview =
+        reply.targetPreview ??
+        reply.targetAttachment?.fileName ??
+        "Original message";
+    const targetAuthorID = reply.targetAuthorID;
+
+    return (
+        <View style={styles.replyReference}>
+            <View style={styles.replyConnector}>
+                <View style={styles.replyConnectorCurve} />
+            </View>
+            <Pressable
+                accessibilityRole={onPress ? "button" : undefined}
+                disabled={!onPress}
+                onPress={onPress}
+                style={({ pressed }) => [
+                    styles.replyPreview,
+                    pressed && styles.attachmentPressed,
+                ]}
+            >
+                {targetAuthorID ? (
+                    <Avatar
+                        displayName={author}
+                        size={22}
+                        userID={targetAuthorID}
+                    />
+                ) : (
+                    <View style={styles.replyAvatarFallback}>
+                        <Ionicons
+                            color={colors.textSecondary}
+                            name="arrow-undo-outline"
+                            size={14}
+                        />
+                    </View>
+                )}
+                <View style={styles.replyPreviewBody}>
+                    <Text numberOfLines={1} style={styles.replyAuthor}>
+                        {author}
+                    </Text>
+                    <Text numberOfLines={1} style={styles.replyPreviewText}>
+                        {preview}
+                    </Text>
+                </View>
+                {reply.targetAttachment ? (
+                    <ReplyAttachmentThumbnail
+                        attachment={reply.targetAttachment}
+                    />
+                ) : null}
+            </Pressable>
+        </View>
+    );
+}
+
 function usesMessageMarkdownSource(block: MessageEmbedBlock): boolean {
     if (block.type !== "markdown") return false;
     return block.source === "message";
+}
+
+function VideoAttachment({
+    attachment,
+    onShare,
+    sharing,
+}: {
+    attachment: EncryptedFileAttachment;
+    onShare: () => Promise<void>;
+    sharing: boolean;
+}) {
+    const player = useVideoPlayer(null, (videoPlayer) => {
+        videoPlayer.showNowPlayingNotification = false;
+        videoPlayer.staysActiveInBackground = false;
+    });
+    const mountedRef = React.useRef(true);
+    const [error, setError] = React.useState("");
+    const [loading, setLoading] = React.useState(false);
+    const [mediaUri, setMediaUri] = React.useState<null | string>(null);
+
+    React.useEffect(() => {
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
+
+    const loadVideo = React.useCallback(async (): Promise<void> => {
+        if (mediaUri) {
+            player.play();
+            return;
+        }
+        setLoading(true);
+        setError("");
+        try {
+            const uri = await writeAttachmentDataToCache(attachment);
+            if (!mountedRef.current) {
+                return;
+            }
+            await player.replaceAsync({
+                metadata: { title: attachment.fileName },
+                uri,
+            });
+            if (!mountedRef.current) {
+                return;
+            }
+            setMediaUri(uri);
+            player.play();
+        } catch (err: unknown) {
+            const message =
+                err instanceof Error ? err.message : "Could not load video";
+            if (mountedRef.current) {
+                setError(message);
+            }
+        } finally {
+            if (mountedRef.current) {
+                setLoading(false);
+            }
+        }
+    }, [attachment, mediaUri, player]);
+
+    if (!mediaUri) {
+        return (
+            <Pressable
+                accessibilityLabel={`Play video ${attachment.fileName}`}
+                accessibilityRole="button"
+                disabled={loading}
+                onPress={() => {
+                    void loadVideo();
+                }}
+                style={({ pressed }) => [
+                    styles.fileAttachment,
+                    pressed && styles.attachmentPressed,
+                ]}
+            >
+                <View style={styles.fileAttachmentIcon}>
+                    {loading ? (
+                        <ActivityIndicator
+                            color={colors.textSecondary}
+                            size="small"
+                        />
+                    ) : (
+                        <Ionicons
+                            color={colors.textSecondary}
+                            name="play"
+                            size={20}
+                        />
+                    )}
+                </View>
+                <View style={styles.fileAttachmentMeta}>
+                    <Text numberOfLines={1} style={styles.attachmentName}>
+                        {attachment.fileName}
+                    </Text>
+                    <Text style={styles.attachmentSize}>
+                        {loading
+                            ? "Loading video"
+                            : formatFileSize(attachment.fileSize)}
+                    </Text>
+                    {error ? (
+                        <Text numberOfLines={1} style={styles.attachmentError}>
+                            {error}
+                        </Text>
+                    ) : null}
+                </View>
+                <Ionicons
+                    color={colors.muted}
+                    name="videocam-outline"
+                    size={18}
+                />
+            </Pressable>
+        );
+    }
+
+    return (
+        <View style={styles.videoAttachment}>
+            <VideoView
+                contentFit="contain"
+                fullscreenOptions={{ enable: true }}
+                nativeControls
+                player={player}
+                style={styles.videoAttachmentMedia}
+            />
+            <View style={styles.mediaFooter}>
+                <View style={styles.fileAttachmentMeta}>
+                    <Text numberOfLines={1} style={styles.attachmentName}>
+                        {attachment.fileName}
+                    </Text>
+                    <Text style={styles.attachmentSize}>
+                        {formatFileSize(attachment.fileSize)}
+                    </Text>
+                </View>
+                <Pressable
+                    accessibilityLabel={`Share ${attachment.fileName}`}
+                    accessibilityRole="button"
+                    disabled={sharing}
+                    onPress={() => {
+                        void onShare();
+                    }}
+                    style={({ pressed }) => [
+                        styles.mediaIconButton,
+                        pressed && styles.attachmentPressed,
+                    ]}
+                >
+                    {sharing ? (
+                        <ActivityIndicator color={colors.muted} size="small" />
+                    ) : (
+                        <Ionicons
+                            color={colors.muted}
+                            name="share-outline"
+                            size={18}
+                        />
+                    )}
+                </Pressable>
+            </View>
+            {error ? (
+                <Text numberOfLines={2} style={styles.attachmentError}>
+                    {error}
+                </Text>
+            ) : null}
+        </View>
+    );
+}
+
+async function writeAttachmentDataToCache(
+    attachment: EncryptedFileAttachment,
+): Promise<string> {
+    const data = await fetchAttachmentData(attachment);
+    return writeAttachmentToCache(attachment, data);
 }
 
 const styles = StyleSheet.create({
@@ -1278,6 +1918,16 @@ const styles = StyleSheet.create({
         ...typography.body,
         color: colors.muted,
         fontSize: 11,
+    },
+    audioAttachment: {
+        backgroundColor: "rgba(255,255,255,0.045)",
+        borderColor: "rgba(255,255,255,0.1)",
+        borderRadius: 8,
+        borderWidth: 1,
+        gap: 8,
+        marginTop: 6,
+        maxWidth: 360,
+        padding: 10,
     },
     author: {
         ...typography.body,
@@ -1347,8 +1997,6 @@ const styles = StyleSheet.create({
         color: "#d2a8ff",
     },
     container: {
-        flexDirection: "row",
-        gap: 10,
         paddingHorizontal: 12,
         paddingVertical: 6,
     },
@@ -1461,6 +2109,11 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         width: 30,
     },
+    embedIconImage: {
+        borderRadius: 5,
+        height: 22,
+        width: 22,
+    },
     embedMedia: {
         gap: 4,
     },
@@ -1552,6 +2205,51 @@ const styles = StyleSheet.create({
     markdownStack: {
         gap: 2,
     },
+    mediaFooter: {
+        alignItems: "center",
+        borderTopColor: "rgba(255,255,255,0.08)",
+        borderTopWidth: 1,
+        flexDirection: "row",
+        gap: 10,
+        padding: 10,
+    },
+    mediaHeader: {
+        alignItems: "center",
+        flexDirection: "row",
+        gap: 10,
+    },
+    mediaIconButton: {
+        alignItems: "center",
+        borderRadius: 6,
+        height: 34,
+        justifyContent: "center",
+        width: 34,
+    },
+    mediaPlayButton: {
+        alignItems: "center",
+        backgroundColor: colors.input,
+        borderColor: colors.borderSubtle,
+        borderRadius: 999,
+        borderWidth: 1,
+        height: 38,
+        justifyContent: "center",
+        width: 38,
+    },
+    mediaProgressFill: {
+        backgroundColor: colors.accent,
+        borderRadius: 999,
+        height: "100%",
+    },
+    mediaProgressTrack: {
+        backgroundColor: "rgba(255,255,255,0.1)",
+        borderRadius: 999,
+        height: 4,
+        overflow: "hidden",
+    },
+    mediaTimeRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+    },
     menuBackdrop: {
         ...StyleSheet.absoluteFill,
     },
@@ -1609,6 +2307,10 @@ const styles = StyleSheet.create({
     },
     menuTextDestructive: {
         color: "#FF7A7A",
+    },
+    messageRow: {
+        flexDirection: "row",
+        gap: 10,
     },
     meta: {
         alignItems: "center",
@@ -1709,6 +2411,81 @@ const styles = StyleSheet.create({
         gap: 6,
         marginTop: 5,
     },
+    replyAttachmentIcon: {
+        alignItems: "center",
+        backgroundColor: "rgba(255,255,255,0.055)",
+        borderColor: "rgba(255,255,255,0.1)",
+        borderRadius: 6,
+        borderWidth: 1,
+        height: 28,
+        justifyContent: "center",
+        width: 28,
+    },
+    replyAttachmentImage: {
+        backgroundColor: colors.input,
+        borderRadius: 6,
+        height: 28,
+        width: 28,
+    },
+    replyAuthor: {
+        ...typography.body,
+        color: colors.textSecondary,
+        fontSize: 13,
+        fontWeight: "700",
+        lineHeight: 17,
+    },
+    replyAvatarFallback: {
+        alignItems: "center",
+        backgroundColor: "rgba(255,255,255,0.055)",
+        borderRadius: 999,
+        height: 22,
+        justifyContent: "center",
+        width: 22,
+    },
+    replyConnector: {
+        alignItems: "flex-end",
+        paddingTop: 10,
+        width: 26,
+    },
+    replyConnectorCurve: {
+        borderColor: "rgba(154,158,178,0.42)",
+        borderLeftWidth: StyleSheet.hairlineWidth,
+        borderTopLeftRadius: 11,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        height: 30,
+        width: 21,
+    },
+    replyPreview: {
+        alignItems: "center",
+        flex: 1,
+        flexDirection: "row",
+        gap: 8,
+        maxWidth: 420,
+        minHeight: 38,
+        paddingBottom: 2,
+        paddingTop: 1,
+    },
+    replyPreviewBody: {
+        flex: 1,
+        minWidth: 0,
+    },
+    replyPreviewText: {
+        ...typography.body,
+        color: colors.muted,
+        fontSize: 12,
+        lineHeight: 17,
+    },
+    replyReference: {
+        alignItems: "flex-start",
+        flex: 1,
+        flexDirection: "row",
+    },
+    replyReferenceRow: {
+        flexDirection: "row",
+        gap: 10,
+        marginBottom: 2,
+        marginTop: 0,
+    },
     systemContainer: {
         alignItems: "center",
         paddingHorizontal: 12,
@@ -1731,5 +2508,20 @@ const styles = StyleSheet.create({
         ...typography.body,
         color: colors.muted,
         fontSize: 10,
+    },
+    videoAttachment: {
+        backgroundColor: colors.input,
+        borderColor: "rgba(255,255,255,0.1)",
+        borderRadius: 8,
+        borderWidth: 1,
+        marginTop: 6,
+        maxWidth: 360,
+        overflow: "hidden",
+        width: "100%",
+    },
+    videoAttachmentMedia: {
+        backgroundColor: "#000",
+        height: 220,
+        width: "100%",
     },
 });

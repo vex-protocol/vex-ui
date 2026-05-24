@@ -137,9 +137,16 @@ export function PasskeysScreen({ navigation }: AppScreenProps<"Passkeys">) {
 
     function handleDelete(passkey: Passkey): void {
         haptic("destructive");
+        if (passkeys.length <= 1) {
+            Alert.alert(
+                "Passkey required",
+                "Add another passkey before removing this one.",
+            );
+            return;
+        }
         Alert.alert(
             `Remove "${passkey.name}"?`,
-            "You'll need another passkey or another signed-in device to recover this account if you lose every device.",
+            "You'll need another passkey to keep signing in to this account.",
             [
                 { style: "cancel", text: "Cancel" },
                 {
@@ -188,7 +195,7 @@ export function PasskeysScreen({ navigation }: AppScreenProps<"Passkeys">) {
                 <MenuSection
                     footer={
                         supported
-                            ? "A passkey lets you authorize new devices and remove old ones — even if you lose every signed-in device. Stored on this phone (iCloud Keychain or Google Password Manager) or a security key."
+                            ? "A passkey is required at signup and sign-in, and lets you authorize new devices if you lose every signed-in device. Stored on this phone (iCloud Keychain or Google Password Manager) or a security key."
                             : "This device doesn't support passkeys. iOS 16+ or Android 9+ with a screen lock is required."
                     }
                     title="Add a passkey"
@@ -237,7 +244,7 @@ export function PasskeysScreen({ navigation }: AppScreenProps<"Passkeys">) {
                 <MenuSection title="Your passkeys">
                     {passkeys.length === 0 && !refreshing ? (
                         <MenuRow
-                            description="Add one above to enable account recovery."
+                            description="Add one above to keep this account sign-in ready."
                             icon="key-outline"
                             label="No passkeys yet"
                         />
