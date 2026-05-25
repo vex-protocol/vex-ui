@@ -8,10 +8,12 @@ function normalize(value: null | string | undefined): string | undefined {
 
 const expoVersion = normalize(Constants.expoConfig?.version);
 const publicVersion = normalize(process.env.EXPO_PUBLIC_VEX_APP_VERSION);
+const publicBuildLabel = normalize(process.env.EXPO_PUBLIC_VEX_BUILD_LABEL);
 const commit = normalize(process.env.EXPO_PUBLIC_VEX_COMMIT_SHA) ?? "local";
 const shortCommit =
     commit === "local" ? commit : commit.slice(0, 8).toLowerCase();
-const displayVersion = `${publicVersion ?? expoVersion ?? "0.0.0"}-${shortCommit}`;
+const version = publicVersion ?? expoVersion ?? "0.0.0";
+const displayVersion = publicBuildLabel ?? `${version}-${shortCommit}`;
 const updateId = Updates.updateId ?? undefined;
 const shortUpdateId = updateId?.slice(0, 8);
 const createdAt = Updates.createdAt?.toISOString();
@@ -45,5 +47,5 @@ export const buildInfo = {
     shortRuntimeVersion,
     shortUpdateId,
     updateId,
-    version: publicVersion ?? expoVersion ?? "0.0.0",
+    version,
 } as const;

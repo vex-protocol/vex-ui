@@ -87,12 +87,61 @@ jobs:
                   '
                   echo "VEX_ANDROID_GOOGLE_SERVICES_FILE=./google-services.dev.json" >> "$GITHUB_ENV"
 
+            - name: Resolve release candidate version
+              id: meta
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  LATEST_TAG="$(
+                    gh release list --limit 50 --json tagName,isPrerelease \
+                      --jq '[.[] | select(.isPrerelease | not) | .tagName | select(test("^mobile-v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0] // ""'
+                  )"
+                  PACKAGE_VERSION="$(node -pe "require('./apps/mobile/package.json').version")"
+                  VERSION="$(
+                    LATEST_TAG="$LATEST_TAG" PACKAGE_VERSION="$PACKAGE_VERSION" node <<'NODE'
+                  const latestTag = process.env.LATEST_TAG ?? "";
+                  const packageVersion = process.env.PACKAGE_VERSION ?? "";
+                  const latestVersion = latestTag.match(/^mobile-v(\d+\.\d+\.\d+)$/)?.[1];
+                  const parse = (value, label) => {
+                    const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value ?? "");
+                    if (!match) {
+                      console.error(`Invalid ${label} version: ${value}`);
+                      process.exit(1);
+                    }
+                    return match.slice(1).map(Number);
+                  };
+                  const compare = (left, right) => {
+                    for (let i = 0; i < 3; i += 1) {
+                      if (left[i] !== right[i]) return left[i] - right[i];
+                    }
+                    return 0;
+                  };
+                  const baseParts = parse(latestVersion ?? packageVersion, "mobile release base");
+                  const nextRcParts = [baseParts[0], baseParts[1], baseParts[2] + 1];
+                  const packageParts = parse(packageVersion, "mobile package");
+                  const chosen = compare(packageParts, nextRcParts) > 0 ? packageParts : nextRcParts;
+                  console.log(chosen.join("."));
+                  NODE
+                  )"
+                  SHORT_SHA="${GITHUB_SHA::8}"
+                  DISPLAY_VERSION="${VERSION}RC-${SHORT_SHA}"
+
+                  echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+                  echo "display_version=$DISPLAY_VERSION" >> "$GITHUB_OUTPUT"
+                  echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+                  echo "tag=mobile-rc-v${VERSION}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+                  echo "asset=vex-development-${VERSION}-${SHORT_SHA}.apk" >> "$GITHUB_OUTPUT"
+
+                  echo "Latest production mobile tag: ${LATEST_TAG:-none}"
+                  echo "Release candidate version: $DISPLAY_VERSION"
+
             - name: Compute current fingerprint
               id: fp
               working-directory: apps/mobile
               env:
                   EAS_BUILD_PROFILE: development
                   VEX_APP_ENV: development
+                  VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
               run: |
                   npx @expo/fingerprint@latest . > /tmp/current-fingerprint.json
@@ -146,11 +195,13 @@ jobs:
                   EAS_BUILD_PROFILE: development
                   EXPO_PUBLIC_ENABLE_DEV_SERVER: "1"
                   EXPO_PUBLIC_SERVER_URL: dev.vex.wtf
+                  EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
+                  EXPO_PUBLIC_VEX_BUILD_LABEL: ${{ steps.meta.outputs.display_version }}
                   EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
                   VEX_APP_ENV: development
+                  VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
               run: |
-                  export EXPO_PUBLIC_VEX_APP_VERSION="$(node -pe "require('./package.json').version")"
                   eas update \
                     --channel development \
                     --message "development ${GITHUB_SHA::8}" \
@@ -193,28 +244,19 @@ jobs:
                   EAS_BUILD_PROFILE: development
                   EXPO_PUBLIC_ENABLE_DEV_SERVER: "1"
                   EXPO_PUBLIC_SERVER_URL: dev.vex.wtf
+                  EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
+                  EXPO_PUBLIC_VEX_BUILD_LABEL: ${{ steps.meta.outputs.display_version }}
                   EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
                   VEX_APP_ENV: development
+                  VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
               run: |
-                  export EXPO_PUBLIC_VEX_APP_VERSION="$(node -pe "require('./package.json').version")"
                   eas build \
                     --profile development \
                     --platform android \
                     --local \
                     --non-interactive \
                     --output "${{ github.workspace }}/vex-development.apk"
-
-            - name: Read release candidate metadata
-              if: steps.decide.outputs.path == 'build'
-              id: meta
-              run: |
-                  VERSION=$(node -pe "require('./apps/mobile/package.json').version")
-                  SHORT_SHA=${GITHUB_SHA::8}
-                  echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-                  echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
-                  echo "tag=mobile-rc-v${VERSION}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-                  echo "asset=vex-development-${VERSION}-${SHORT_SHA}.apk" >> "$GITHUB_OUTPUT"
 
             - name: Build release candidate notes
               if: steps.decide.outputs.path == 'build'
