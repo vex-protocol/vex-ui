@@ -349,6 +349,7 @@ export async function showDeviceApprovalNotification(
                     kind: "deviceApproval",
                     requestID,
                 },
+                ...iosDefaultNotificationSound(),
                 title: DEVICE_APPROVAL_TITLE,
             },
             // Use the requestID itself as the OS-level identifier so we
@@ -591,6 +592,10 @@ function incrementMessageNotificationSummary(): number {
     return messageNotificationCount;
 }
 
+function iosDefaultNotificationSound(): { sound?: "default" } {
+    return Platform.OS === "ios" ? { sound: "default" } : {};
+}
+
 function isMessageNotificationData(data: Record<string, unknown>): boolean {
     const kind = data["kind"];
     return data["event"] === "mail" || kind === "dm" || kind === "group";
@@ -740,6 +745,7 @@ async function scheduleOneMessageNotification(mail: Message): Promise<void> {
     await Notifications.scheduleNotificationAsync({
         content: {
             data: routeData,
+            ...iosDefaultNotificationSound(),
             title,
         },
         identifier: MESSAGE_NOTIFICATION_ID,
