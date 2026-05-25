@@ -10,6 +10,7 @@ import {
     AppState,
     Easing,
     Linking,
+    Platform,
     Pressable,
     StatusBar,
     StyleSheet,
@@ -192,6 +193,11 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
             setError("");
             setOfflineContinueAllowed(false);
             setPhase("checking");
+
+            if (Platform.OS === "ios") {
+                complete();
+                return;
+            }
 
             try {
                 const state = await withTimeout(
