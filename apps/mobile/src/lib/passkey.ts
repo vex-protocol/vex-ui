@@ -26,6 +26,8 @@ import type {
     PasskeyGetRequest,
 } from "react-native-passkey";
 
+import { Platform } from "react-native";
+
 import { Passkey } from "react-native-passkey";
 
 /**
@@ -134,7 +136,10 @@ export async function authenticatePasskey(
             : {}),
     };
     try {
-        const result = await Passkey.get(request);
+        const result =
+            Platform.OS === "ios"
+                ? await Passkey.getPlatformKey(request)
+                : await Passkey.get(request);
         // react-native-passkey returns AuthenticationResponseJSON; the
         // spire endpoint accepts it as `Record<string, unknown>` and
         // `@simplewebauthn/server` does the structural validation.
@@ -200,7 +205,10 @@ export async function registerPasskey(
             : {}),
     };
     try {
-        const result = await Passkey.create(request);
+        const result =
+            Platform.OS === "ios"
+                ? await Passkey.createPlatformKey(request)
+                : await Passkey.create(request);
         return result as unknown as Record<string, unknown>;
     } catch (err: unknown) {
         throw normalizePasskeyError(err);

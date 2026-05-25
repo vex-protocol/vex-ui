@@ -541,12 +541,14 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
 
     const runningLatestCommit =
         latestCommit != null && sameCommit(buildInfo.commit, latestCommit.sha);
-    const nativeUpdateAvailable = isNativeReleaseNewer(
-        nativeRelease,
-        latestCommit,
-        releaseCompareStatus,
-        releaseCandidateRunPending,
-    );
+    const nativeUpdateAvailable =
+        Platform.OS === "android" &&
+        isNativeReleaseNewer(
+            nativeRelease,
+            latestCommit,
+            releaseCompareStatus,
+            releaseCandidateRunPending,
+        );
     const otaUpdateAvailable = ota.isAvailable && !runningLatestCommit;
 
     if (otaUpdateAvailable) {

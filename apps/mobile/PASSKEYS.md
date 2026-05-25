@@ -185,6 +185,13 @@ SPIRE_PASSKEY_ANDROID_PACKAGE=chat.vex.mobile.dev
 SPIRE_PASSKEY_ANDROID_FINGERPRINTS=<dev EAS SHA-256 fingerprint>
 ```
 
+Development iOS builds add `?mode=developer` to the
+`webcredentials:` entitlement so test devices can bypass Apple's
+associated-domain CDN while you are iterating on the AASA file. The
+device must have Developer Mode enabled and the Associated Domains
+Development option turned on in Settings > Developer. Production
+builds must not include the query string.
+
 After setting them and restarting spire:
 
 ```sh
