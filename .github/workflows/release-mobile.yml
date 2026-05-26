@@ -2,15 +2,15 @@ name: Mobile - Release
 
 # Publishes production for every merge to master.
 # Native fingerprint unchanged -> EAS Update on the production channel.
-# Native fingerprint changed   -> local APK build, EAS iOS Ad Hoc build,
+# Native fingerprint changed   -> EAS Android APK + iOS Ad Hoc builds,
 #                                  plus GitHub Release.
 #
 # APK release versions are derived from mobile-v* tags. OTA updates reuse the
 # latest APK's version/runtime so installed builds can receive the update.
 #
-# Concurrency: cancel-in-progress:false. Canceling an EAS local build while it
-# is talking to remote versionCode state can corrupt the queued version state,
-# so queued builds always run to completion.
+# Concurrency: cancel-in-progress:false. Canceling an EAS build while it is
+# talking to remote versionCode state can corrupt the queued version state, so
+# queued builds always run to completion.
 #
 # Secrets: EXPO_TOKEN, GITHUB_TOKEN (automatic).
 # Required secret: VEX_ANDROID_GOOGLE_SERVICES_PROD_JSON_BASE64.
@@ -96,10 +96,12 @@ jobs:
                   GOOGLE_SERVICES_JSON: ${{ secrets.VEX_ANDROID_GOOGLE_SERVICES_PROD_JSON }}
                   GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.VEX_ANDROID_GOOGLE_SERVICES_PROD_JSON_BASE64 }}
               run: |
+                  GOOGLE_SERVICES_PATH="ci-google-services.prod.json"
+                  export GOOGLE_SERVICES_PATH
                   if [ -n "${GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
-                    printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > google-services.prod.json
+                    printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > "$GOOGLE_SERVICES_PATH"
                   elif [ -n "${GOOGLE_SERVICES_JSON:-}" ]; then
-                    printf '%s' "$GOOGLE_SERVICES_JSON" > google-services.prod.json
+                    printf '%s' "$GOOGLE_SERVICES_JSON" > "$GOOGLE_SERVICES_PATH"
                   else
                     echo "::error::Missing VEX_ANDROID_GOOGLE_SERVICES_PROD_JSON_BASE64. Add it from apps/mobile/google-services.prod.json so CI can reproduce the local prod build."
                     exit 1
@@ -107,7 +109,7 @@ jobs:
 
                   node -e '
                     const fs = require("node:fs");
-                    const path = "google-services.prod.json";
+                    const path = process.env.GOOGLE_SERVICES_PATH;
                     const expected = "chat.vex.mobile";
                     const data = JSON.parse(fs.readFileSync(path, "utf8"));
                     const packages = (data.client ?? [])
@@ -119,7 +121,7 @@ jobs:
                       process.exit(1);
                     }
                   '
-                  echo "VEX_ANDROID_GOOGLE_SERVICES_FILE=./google-services.prod.json" >> "$GITHUB_ENV"
+                  echo "VEX_ANDROID_GOOGLE_SERVICES_FILE=./${GOOGLE_SERVICES_PATH}" >> "$GITHUB_ENV"
 
             - name: Compute current runtime fingerprints
               id: fp
@@ -290,35 +292,26 @@ jobs:
                   echo "Build iOS runtime fingerprint: $IOS_HASH"
                   echo "Build legacy fingerprint: $LEGACY_HASH"
 
-            - name: Setup Java (Temurin 17)
+            - name: Install EAS CLI (build path)
               if: steps.decide.outputs.path == 'build'
-              uses: actions/setup-java@v5
-              with:
-                  distribution: temurin
-                  java-version: "17"
+              run: npm install -g eas-cli@latest
 
-            - name: Setup Android SDK
+            - name: Prepare EAS remote build env
               if: steps.decide.outputs.path == 'build'
-              uses: android-actions/setup-android@v4
-              with:
-                  cmdline-tools-version: "13114758"
+              working-directory: apps/mobile
+              env:
+                  EAS_BUILD_PROFILE: production
+                  EXPO_PUBLIC_ENABLE_DEV_SERVER: "0"
+                  EXPO_PUBLIC_SERVER_URL: api.vex.wtf
+                  EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.version.outputs.version }}
+                  EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
+                  VEX_APP_ENV: production
+                  VEX_APP_DISPLAY_NAME: Vex
+                  VEX_APP_VERSION: ${{ steps.version.outputs.version }}
+                  VEX_ENABLE_DEV_BUILD: "0"
+              run: node scripts/prepare-eas-build-env.cjs
 
-            - name: Cache Gradle
-              if: steps.decide.outputs.path == 'build'
-              uses: actions/cache@v4
-              with:
-                  path: |
-                      ~/.gradle/caches
-                      ~/.gradle/wrapper
-                  key: ${{ runner.os }}-gradle-${{ hashFiles('pnpm-lock.yaml', 'apps/mobile/package.json', 'apps/mobile/app.json', 'apps/mobile/app.config.js', 'apps/mobile/eas.json', 'apps/mobile/plugins/**') }}
-                  restore-keys: |
-                      ${{ runner.os }}-gradle-
-
-            - name: Install EAS CLI + local build plugin
-              if: steps.decide.outputs.path == 'build'
-              run: npm install -g eas-cli@latest eas-cli-local-build-plugin@latest
-
-            - name: Build production APK (local)
+            - name: Build production Android APK
               if: steps.decide.outputs.path == 'build'
               working-directory: apps/mobile
               env:
@@ -336,9 +329,34 @@ jobs:
                   eas build \
                     --profile production \
                     --platform android \
-                    --local \
                     --non-interactive \
+                    --wait \
+                    --message "production ${GITHUB_SHA::8}" \
+                    --json > /tmp/android-build.json \
+                    2> >(node scripts/redact-eas-log.cjs)
+
+                  node <<'NODE' > /tmp/android-artifact-url
+                  const fs = require("node:fs");
+                  const raw = fs.readFileSync("/tmp/android-build.json", "utf8");
+                  const parsed = JSON.parse(raw);
+                  const builds = Array.isArray(parsed) ? parsed : [parsed];
+                  const build =
+                    builds.find((candidate) =>
+                      String(candidate?.platform ?? "").toLowerCase() === "android"
+                    ) ?? builds[0];
+                  const artifactUrl = build?.artifacts?.applicationArchiveUrl;
+                  if (!artifactUrl) {
+                    console.error("EAS Android build output did not include an APK artifact URL.");
+                    console.error(build?.id ? `Build id: ${build.id}` : "Build id: unknown");
+                    process.exit(1);
+                  }
+                  console.log(artifactUrl);
+                  NODE
+
+                  curl --fail --location --silent --show-error \
+                    "$(cat /tmp/android-artifact-url)" \
                     --output "${{ github.workspace }}/release.apk"
+                  test -s "${{ github.workspace }}/release.apk"
 
             - name: Build production iOS Ad Hoc
               if: steps.decide.outputs.path == 'build'
@@ -355,8 +373,6 @@ jobs:
                   VEX_APP_VERSION: ${{ steps.version.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "0"
               run: |
-                  node scripts/prepare-eas-build-env.cjs
-
                   eas build \
                     --profile production \
                     --platform ios \
