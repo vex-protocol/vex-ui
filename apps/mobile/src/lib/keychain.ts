@@ -40,6 +40,31 @@ export interface KnownAccount {
 }
 
 /**
+ * Remove every credential slot this build knows how to discover for the
+ * current server host. Useful as an account-picker escape hatch when iOS
+ * Keychain items survive an uninstall/reinstall cycle.
+ */
+export async function clearAllCredentials(): Promise<void> {
+    const users = new Set(await readKnownUsers());
+    const active = await loadActiveUsername();
+    if (active) {
+        users.add(active);
+    }
+    const legacy = await readLegacyCredentials();
+    if (legacy?.username) {
+        users.add(legacy.username);
+    }
+    for (const user of users) {
+        await SecureStore.deleteItemAsync(credsKeyForUser(user));
+        await SecureStore.deleteItemAsync(userIDKeyForUser(user));
+        await clearLocalDatabaseKeyMaterial(user);
+    }
+    await SecureStore.deleteItemAsync(activeUserKey());
+    await SecureStore.deleteItemAsync(knownUsersKey());
+    await SecureStore.deleteItemAsync(legacyCredsKey());
+}
+
+/**
  * Remove credentials for a specific user (or, when no username is passed, the
  * currently active user). This deletes their device-key slot, their userID
  * cache, local DB key material, and the active-user pointer if it currently
