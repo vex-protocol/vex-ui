@@ -136,7 +136,7 @@ jobs:
                   echo "Latest production mobile tag: ${LATEST_TAG:-none}"
                   echo "Release candidate version: $DISPLAY_VERSION"
 
-            - name: Compute current fingerprint
+            - name: Compute current runtime fingerprints
               id: fp
               working-directory: apps/mobile
               env:
@@ -145,26 +145,50 @@ jobs:
                   VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
               run: |
+                  npx expo-updates fingerprint:generate --platform android --workflow managed > /tmp/current-fingerprint-android.json
+                  npx expo-updates fingerprint:generate --platform ios --workflow managed > /tmp/current-fingerprint-ios.json
                   npx @expo/fingerprint@latest . > /tmp/current-fingerprint.json
-                  HASH=$(node -pe "require('/tmp/current-fingerprint.json').hash")
-                  echo "hash=$HASH" >> "$GITHUB_OUTPUT"
-                  echo "Current fingerprint hash: $HASH"
 
-            - name: Download previous fingerprint asset
+                  ANDROID_HASH=$(node -pe "require('/tmp/current-fingerprint-android.json').hash")
+                  IOS_HASH=$(node -pe "require('/tmp/current-fingerprint-ios.json').hash")
+                  LEGACY_HASH=$(node -pe "require('/tmp/current-fingerprint.json').hash")
+
+                  echo "android_hash=$ANDROID_HASH" >> "$GITHUB_OUTPUT"
+                  echo "ios_hash=$IOS_HASH" >> "$GITHUB_OUTPUT"
+                  echo "legacy_hash=$LEGACY_HASH" >> "$GITHUB_OUTPUT"
+                  echo "Current Android runtime fingerprint: $ANDROID_HASH"
+                  echo "Current iOS runtime fingerprint: $IOS_HASH"
+                  echo "Current legacy fingerprint: $LEGACY_HASH"
+
+            - name: Download previous runtime fingerprint assets
               id: prev_fp
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   if gh release download mobile-rc-latest \
-                        --pattern 'fingerprint.json' \
-                        --output /tmp/prev-fingerprint.json 2>/dev/null; then
-                    PREV_HASH=$(node -pe "require('/tmp/prev-fingerprint.json').hash")
-                    echo "hash=$PREV_HASH" >> "$GITHUB_OUTPUT"
+                        --pattern 'fingerprint-android.json' \
+                        --output /tmp/prev-fingerprint-android.json 2>/dev/null; then
+                    PREV_ANDROID_HASH=$(node -pe "require('/tmp/prev-fingerprint-android.json').hash")
+                    echo "android_hash=$PREV_ANDROID_HASH" >> "$GITHUB_OUTPUT"
+                    echo "Previous Android runtime fingerprint: $PREV_ANDROID_HASH"
+                  else
+                    echo "Previous Android runtime fingerprint missing; will build"
+                  fi
+
+                  if gh release download mobile-rc-latest \
+                        --pattern 'fingerprint-ios.json' \
+                        --output /tmp/prev-fingerprint-ios.json 2>/dev/null; then
+                    PREV_IOS_HASH=$(node -pe "require('/tmp/prev-fingerprint-ios.json').hash")
+                    echo "ios_hash=$PREV_IOS_HASH" >> "$GITHUB_OUTPUT"
+                    echo "Previous iOS runtime fingerprint: $PREV_IOS_HASH"
+                  else
+                    echo "Previous iOS runtime fingerprint missing; will build"
+                  fi
+
+                  if [ -n "${PREV_ANDROID_HASH:-}" ] && [ -n "${PREV_IOS_HASH:-}" ]; then
                     echo "exists=true" >> "$GITHUB_OUTPUT"
-                    echo "Previous fingerprint hash: $PREV_HASH"
                   else
                     echo "exists=false" >> "$GITHUB_OUTPUT"
-                    echo "No previous fingerprint asset; will build"
                   fi
 
             - name: Decide path
@@ -176,7 +200,8 @@ jobs:
                     PATH_DECISION=build
                     echo "Force build requested via workflow_dispatch."
                   elif [ "${{ steps.prev_fp.outputs.exists }}" = "true" ] && \
-                     [ "${{ steps.fp.outputs.hash }}" = "${{ steps.prev_fp.outputs.hash }}" ]; then
+                     [ "${{ steps.fp.outputs.android_hash }}" = "${{ steps.prev_fp.outputs.android_hash }}" ] && \
+                     [ "${{ steps.fp.outputs.ios_hash }}" = "${{ steps.prev_fp.outputs.ios_hash }}" ]; then
                     PATH_DECISION=ota
                   else
                     PATH_DECISION=build
@@ -307,7 +332,7 @@ jobs:
                     installUrl: `https://expo.dev/accounts/vex-chat/projects/vex/builds/${build.id}`,
                     artifactUrl: build.artifacts?.applicationArchiveUrl ?? build.artifacts?.buildUrl,
                     commit: process.env.GITHUB_SHA,
-                    fingerprint: JSON.parse(fs.readFileSync("/tmp/current-fingerprint.json", "utf8")).hash,
+                    fingerprint: JSON.parse(fs.readFileSync("/tmp/current-fingerprint-ios.json", "utf8")).hash,
                     createdAt: new Date().toISOString()
                   };
                   fs.writeFileSync(
@@ -363,11 +388,15 @@ jobs:
                   cp vex-development.apk "${{ steps.meta.outputs.asset }}"
                   sha256sum "${{ steps.meta.outputs.asset }}" > "${{ steps.meta.outputs.asset }}.sha256"
                   cp /tmp/current-fingerprint.json fingerprint.json
+                  cp /tmp/current-fingerprint-android.json fingerprint-android.json
+                  cp /tmp/current-fingerprint-ios.json fingerprint-ios.json
                   TAG="${{ steps.meta.outputs.tag }}"
                   TITLE="Vex Development ${{ steps.meta.outputs.version }} RC (${{ steps.meta.outputs.short_sha }})"
 
                   if gh release view "$TAG" >/dev/null 2>&1; then
                     gh release upload "$TAG" fingerprint.json --clobber
+                    gh release upload "$TAG" fingerprint-android.json --clobber
+                    gh release upload "$TAG" fingerprint-ios.json --clobber
                     gh release upload "$TAG" ios-install.json --clobber
                     gh release upload "$TAG" "${{ steps.meta.outputs.asset }}" --clobber
                     gh release upload "$TAG" "${{ steps.meta.outputs.asset }}.sha256" --clobber
@@ -380,6 +409,8 @@ jobs:
                     gh release create "$TAG" "${{ steps.meta.outputs.asset }}" \
                       "${{ steps.meta.outputs.asset }}.sha256" \
                       fingerprint.json \
+                      fingerprint-android.json \
+                      fingerprint-ios.json \
                       ios-install.json \
                       --target "$GITHUB_SHA" \
                       --prerelease \
@@ -398,7 +429,7 @@ jobs:
                   sha256sum vex-development-latest.apk > vex-development-latest.apk.sha256
                   sha256sum "${{ steps.meta.outputs.asset }}" > "${{ steps.meta.outputs.asset }}.sha256"
                   gh release delete "$TAG" --cleanup-tag --yes 2>/dev/null || true
-                  gh release create "$TAG" vex-development-latest.apk vex-development-latest.apk.sha256 "${{ steps.meta.outputs.asset }}" "${{ steps.meta.outputs.asset }}.sha256" fingerprint.json ios-install.json \
+                  gh release create "$TAG" vex-development-latest.apk vex-development-latest.apk.sha256 "${{ steps.meta.outputs.asset }}" "${{ steps.meta.outputs.asset }}.sha256" fingerprint.json fingerprint-android.json fingerprint-ios.json ios-install.json \
                     --target "$GITHUB_SHA" \
                     --prerelease \
                     --latest=false \

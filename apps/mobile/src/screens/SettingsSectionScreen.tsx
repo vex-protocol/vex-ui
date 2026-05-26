@@ -496,7 +496,11 @@ export function SettingsSectionScreen({
         appUpdateState.nativeRelease?.targetShortCommit;
     const latestVersionValue =
         latestShortCommit != null
-            ? `${latestReleaseVersion}-${latestShortCommit}`
+            ? formatReleaseLabel(
+                  latestReleaseVersion,
+                  latestShortCommit,
+                  appUpdateState.releaseTarget,
+              )
             : latestReleaseVersion;
     const latestVersionDescription =
         latestVersionValue !== "unknown"
@@ -1246,6 +1250,16 @@ function commitsMatch(
 
 function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
+}
+
+function formatReleaseLabel(
+    version: string,
+    shortCommit: string,
+    target: "development" | "production",
+): string {
+    return target === "development"
+        ? `${version}RC-${shortCommit}`
+        : `${version}-${shortCommit}`;
 }
 
 function InlineActionButton({

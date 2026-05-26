@@ -62,6 +62,10 @@ const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_REPO}`;
 const UPDATE_CHECK_THROTTLE_MS = 15 * 60 * 1000;
 const APK_MIME = "application/vnd.android.package-archive";
 const FLAG_GRANT_READ_URI_PERMISSION = 1;
+const FINGERPRINT_ASSET_BY_PLATFORM = {
+    android: "fingerprint-android.json",
+    ios: "fingerprint-ios.json",
+} as const;
 const IOS_INSTALL_ASSET_NAMES = new Set([
     "ios-install.json",
     "vex-ios-install.json",
@@ -315,7 +319,10 @@ async function fetchFingerprintHash(
 ): Promise<string | undefined> {
     if (!url) return undefined;
     const record = asRecord(await fetchGitHubJson(url));
-    return stringField(record, "hash");
+    return (
+        stringField(record, "hash") ??
+        stringField(asRecord(record[Platform.OS]), "hash")
+    );
 }
 
 async function fetchGitHubCompareStatus(
@@ -406,9 +413,23 @@ async function fetchNativeRelease(
         ) ??
         assets.find((asset) => stringField(asset, "name")?.endsWith(".apk"));
     const apkName = apkAsset ? stringField(apkAsset, "name") : undefined;
-    const fingerprintAsset = assets.find(
-        (asset) => stringField(asset, "name") === "fingerprint.json",
-    );
+    const platformFingerprintAssetName =
+        Platform.OS === "android" || Platform.OS === "ios"
+            ? FINGERPRINT_ASSET_BY_PLATFORM[Platform.OS]
+            : undefined;
+    const fingerprintAsset =
+        platformFingerprintAssetName != null
+            ? (assets.find(
+                  (asset) =>
+                      stringField(asset, "name") ===
+                      platformFingerprintAssetName,
+              ) ??
+              assets.find(
+                  (asset) => stringField(asset, "name") === "fingerprint.json",
+              ))
+            : assets.find(
+                  (asset) => stringField(asset, "name") === "fingerprint.json",
+              );
     const checksumAsset =
         apkName != null
             ? assets.find(
