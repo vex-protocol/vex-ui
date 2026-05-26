@@ -7,6 +7,8 @@ const deviceLinePattern =
 
 function redact(line) {
     return line
+        .replace(/(Apple Team\s+).*/g, "$1[redacted team]")
+        .replace(/(Provider\s+).*/g, "$1[redacted provider]")
         .replace(/(UDID:\s*)[A-Fa-f0-9-]+/g, "$1[redacted]")
         .replace(/(Provisioned devices\s+- ).*/g, "$1[redacted device]")
         .replace(deviceLinePattern, "$1[redacted device]");
