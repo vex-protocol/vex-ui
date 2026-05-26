@@ -274,13 +274,16 @@ jobs:
                   VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
               run: |
+                  node scripts/prepare-eas-build-env.cjs
+
                   eas build \
                     --profile development \
                     --platform ios \
                     --non-interactive \
                     --wait \
                     --message "development ${GITHUB_SHA::8}" \
-                    --json > /tmp/ios-build.json
+                    --json > /tmp/ios-build.json \
+                    2> >(node scripts/redact-eas-log.cjs)
 
                   node <<'NODE'
                   const fs = require("node:fs");
