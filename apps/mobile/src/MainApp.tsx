@@ -2,6 +2,7 @@ import type { Message } from "@vex-chat/libvex";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+    Alert,
     AppState,
     Linking,
     Platform,
@@ -17,6 +18,7 @@ import {
     $groupMessages,
     $hydrationStatus,
     $keyReplaced,
+    $localPasskeySetupPrompt,
     $messages,
     $user,
     parseVexLink,
@@ -60,7 +62,11 @@ import {
     showDeviceApprovalNotification,
     showMessageNotification,
 } from "./lib/notifications";
-import { authenticatePasskey, registerPasskey } from "./lib/passkey";
+import {
+    authenticatePasskey,
+    isPasskeySupported,
+    registerPasskey,
+} from "./lib/passkey";
 import { mobileConfig } from "./lib/platform";
 import {
     hydratePushNotificationPreference,
@@ -77,6 +83,7 @@ import { getIncomingShareIntent, type IncomingShare } from "./lib/shareIntent";
 import {
     navigateToAboutSettings,
     navigateToDeviceRequests,
+    navigateToPasskeys,
     navigationRef,
 } from "./navigation/navigationRef";
 import { RootNavigator } from "./navigation/RootNavigator";
@@ -95,6 +102,7 @@ interface AppUpdateNotice {
 function MainApp() {
     const keyReplaced = useStore($keyReplaced);
     const hydrationStatus = useStore($hydrationStatus);
+    const localPasskeySetupPrompt = useStore($localPasskeySetupPrompt);
     const user = useStore($user);
     const appStateRef = useRef(AppState.currentState);
     const bootstrappedRef = useRef(false);
@@ -113,6 +121,7 @@ function MainApp() {
     );
     const notificationHistoryCutoffMsRef = useRef(0);
     const pendingInviteIDRef = useRef<null | string>(null);
+    const shownLocalPasskeyPromptIDRef = useRef<null | string>(null);
     const pendingShareIDRef = useRef<null | string>(null);
     const lastHandledShareIDRef = useRef<null | string>(null);
     const seenPendingRequestIDsRef = useRef<Set<string>>(new Set());
@@ -566,6 +575,46 @@ function MainApp() {
         runtimeNotifiedMailIDs.clear();
         notificationHistoryCutoffMsRef.current = Date.now();
     }, [user, user?.userID]);
+
+    useEffect(() => {
+        const prompt = localPasskeySetupPrompt;
+        if (!user?.userID || !prompt) {
+            shownLocalPasskeyPromptIDRef.current = null;
+            return;
+        }
+        if (!isPasskeySupported()) {
+            vexService.dismissLocalPasskeySetupPrompt(prompt.promptID);
+            return;
+        }
+        if (shownLocalPasskeyPromptIDRef.current === prompt.promptID) {
+            return;
+        }
+        shownLocalPasskeyPromptIDRef.current = prompt.promptID;
+        Alert.alert(
+            "Add a passkey to this device?",
+            "This device can sign in now. Add a passkey here so it can approve future devices too.",
+            [
+                {
+                    onPress: () => {
+                        vexService.dismissLocalPasskeySetupPrompt(
+                            prompt.promptID,
+                        );
+                    },
+                    style: "cancel",
+                    text: "Later",
+                },
+                {
+                    onPress: () => {
+                        vexService.dismissLocalPasskeySetupPrompt(
+                            prompt.promptID,
+                        );
+                        navigateToPasskeys();
+                    },
+                    text: "Add passkey",
+                },
+            ],
+        );
+    }, [localPasskeySetupPrompt, user?.userID]);
 
     useEffect(() => {
         seenPendingRequestIDsRef.current = new Set();

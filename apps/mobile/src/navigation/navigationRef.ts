@@ -84,3 +84,10 @@ export function navigateToJoinedServer(
     });
     return true;
 }
+
+export function navigateToPasskeys(): void {
+    if (!navigationRef.isReady()) return;
+    navigationRef.navigate("App", {
+        screen: "Passkeys",
+    });
+}
