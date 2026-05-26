@@ -15,6 +15,7 @@ vi.mock("@vex-chat/libvex", () => ({
     },
 }));
 
+import { $pendingApprovalStage } from "../domains/identity.ts";
 import { vexService } from "../service.ts";
 
 type MockClient = {
@@ -147,6 +148,20 @@ function makeKeyStore(creds?: StoredCredentials): {
     };
 }
 
+function makePasskeyRequiredError(username = "blood"): Error {
+    return Object.assign(new Error("Request failed with status code 403"), {
+        response: {
+            data: new TextEncoder().encode(
+                JSON.stringify({
+                    error: "Passkey verification required.",
+                    username,
+                }),
+            ),
+            status: 403,
+        },
+    });
+}
+
 describe("vexService device approval passkeys", () => {
     beforeEach(async () => {
         vi.useRealTimers();
@@ -255,5 +270,100 @@ describe("vexService device approval passkeys", () => {
         });
         expect(client.loginWithDeviceKey).toHaveBeenCalledWith("new-device");
         expect(client.connect).toHaveBeenCalledOnce();
+    });
+
+    test("retries an approved new device without prompting passkey on that device", async () => {
+        const client = makeClient();
+        const passkeyRequired = makePasskeyRequiredError();
+        client.loginWithDeviceKey
+            .mockResolvedValueOnce(passkeyRequired)
+            .mockResolvedValueOnce(passkeyRequired)
+            .mockResolvedValueOnce(null);
+        const config = makeConfig();
+        const { keyStore, saveCredentials } = makeKeyStore();
+        const options: ServerOptions = { host: "dev.vex.wtf" };
+        const authenticate = vi.fn(async () => ({ id: "assertion" }));
+        vexService.setPasskeyCeremonyDriver({
+            authenticate,
+            register: vi.fn(),
+        });
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        const pending = await vexService.register(
+            "Blood",
+            "",
+            config,
+            options,
+            keyStore,
+        );
+
+        expect(pending.pendingDeviceApproval).toBe(true);
+
+        vi.useFakeTimers();
+        await expect(
+            vexService.publishDeferredDeviceApprovalAndStartWatching(keyStore),
+        ).resolves.toEqual({ ok: true });
+        await vi.advanceTimersByTimeAsync(2000);
+        await vi.advanceTimersByTimeAsync(750);
+        await vi.advanceTimersByTimeAsync(750);
+
+        expect(client.passkeys.beginAuthentication).not.toHaveBeenCalled();
+        expect(authenticate).not.toHaveBeenCalled();
+        expect(client.loginWithDeviceKey).toHaveBeenNthCalledWith(
+            1,
+            "new-device",
+        );
+        expect(client.loginWithDeviceKey).toHaveBeenNthCalledWith(
+            2,
+            "new-device",
+        );
+        expect(client.loginWithDeviceKey).toHaveBeenNthCalledWith(
+            3,
+            "new-device",
+        );
+        expect(saveCredentials).toHaveBeenCalledWith({
+            deviceID: "new-device",
+            deviceKey: "generated-private-key",
+            token: "",
+            username: "blood",
+        });
+        expect(client.connect).toHaveBeenCalledOnce();
+    });
+
+    test("does not save credentials or prompt passkey when approved device-key login keeps requiring passkey", async () => {
+        const client = makeClient();
+        const passkeyRequired = makePasskeyRequiredError();
+        client.loginWithDeviceKey.mockResolvedValue(passkeyRequired);
+        const config = makeConfig();
+        const { keyStore, saveCredentials } = makeKeyStore();
+        const options: ServerOptions = { host: "dev.vex.wtf" };
+        const authenticate = vi.fn(async () => ({ id: "assertion" }));
+        vexService.setPasskeyCeremonyDriver({
+            authenticate,
+            register: vi.fn(),
+        });
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        const pending = await vexService.register(
+            "Blood",
+            "",
+            config,
+            options,
+            keyStore,
+        );
+
+        expect(pending.pendingDeviceApproval).toBe(true);
+
+        vi.useFakeTimers();
+        await expect(
+            vexService.publishDeferredDeviceApprovalAndStartWatching(keyStore),
+        ).resolves.toEqual({ ok: true });
+        await vi.advanceTimersByTimeAsync(2000 + 20 * 750 + 100);
+
+        expect(client.passkeys.beginAuthentication).not.toHaveBeenCalled();
+        expect(authenticate).not.toHaveBeenCalled();
+        expect(saveCredentials).not.toHaveBeenCalled();
+        expect(client.connect).not.toHaveBeenCalled();
+        expect($pendingApprovalStage.get()).toBe("failed");
     });
 });
