@@ -392,6 +392,8 @@ interface WebSocketDebugLike {
 
 const REGISTER_STEP_TIMEOUT_MS = 12000;
 const PASSKEY_SETUP_TIMEOUT_MS = 5 * 60 * 1000;
+const APPROVED_DEVICE_LOGIN_ATTEMPTS = 20;
+const APPROVED_DEVICE_LOGIN_RETRY_MS = 750;
 const DEVICE_AUTH_REFRESH_THRESHOLD_MS = 6 * 24 * 60 * 60 * 1000;
 const DEVICE_AUTH_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const LOCAL_DECRYPT_RECOVERY_ERROR =
@@ -3126,6 +3128,40 @@ class VexService {
         });
     }
 
+    private async loginApprovedDeviceWithoutPasskeyPrompt(
+        client: Client,
+        deviceID: string,
+        requestID: string,
+    ): Promise<Error | null> {
+        let lastErr: Error | null = null;
+        for (
+            let attempt = 0;
+            attempt < APPROVED_DEVICE_LOGIN_ATTEMPTS;
+            attempt++
+        ) {
+            const authErr = await this.loginWithDeviceKeyWithRetry(
+                client,
+                deviceID,
+            );
+            if (!authErr) {
+                return null;
+            }
+            lastErr = authErr;
+            if (!isPasskeyRequiredError(authErr)) {
+                return authErr;
+            }
+            debugAuth("approvalWatcher:approvedDevicePasskeyGatePending", {
+                attempt,
+                requestID,
+            });
+            if (attempt === APPROVED_DEVICE_LOGIN_ATTEMPTS - 1) {
+                break;
+            }
+            await waitMs(APPROVED_DEVICE_LOGIN_RETRY_MS);
+        }
+        return lastErr;
+    }
+
     private async loginInternal(
         username: string,
         _password: string,
@@ -4637,23 +4673,25 @@ class VexService {
                     });
                     try {
                         $pendingApprovalStageWritable.set("signing_in");
+                        const authErr =
+                            await this.loginApprovedDeviceWithoutPasskeyPrompt(
+                                client,
+                                pending.approvedDeviceID,
+                                requestID,
+                            );
+                        if (authErr) {
+                            debugAuth("approvalWatcher:loginFailed", {
+                                message: errorMessage(authErr),
+                            });
+                            $pendingApprovalStageWritable.set("failed");
+                            return;
+                        }
                         await this.saveCredentials(keyStore, {
                             deviceID: pending.approvedDeviceID,
                             deviceKey,
                             token: "",
                             username,
                         });
-                        const authErr = await this.loginWithDeviceKeyWithRetry(
-                            client,
-                            pending.approvedDeviceID,
-                        );
-                        if (authErr) {
-                            debugAuth("approvalWatcher:loginFailed", {
-                                message: errorMessage(authErr),
-                            });
-                            $pendingApprovalStageWritable.set("idle");
-                            return;
-                        }
                         $pendingApprovalStageWritable.set("loading_account");
                         await client.connect();
                         $userWritable.set(client.me.user());
@@ -4663,7 +4701,9 @@ class VexService {
                             requestID,
                         });
                     } finally {
-                        $pendingApprovalStageWritable.set("idle");
+                        if ($pendingApprovalStageWritable.get() !== "failed") {
+                            $pendingApprovalStageWritable.set("idle");
+                        }
                         this.stopPendingApprovalWatcher();
                         if (
                             this.activePendingDeviceApproval?.requestID ===

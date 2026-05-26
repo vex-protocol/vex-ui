@@ -33,7 +33,12 @@ const EXPIRY_SECONDS = 5 * 60;
 const APPROVE_GLOW = "rgba(74, 222, 128, 0.45)";
 const SIGNING_BLUE = "#5DADE2";
 
-type DisplayPhase = "expired" | "loading_account" | "signing_in" | "waiting";
+type DisplayPhase =
+    | "expired"
+    | "failed"
+    | "loading_account"
+    | "signing_in"
+    | "waiting";
 
 export function AuthenticateScreen({ navigation, route }: Props) {
     const user = useStore($user);
@@ -51,11 +56,13 @@ export function AuthenticateScreen({ navigation, route }: Props) {
 
     const phase: DisplayPhase = expired
         ? "expired"
-        : stage === "loading_account" || user
-          ? "loading_account"
-          : stage === "signing_in"
-            ? "signing_in"
-            : "waiting";
+        : stage === "failed"
+          ? "failed"
+          : stage === "loading_account" || user
+            ? "loading_account"
+            : stage === "signing_in"
+              ? "signing_in"
+              : "waiting";
 
     // Soft pulsing focus ring around the code while we're still waiting,
     // so it's clear the digits are "live" and to be matched against the
@@ -221,7 +228,9 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                         ? `Expires in ${minutes}:${seconds}`
                         : phase === "expired"
                           ? "Verification window closed"
-                          : "Code matched"}
+                          : phase === "failed"
+                            ? "Sign-in needs retry"
+                            : "Code matched"}
                 </Text>
 
                 {phase === "waiting" ? (
@@ -274,10 +283,23 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                         </Text>
                     </View>
                 ) : null}
+
+                {phase === "failed" ? (
+                    <View style={styles.expiredCard}>
+                        <Text style={styles.expiredTitle}>
+                            Approval could not finish
+                        </Text>
+                        <Text style={styles.expiredBody}>
+                            The approval was received, but this phone could not
+                            complete sign-in. Start over to request a fresh
+                            code.
+                        </Text>
+                    </View>
+                ) : null}
             </View>
 
             <View style={styles.footer}>
-                {phase === "expired" ? (
+                {phase === "expired" || phase === "failed" ? (
                     <View style={styles.primaryButtonRow}>
                         <VexButton
                             glow

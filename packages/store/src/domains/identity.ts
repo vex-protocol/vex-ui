@@ -31,6 +31,7 @@ export interface HydrationStatus {
 // signing in", and "signed in — loading your account" before the
 // navigator swaps to the App stack on $user.
 export type PendingApprovalStage =
+    | "failed"
     | "idle"
     | "loading_account"
     | "signing_in"
