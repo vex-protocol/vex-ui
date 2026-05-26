@@ -549,18 +549,59 @@ class VexService {
     }
 
     async approveDeviceRequest(requestID: string): Promise<OperationResult> {
+        let shouldRestoreDeviceSession = false;
         try {
-            const client =
-                this.requireClient() as unknown as ClientWithDeviceApprovals;
-            if (!client.devices.approveRequest) {
+            const client = this.requireClient();
+            const withApprovals =
+                client as unknown as ClientWithDeviceApprovals;
+            if (!withApprovals.devices.approveRequest) {
                 return {
                     error: "Client does not support device approvals yet.",
                     ok: false,
                 };
             }
-            await client.devices.approveRequest(requestID);
+            const username = this.currentClientUsername();
+            const passkeyState =
+                await this.satisfyPasskeyForCurrentClient(username);
+            if (passkeyState === "unavailable") {
+                return {
+                    error: "Passkeys aren't available on this device.",
+                    ok: false,
+                };
+            }
+            if (passkeyState === "not_registered") {
+                return {
+                    error: "No passkey is registered for this account.",
+                    ok: false,
+                };
+            }
+
+            shouldRestoreDeviceSession = true;
+            await withApprovals.devices.approveRequest(requestID);
+            const restoreErr = await this.loginWithDeviceKeyWithRetry(client);
+            if (restoreErr) {
+                debugAuth("deviceApproval:restoreDeviceSession:failed", {
+                    message: errorMessage(restoreErr),
+                    requestID,
+                });
+                return {
+                    error: `Device approved, but this device could not restore its session: ${errorMessage(restoreErr)}`,
+                    ok: false,
+                };
+            }
             return { ok: true };
         } catch (err: unknown) {
+            if (shouldRestoreDeviceSession && this.client) {
+                const restoreErr = await this.loginWithDeviceKeyWithRetry(
+                    this.client,
+                );
+                if (restoreErr) {
+                    debugAuth("deviceApproval:restoreAfterFailure:failed", {
+                        message: errorMessage(restoreErr),
+                        requestID,
+                    });
+                }
+            }
             return { error: errorMessage(err), ok: false };
         }
     }
@@ -4602,23 +4643,16 @@ class VexService {
                             token: "",
                             username,
                         });
-                        const { authErr, passkeyState } =
-                            await this.loginWithDeviceKeyWithPasskeyRetry(
-                                client,
-                                username,
-                                pending.approvedDeviceID,
-                            );
+                        const authErr = await this.loginWithDeviceKeyWithRetry(
+                            client,
+                            pending.approvedDeviceID,
+                        );
                         if (authErr) {
                             debugAuth("approvalWatcher:loginFailed", {
                                 message: errorMessage(authErr),
                             });
                             $pendingApprovalStageWritable.set("idle");
                             return;
-                        }
-                        if (passkeyState === "not_registered") {
-                            await this.registerInitialPasskeyForCurrentClient(
-                                "This device",
-                            );
                         }
                         $pendingApprovalStageWritable.set("loading_account");
                         await client.connect();

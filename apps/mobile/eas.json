@@ -8,12 +8,32 @@
             "channel": "development",
             "distribution": "internal",
             "android": { "buildType": "apk" },
+            "env": {
+                "VEX_APP_ENV": "development",
+                "VEX_ENABLE_DEV_BUILD": "1",
+                "VEX_APP_DISPLAY_NAME": "Vex Development",
+                "VEX_IOS_BUNDLE_IDENTIFIER": "chat.vex.mobile.dev",
+                "VEX_PASSKEY_RP_HOST": "dev.vex.wtf",
+                "VEX_IOS_ASSOCIATED_DOMAIN_MODE": "normal",
+                "EXPO_PUBLIC_ENABLE_DEV_SERVER": "1",
+                "EXPO_PUBLIC_SERVER_URL": "dev.vex.wtf"
+            },
             "autoIncrement": true
         },
         "production": {
             "channel": "production",
             "distribution": "internal",
             "android": { "buildType": "apk" },
+            "env": {
+                "VEX_APP_ENV": "production",
+                "VEX_ENABLE_DEV_BUILD": "0",
+                "VEX_APP_DISPLAY_NAME": "Vex",
+                "VEX_IOS_BUNDLE_IDENTIFIER": "chat.vex.mobile",
+                "VEX_PASSKEY_RP_HOST": "api.vex.wtf",
+                "VEX_IOS_ASSOCIATED_DOMAIN_MODE": "normal",
+                "EXPO_PUBLIC_ENABLE_DEV_SERVER": "0",
+                "EXPO_PUBLIC_SERVER_URL": "api.vex.wtf"
+            },
             "autoIncrement": true
         }
     }

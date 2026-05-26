@@ -5,6 +5,7 @@
 //   default (all profiles)             → production flavor
 //   VEX_ENABLE_DEV_BUILD=1 + profile=development → dev flavor (opt-in)
 //   env override                        → VEX_IOS_BUNDLE_IDENTIFIER (optional)
+//   local prod iOS install              → VEX_IOS_ASSOCIATED_DOMAIN_MODE=developer
 //   local personal-team iOS builds      → VEX_DISABLE_IOS_CAPABILITIES=1
 //
 // Dev and production APKs both use EAS Update. Runtime compatibility is
@@ -87,8 +88,11 @@ module.exports = ({ config }) => {
             process.env.VEX_PASSKEY_RP_HOST ||
                 process.env.EXPO_PUBLIC_SERVER_URL,
         ) || (devMode ? DEV_PASSKEY_RP_HOST : PROD_PASSKEY_RP_HOST);
+    const associatedDomainMode =
+        process.env.VEX_IOS_ASSOCIATED_DOMAIN_MODE?.trim().toLowerCase();
+    const useDeveloperAssociatedDomain = associatedDomainMode === "developer";
     const passkeyAssociatedDomain = `webcredentials:${passkeyRpHost}${
-        devMode ? "?mode=developer" : ""
+        useDeveloperAssociatedDomain ? "?mode=developer" : ""
     }`;
 
     // Permissions required for the optional "Always-on connection"
@@ -121,6 +125,10 @@ module.exports = ({ config }) => {
             associatedDomains: iosCapabilitiesEnabled
                 ? [passkeyAssociatedDomain]
                 : undefined,
+            config: {
+                ...config.ios?.config,
+                usesNonExemptEncryption: true,
+            },
         },
         android: {
             ...config.android,

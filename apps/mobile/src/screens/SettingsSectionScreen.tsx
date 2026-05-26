@@ -41,6 +41,7 @@ import {
     checkForAppUpdates,
     downloadAndInstallApkUpdate,
     fetchOtaUpdate,
+    openNativeBuildInstallPage,
     openUnknownAppSourcesSettings,
     restartForOtaUpdate,
 } from "../lib/appUpdates";
@@ -390,24 +391,31 @@ export function SettingsSectionScreen({
 
     function handleDownloadApkUpdate(): void {
         const release = appUpdateState.nativeRelease;
-        if (!release?.apkUrl) {
-            Alert.alert("APK unavailable", "No APK asset was found.");
-            return;
-        }
         if (Platform.OS !== "android") {
             Alert.alert(
-                "Open release?",
-                "APK self-updates are Android-only. Open the GitHub release instead?",
+                "Open install page?",
+                "Vex will open the iOS install page in Safari. Confirm the install there, then reopen Vex.",
                 [
                     { style: "cancel", text: "Cancel" },
                     {
                         onPress: () => {
-                            void downloadAndInstallApkUpdate();
+                            void openNativeBuildInstallPage().catch(
+                                (err: unknown) => {
+                                    Alert.alert(
+                                        "Install page unavailable",
+                                        errorMessage(err),
+                                    );
+                                },
+                            );
                         },
                         text: "Open",
                     },
                 ],
             );
+            return;
+        }
+        if (!release?.apkUrl) {
+            Alert.alert("APK unavailable", "No APK asset was found.");
             return;
         }
         Alert.alert(
@@ -527,7 +535,7 @@ export function SettingsSectionScreen({
     function updateActionLabel(): string {
         switch (appUpdateState.status) {
             case "apk_available":
-                return "Install APK";
+                return Platform.OS === "ios" ? "Install Build" : "Install APK";
             case "apk_downloading":
                 return appUpdateState.apkDownloadProgress != null
                     ? `${String(

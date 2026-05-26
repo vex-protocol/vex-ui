@@ -29,7 +29,9 @@ export function SettingsScreen({ navigation }: AppScreenProps<"Settings">) {
             : appUpdateState.status === "ota_ready"
               ? "Restart to apply update"
               : appUpdateState.status === "apk_available"
-                ? "APK update available"
+                ? Platform.OS === "ios"
+                    ? "Build update available"
+                    : "APK update available"
                 : "Version and updates";
     const accountRows: ReadonlyArray<SettingsRow> = [
         {

@@ -189,8 +189,15 @@ Development iOS builds add `?mode=developer` to the
 `webcredentials:` entitlement so test devices can bypass Apple's
 associated-domain CDN while you are iterating on the AASA file. The
 device must have Developer Mode enabled and the Associated Domains
-Development option turned on in Settings > Developer. Production
-builds must not include the query string.
+Development option turned on in Settings > Developer. Distribution
+production builds must not include the query string.
+
+Local production installs created with `pnpm ios:prod:install` are
+still development-signed iPhone builds, so that lane defaults
+`VEX_IOS_ASSOCIATED_DOMAIN_MODE=developer` while keeping the production
+bundle id, icon, and server host. Set
+`VEX_IOS_ASSOCIATED_DOMAIN_MODE=normal pnpm ios:prod:install` to test
+the exact distribution entitlement.
 
 After setting them and restarting spire:
 

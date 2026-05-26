@@ -46,6 +46,8 @@ export interface NativeReleaseInfo {
     fingerprint?: string | undefined;
     fingerprintShort?: string | undefined;
     htmlUrl: string;
+    iosBuildId?: string | undefined;
+    iosInstallUrl?: string | undefined;
     publishedAt?: string | undefined;
     sha256?: string | undefined;
     tagName: string;
@@ -60,6 +62,10 @@ const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_REPO}`;
 const UPDATE_CHECK_THROTTLE_MS = 15 * 60 * 1000;
 const APK_MIME = "application/vnd.android.package-archive";
 const FLAG_GRANT_READ_URI_PERMISSION = 1;
+const IOS_INSTALL_ASSET_NAMES = new Set([
+    "ios-install.json",
+    "vex-ios-install.json",
+]);
 const externalFetch = globalThis.fetch.bind(globalThis);
 
 export const $appUpdateState = atom<AppUpdateState>({
@@ -118,12 +124,12 @@ export async function checkForAppUpdates(
 
 export async function downloadAndInstallApkUpdate(): Promise<void> {
     const release = $appUpdateState.get().nativeRelease;
+    if (Platform.OS !== "android") {
+        await openNativeBuildInstallPage();
+        return;
+    }
     if (!release?.apkUrl || !release.apkName) {
         throw new Error("No APK release is available.");
-    }
-    if (Platform.OS !== "android") {
-        await Linking.openURL(release.htmlUrl);
-        return;
     }
 
     try {
@@ -219,6 +225,25 @@ export async function fetchOtaUpdate(): Promise<AppUpdateState> {
     return next;
 }
 
+export function getNativeBuildInstallUrl(
+    release: NativeReleaseInfo | undefined = $appUpdateState.get()
+        .nativeRelease,
+): string | undefined {
+    if (!release) return undefined;
+    if (Platform.OS === "ios") {
+        return release.iosInstallUrl ?? release.htmlUrl;
+    }
+    return release.htmlUrl;
+}
+
+export async function openNativeBuildInstallPage(): Promise<void> {
+    const url = getNativeBuildInstallUrl();
+    if (!url) {
+        throw new Error("No native build install page is available.");
+    }
+    await Linking.openURL(url);
+}
+
 export async function openUnknownAppSourcesSettings(): Promise<void> {
     if (Platform.OS !== "android") {
         return;
@@ -278,6 +303,13 @@ function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
 }
 
+function extractExpoBuildUrl(value: string | undefined): string | undefined {
+    const match = value?.match(
+        /https:\/\/expo\.dev\/accounts\/[^\s)]+\/projects\/[^\s)]+\/builds\/[0-9a-f-]+/i,
+    );
+    return normalizeHttpUrl(match?.[0]);
+}
+
 async function fetchFingerprintHash(
     url: string | undefined,
 ): Promise<string | undefined> {
@@ -315,6 +347,29 @@ async function fetchGitHubJson(url: string): Promise<unknown> {
     return response.json();
 }
 
+async function fetchIosInstallInfo(url: string | undefined): Promise<
+    | undefined
+    | {
+          buildId?: string | undefined;
+          installUrl?: string | undefined;
+      }
+> {
+    if (!url) return undefined;
+    const record = asRecord(await fetchGitHubJson(url));
+    const ios = asRecord(record["ios"]);
+    return {
+        buildId: stringField(record, "buildId") ?? stringField(ios, "buildId"),
+        installUrl: normalizeHttpUrl(
+            stringField(record, "installUrl") ??
+                stringField(record, "buildUrl") ??
+                stringField(record, "url") ??
+                stringField(ios, "installUrl") ??
+                stringField(ios, "buildUrl") ??
+                stringField(ios, "url"),
+        ),
+    };
+}
+
 async function fetchLatestCommit(branch: string): Promise<GitHubCommitInfo> {
     const record = asRecord(
         await fetchGitHubJson(`${GITHUB_API_BASE}/commits/${branch}`),
@@ -344,6 +399,7 @@ async function fetchNativeRelease(
             : `${GITHUB_API_BASE}/releases/latest`;
     const release = asRecord(await fetchGitHubJson(url));
     const assets = arrayField(release, "assets").map(asRecord);
+    const body = stringField(release, "body");
     const apkAsset =
         assets.find((asset) =>
             stringField(asset, "name")?.endsWith("latest.apk"),
@@ -359,10 +415,19 @@ async function fetchNativeRelease(
                   (asset) => stringField(asset, "name") === `${apkName}.sha256`,
               )
             : undefined;
+    const iosInstallAsset = assets.find((asset) => {
+        const name = stringField(asset, "name")?.toLowerCase();
+        return name != null && IOS_INSTALL_ASSET_NAMES.has(name);
+    });
 
     const fingerprint = fingerprintAsset
         ? await fetchFingerprintHash(
               stringField(fingerprintAsset, "browser_download_url"),
+          )
+        : undefined;
+    const iosInstallInfo = iosInstallAsset
+        ? await fetchIosInstallInfo(
+              stringField(iosInstallAsset, "browser_download_url"),
           )
         : undefined;
     const sha256 = checksumAsset
@@ -380,6 +445,8 @@ async function fetchNativeRelease(
         htmlUrl:
             stringField(release, "html_url") ??
             "https://github.com/vex-protocol/vex-ui/releases",
+        iosBuildId: iosInstallInfo?.buildId,
+        iosInstallUrl: iosInstallInfo?.installUrl ?? extractExpoBuildUrl(body),
         publishedAt: stringField(release, "published_at"),
         sha256,
         tagName: stringField(release, "tag_name") ?? "unknown",
@@ -479,7 +546,11 @@ function isNativeReleaseNewer(
         return true;
     }
 
-    if (!Updates.isEnabled || __DEV__) {
+    if (__DEV__) {
+        return false;
+    }
+
+    if (!Updates.isEnabled) {
         return (
             release.targetCommit != null &&
             !sameCommit(buildInfo.commit, release.targetCommit)
@@ -493,6 +564,18 @@ function normalizeFingerprint(value: string | undefined): string | undefined {
     if (!value) return undefined;
     const trimmed = value.trim().toLowerCase();
     return /^[a-f0-9]{16,128}$/.test(trimmed) ? trimmed : undefined;
+}
+
+function normalizeHttpUrl(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+    try {
+        const url = new URL(value);
+        return url.protocol === "https:" || url.protocol === "http:"
+            ? url.toString()
+            : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 function normalizeSha(value: string | undefined): string | undefined {
@@ -542,7 +625,7 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
     const runningLatestCommit =
         latestCommit != null && sameCommit(buildInfo.commit, latestCommit.sha);
     const nativeUpdateAvailable =
-        Platform.OS === "android" &&
+        (Platform.OS === "android" || Platform.OS === "ios") &&
         isNativeReleaseNewer(
             nativeRelease,
             latestCommit,
@@ -569,7 +652,10 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
         return {
             checkedAt,
             latestCommit,
-            message: "Native runtime changed. Install the latest APK.",
+            message:
+                Platform.OS === "ios"
+                    ? "Native runtime changed. Install the latest Vex build."
+                    : "Native runtime changed. Install the latest APK.",
             nativeRelease,
             otaCheckError: ota.error,
             otaUpdateAvailable: false,

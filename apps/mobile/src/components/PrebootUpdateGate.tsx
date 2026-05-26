@@ -26,6 +26,8 @@ import {
     checkForAppUpdates,
     downloadAndInstallApkUpdate,
     fetchOtaUpdate,
+    getNativeBuildInstallUrl,
+    openNativeBuildInstallPage,
     openUnknownAppSourcesSettings,
     restartForOtaUpdate,
 } from "../lib/appUpdates";
@@ -37,6 +39,7 @@ type PrebootPhase =
     | "apk_installing"
     | "checking"
     | "error"
+    | "ios_installing"
     | "ota_downloading"
     | "ota_restarting"
     | "ready";
@@ -171,6 +174,7 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
     const [offlineContinueAllowed, setOfflineContinueAllowed] = useState(false);
     const [phase, setPhase] = useState<PrebootPhase>("checking");
     const completeRef = useRef(false);
+    const openedNativeInstallRef = useRef<string | undefined>(undefined);
     const visibleSinceRef = useRef(Date.now());
 
     const complete = useCallback(() => {
@@ -194,11 +198,6 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
             setOfflineContinueAllowed(false);
             setPhase("checking");
 
-            if (Platform.OS === "ios") {
-                complete();
-                return;
-            }
-
             try {
                 const state = await withTimeout(
                     checkForAppUpdates({ force: true }),
@@ -211,6 +210,23 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                 switch (state.status) {
                     case "apk_available":
                         blockingUpdateKnown = true;
+                        if (Platform.OS === "ios") {
+                            const installKey =
+                                state.nativeRelease?.iosInstallUrl ??
+                                state.nativeRelease?.fingerprint ??
+                                state.nativeRelease?.targetCommit ??
+                                state.nativeRelease?.htmlUrl ??
+                                state.nativeRelease?.tagName;
+                            setPhase("ios_installing");
+                            if (
+                                installKey == null ||
+                                openedNativeInstallRef.current !== installKey
+                            ) {
+                                openedNativeInstallRef.current = installKey;
+                                await openNativeBuildInstallPage();
+                            }
+                            return;
+                        }
                         setPhase("apk_downloading");
                         await downloadAndInstallApkUpdate();
                         if (cancelled) {
@@ -269,7 +285,7 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
     }, [attempt, complete]);
 
     useEffect(() => {
-        if (phase !== "apk_installing") {
+        if (phase !== "apk_installing" && phase !== "ios_installing") {
             return;
         }
         const subscription = AppState.addEventListener("change", (next) => {
@@ -284,9 +300,14 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
 
     const progress = progressForPhase(phase, appUpdateState);
     const copy = copyForPhase(phase, appUpdateState, error);
+    const nativeInstallUrl = getNativeBuildInstallUrl(
+        appUpdateState.nativeRelease,
+    );
     const canOpenRelease =
-        appUpdateState.nativeRelease?.htmlUrl != null &&
-        (phase === "apk_installing" || phase === "error");
+        nativeInstallUrl != null &&
+        (phase === "apk_installing" ||
+            phase === "error" ||
+            phase === "ios_installing");
 
     return (
         <PrebootSplash
@@ -320,6 +341,25 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                 </View>
             ) : null}
 
+            {phase === "ios_installing" ? (
+                <View style={styles.actions}>
+                    <PrimaryAction
+                        label="Open install page"
+                        onPress={() => {
+                            void openNativeBuildInstallPage().catch(
+                                () => undefined,
+                            );
+                        }}
+                    />
+                    <SecondaryAction
+                        label="Check again"
+                        onPress={() => {
+                            setAttempt((value) => value + 1);
+                        }}
+                    />
+                </View>
+            ) : null}
+
             {phase === "error" ? (
                 <View style={styles.actions}>
                     <PrimaryAction
@@ -330,12 +370,16 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                     />
                     {canOpenRelease ? (
                         <SecondaryAction
-                            label="Open release"
+                            label={
+                                Platform.OS === "ios"
+                                    ? "Open install page"
+                                    : "Open release"
+                            }
                             onPress={() => {
-                                const url =
-                                    appUpdateState.nativeRelease?.htmlUrl;
-                                if (url) {
-                                    void Linking.openURL(url);
+                                if (nativeInstallUrl) {
+                                    void Linking.openURL(
+                                        nativeInstallUrl,
+                                    ).catch(() => undefined);
                                 }
                             }}
                         />
@@ -401,6 +445,12 @@ function copyForPhase(
                 message: error || "Could not verify app updates.",
                 title: "Update check failed",
             };
+        case "ios_installing":
+            return {
+                detail: "Install the new build from Safari, then open Vex again. This gate will check again before loading chats.",
+                message: "The Vex install page should be open.",
+                title: "Install update",
+            };
         case "ota_downloading":
             return {
                 detail: state.latestCommit?.shortSha
@@ -447,6 +497,7 @@ function progressForPhase(phase: PrebootPhase, state: AppUpdateState): number {
         case "apk_downloading":
             return 0.2 + clamp01(state.apkDownloadProgress ?? 0) * 0.76;
         case "apk_installing":
+        case "ios_installing":
         case "ready":
             return 1;
         case "checking":
