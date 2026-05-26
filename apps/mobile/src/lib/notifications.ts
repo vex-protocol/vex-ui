@@ -24,6 +24,14 @@ import {
     navigationRef,
 } from "../navigation/navigationRef";
 
+import {
+    dequeuePendingNotificationRoute,
+    enqueuePendingNotificationRoute,
+    normalizeAndroidMessageRouteData,
+    pendingNotificationRouteCount,
+    requeuePendingNotificationRoute,
+} from "./notificationRouteQueue";
+
 const CHANNEL_ID = "vex-messages";
 const MESSAGE_NOTIFICATION_ID = "vex-message-summary";
 // Separate channel so users can mute messages but keep account-security
@@ -86,13 +94,6 @@ let messageNotificationCount = 0;
 // again for the same ID; we'd rather drop the duplicate than spam.
 const notifiedApprovalRequestIDs = new Set<string>();
 
-type PendingRouteTap = {
-    data: Record<string, unknown>;
-    dedupeKey?: string;
-    syncFirst: boolean;
-};
-
-const pendingRouteTapQueue: PendingRouteTap[] = [];
 let pendingRouteDrainInFlight = false;
 
 function logPushDelivery(
@@ -182,39 +183,6 @@ export async function dismissDeviceApprovalNotification(
     } catch {
         // Best-effort; the banner may have already been dismissed by
         // the user, or never posted (e.g. iOS background).
-    }
-}
-
-/**
- * Queued from `notifee.onBackgroundEvent` in `index.js` (Android) when the user
- * taps a message notification while the JS engine is not yet interactive.
- */
-export function enqueueNotificationRouteFromAndroidBackground(data: {
-    [key: string]: number | object | string;
-}): void {
-    const kind = data["kind"];
-    if (kind !== "dm" && kind !== "group") {
-        return;
-    }
-    const normalized = normalizeAndroidMessageRouteData(data);
-    const dedupeKey =
-        typeof data["mailID"] === "string" ? data["mailID"] : undefined;
-    if (dedupeKey) {
-        const idx = pendingRouteTapQueue.findIndex(
-            (p) => p.dedupeKey === dedupeKey,
-        );
-        if (idx >= 0) {
-            pendingRouteTapQueue.splice(idx, 1);
-        }
-    }
-    if (dedupeKey !== undefined) {
-        pendingRouteTapQueue.push({
-            data: normalized,
-            dedupeKey,
-            syncFirst: true,
-        });
-    } else {
-        pendingRouteTapQueue.push({ data: normalized, syncFirst: true });
     }
 }
 
@@ -381,6 +349,7 @@ export async function showDeviceApprovalNotification(
                     kind: "deviceApproval",
                     requestID,
                 },
+                ...iosDefaultNotificationSound(),
                 title: DEVICE_APPROVAL_TITLE,
             },
             // Use the requestID itself as the OS-level identifier so we
@@ -476,8 +445,8 @@ async function drainPendingNotificationRoutes(): Promise<void> {
     }
     pendingRouteDrainInFlight = true;
     try {
-        while (pendingRouteTapQueue.length > 0) {
-            const next = pendingRouteTapQueue.shift();
+        while (pendingNotificationRouteCount() > 0) {
+            const next = dequeuePendingNotificationRoute();
             if (!next) {
                 continue;
             }
@@ -491,10 +460,10 @@ async function drainPendingNotificationRoutes(): Promise<void> {
                 continue;
             }
             if (!canRouteNotificationNow()) {
-                pendingRouteTapQueue.unshift(next);
+                requeuePendingNotificationRoute(next);
                 logPushDelivery("notification route flush deferred", {
                     navigationReady: navigationRef.isReady(),
-                    pending: pendingRouteTapQueue.length,
+                    pending: pendingNotificationRouteCount(),
                     signedIn: $user.get() !== null,
                 });
                 return;
@@ -623,6 +592,10 @@ function incrementMessageNotificationSummary(): number {
     return messageNotificationCount;
 }
 
+function iosDefaultNotificationSound(): { sound?: "default" } {
+    return Platform.OS === "ios" ? { sound: "default" } : {};
+}
+
 function isMessageNotificationData(data: Record<string, unknown>): boolean {
     const kind = data["kind"];
     return data["event"] === "mail" || kind === "dm" || kind === "group";
@@ -640,25 +613,6 @@ function isRemotePushNotification(
 
 function messageNotificationTitle(count: number): string {
     return count <= 1 ? "New Message" : `${count.toString()} New Messages`;
-}
-
-function normalizeAndroidMessageRouteData(raw: {
-    [key: string]: number | object | string;
-}): Record<string, unknown> {
-    const kind = stringifyRouteField(raw["kind"]);
-    const authorID = stringifyRouteField(raw["authorID"]);
-    const out: Record<string, unknown> = { authorID, kind };
-    if (raw["event"] != null) {
-        out["event"] = stringifyRouteField(raw["event"]);
-    }
-    if (raw["mailID"] != null) {
-        out["mailID"] = stringifyRouteField(raw["mailID"]);
-    }
-    if (kind === "group") {
-        out["channelID"] = stringifyRouteField(raw["channelID"]);
-        out["serverID"] = stringifyRouteField(raw["serverID"]);
-    }
-    return out;
 }
 
 function resetMessageNotificationSummary(): void {
@@ -730,28 +684,9 @@ function routeNotificationTap(
         signedIn: $user.get() !== null,
         ...summarizePushData(data),
     });
-    const dedupeKey =
-        typeof data["mailID"] === "string" ? data["mailID"] : undefined;
-    if (dedupeKey) {
-        const dup = pendingRouteTapQueue.findIndex(
-            (p) => p.dedupeKey === dedupeKey,
-        );
-        if (dup >= 0) {
-            pendingRouteTapQueue.splice(dup, 1);
-        }
-    }
-    if (dedupeKey !== undefined) {
-        pendingRouteTapQueue.push({
-            data,
-            dedupeKey,
-            syncFirst: options.syncFirst === true,
-        });
-    } else {
-        pendingRouteTapQueue.push({
-            data,
-            syncFirst: options.syncFirst === true,
-        });
-    }
+    enqueuePendingNotificationRoute(data, {
+        syncFirst: options.syncFirst === true,
+    });
 }
 
 async function scheduleOneMessageNotification(mail: Message): Promise<void> {
@@ -810,6 +745,7 @@ async function scheduleOneMessageNotification(mail: Message): Promise<void> {
     await Notifications.scheduleNotificationAsync({
         content: {
             data: routeData,
+            ...iosDefaultNotificationSound(),
             title,
         },
         identifier: MESSAGE_NOTIFICATION_ID,
@@ -819,17 +755,4 @@ async function scheduleOneMessageNotification(mail: Message): Promise<void> {
 
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function stringifyRouteField(value: unknown): string {
-    if (typeof value === "string") {
-        return value;
-    }
-    if (typeof value === "number" && Number.isFinite(value)) {
-        return String(value);
-    }
-    if (typeof value === "boolean") {
-        return String(value);
-    }
-    return "";
 }

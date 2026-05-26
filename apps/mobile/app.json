@@ -26,7 +26,8 @@
                 {
                     "icon": "./assets/icon-prod.png",
                     "color": "#0a0a0a",
-                    "defaultChannel": "vex-push"
+                    "defaultChannel": "vex-push",
+                    "enableBackgroundRemoteNotifications": true
                 }
             ],
             "./plugins/gradle-memory",

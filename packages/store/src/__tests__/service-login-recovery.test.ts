@@ -270,7 +270,7 @@ describe("vexService.login decrypt-mismatch recovery", () => {
         expect(register).not.toHaveBeenCalled();
     });
 
-    test("sets up first passkey when server reports none is registered yet", async () => {
+    test("does not ask for passkey when device login succeeds without 2FA", async () => {
         const creds: StoredCredentials = {
             deviceID: "device-blood",
             deviceKey: "0".repeat(64),
@@ -291,22 +291,8 @@ describe("vexService.login decrypt-mismatch recovery", () => {
         };
         const options: ServerOptions = { host: "dev.vex.wtf" };
         const client = makeClient();
-        const noPasskey = Object.assign(
-            new Error("Request failed with status code 403"),
-            {
-                response: {
-                    data: new TextEncoder().encode(
-                        JSON.stringify({
-                            error: "A passkey must be registered before this device is allowed to connect.",
-                        }),
-                    ),
-                    status: 403,
-                },
-            },
-        );
         const authenticate = vi.fn();
         const register = vi.fn(async () => ({ id: "credential" }));
-        client.passkeys.beginAuthentication.mockRejectedValueOnce(noPasskey);
         client.loginWithDeviceKey.mockResolvedValueOnce(null);
         libvexMock.create.mockResolvedValueOnce(client);
         vexService.setPasskeyCeremonyDriver({
@@ -319,17 +305,9 @@ describe("vexService.login decrypt-mismatch recovery", () => {
         expect(result).toEqual({ ok: true });
         expect(authenticate).not.toHaveBeenCalled();
         expect(client.loginWithDeviceKey).toHaveBeenCalledOnce();
-        expect(client.passkeys.beginRegistration).toHaveBeenCalledWith(
-            "test-device",
-        );
-        expect(register).toHaveBeenCalledWith({
-            challenge: "registration-challenge",
-        });
-        expect(client.passkeys.finishRegistration).toHaveBeenCalledWith({
-            name: "test-device",
-            requestID: "registration-request",
-            response: { id: "credential" },
-        });
+        expect(client.passkeys.beginAuthentication).not.toHaveBeenCalled();
+        expect(client.passkeys.beginRegistration).not.toHaveBeenCalled();
+        expect(register).not.toHaveBeenCalled();
         expect(client.connect).toHaveBeenCalledOnce();
     });
 

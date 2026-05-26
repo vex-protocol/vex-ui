@@ -38,6 +38,7 @@ import {
     $historyRecoveryStatusWritable,
     $hydrationStatusWritable,
     $keyReplacedWritable,
+    $localPasskeySetupPromptWritable,
     $pendingApprovalStageWritable,
     $signedOutIntentWritable,
     $userWritable,
@@ -549,8 +550,10 @@ class VexService {
     }
 
     async approveDeviceRequest(requestID: string): Promise<OperationResult> {
+        let client: ClientWithDeviceApprovals | null = null;
+        let shouldRestoreDeviceSession = false;
         try {
-            const client =
+            client =
                 this.requireClient() as unknown as ClientWithDeviceApprovals;
             if (!client.devices.approveRequest) {
                 return {
@@ -558,9 +561,46 @@ class VexService {
                     ok: false,
                 };
             }
+            const passkeyState = await this.satisfyPasskeyForCurrentClient(
+                this.currentClientUsername(),
+            );
+            if (passkeyState === "unavailable") {
+                return {
+                    error: "Passkeys aren't available on this device.",
+                    ok: false,
+                };
+            }
+            if (passkeyState === "not_registered") {
+                return {
+                    error: "Add a passkey before approving another device.",
+                    ok: false,
+                };
+            }
+            shouldRestoreDeviceSession = true;
             await client.devices.approveRequest(requestID);
+            // finishAuthentication temporarily places the bearer in
+            // passkey mode. Refresh the existing device session using
+            // that fresh passkey token so the approving device stays in
+            // normal messaging mode after approval.
+            const authErr = await this.loginWithDeviceKeyWithRetry(
+                client as unknown as Client,
+            );
+            if (authErr) {
+                debugAuth("device-approval:sessionRestoreFailed", {
+                    message: errorMessage(authErr),
+                });
+            }
             return { ok: true };
         } catch (err: unknown) {
+            if (client && shouldRestoreDeviceSession) {
+                try {
+                    await this.loginWithDeviceKeyWithRetry(
+                        client as unknown as Client,
+                    );
+                } catch {
+                    /* best-effort session restore */
+                }
+            }
             return { error: errorMessage(err), ok: false };
         }
     }
@@ -996,8 +1036,6 @@ class VexService {
         }
     }
 
-    // ── Server CRUD ─────────────────────────────────────────────────────
-
     /** Delete all local data — message history, sessions, keys. Credentials (keychain) cleared by consumer. */
     async deleteAllData(): Promise<void> {
         if (this.client) {
@@ -1010,6 +1048,8 @@ class VexService {
         this.client = null;
         this.resetAll();
     }
+
+    // ── Server CRUD ─────────────────────────────────────────────────────
 
     async deleteLocalMessage(
         conversationKey: string,
@@ -1215,6 +1255,17 @@ class VexService {
             localDeleted,
             ok: true,
         };
+    }
+
+    dismissLocalPasskeySetupPrompt(promptID?: string): void {
+        const current = $localPasskeySetupPromptWritable.get();
+        if (!current) {
+            return;
+        }
+        if (promptID && current.promptID !== promptID) {
+            return;
+        }
+        $localPasskeySetupPromptWritable.set(null);
     }
 
     async downloadFileAttachment(
@@ -3247,17 +3298,17 @@ class VexService {
         authErr: Error | null;
         passkeyState: PasskeySessionState;
     }> {
-        let passkeyState = await this.satisfyPasskeyForCurrentClient(username);
         let authErr = await this.loginWithDeviceKeyWithRetry(client, deviceID);
         if (!isPasskeyRequiredError(authErr)) {
-            return { authErr, passkeyState };
+            return { authErr, passkeyState: "authenticated" };
         }
 
         const retryUsername = passkeyRequiredUsername(authErr) ?? username;
         debugAuth("device-login:passkey-required:retry", {
             username: retryUsername,
         });
-        passkeyState = await this.satisfyPasskeyForCurrentClient(retryUsername);
+        const passkeyState =
+            await this.satisfyPasskeyForCurrentClient(retryUsername);
         authErr = await this.loginWithDeviceKeyWithRetry(client, deviceID);
         return { authErr, passkeyState };
     }
@@ -3370,6 +3421,7 @@ class VexService {
             $userWritable.set(client.me.user());
             this.setAuthStatus("authenticated");
             this.kickPopulateState();
+            this.queueLocalPasskeySetupPrompt(pending.username);
             this.activePendingDeviceApproval = null;
             this.deferredDeviceApproval = null;
 
@@ -3437,6 +3489,13 @@ class VexService {
                 this.populateStateInFlight = null;
             }
         }
+    }
+
+    private queueLocalPasskeySetupPrompt(username: string): void {
+        $localPasskeySetupPromptWritable.set({
+            promptID: `${username}:${Date.now()}`,
+            username,
+        });
     }
 
     private queuePendingMessageEventMessage(
@@ -3814,6 +3873,7 @@ class VexService {
         $userWritable.set(null);
         $keyReplacedWritable.set(false);
         $pendingApprovalStageWritable.set("idle");
+        $localPasskeySetupPromptWritable.set(null);
         $historyRecoveryStatusWritable.set("idle");
         $hydrationStatusWritable.set({
             completedSteps: 0,
@@ -4602,12 +4662,10 @@ class VexService {
                             token: "",
                             username,
                         });
-                        const { authErr, passkeyState } =
-                            await this.loginWithDeviceKeyWithPasskeyRetry(
-                                client,
-                                username,
-                                pending.approvedDeviceID,
-                            );
+                        const authErr = await this.loginWithDeviceKeyWithRetry(
+                            client,
+                            pending.approvedDeviceID,
+                        );
                         if (authErr) {
                             debugAuth("approvalWatcher:loginFailed", {
                                 message: errorMessage(authErr),
@@ -4615,16 +4673,12 @@ class VexService {
                             $pendingApprovalStageWritable.set("idle");
                             return;
                         }
-                        if (passkeyState === "not_registered") {
-                            await this.registerInitialPasskeyForCurrentClient(
-                                "This device",
-                            );
-                        }
                         $pendingApprovalStageWritable.set("loading_account");
                         await client.connect();
                         $userWritable.set(client.me.user());
                         this.setAuthStatus("authenticated");
                         this.kickPopulateState();
+                        this.queueLocalPasskeySetupPrompt(username);
                         debugAuth("approvalWatcher:done", {
                             requestID,
                         });
