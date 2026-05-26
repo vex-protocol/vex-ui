@@ -92,4 +92,4 @@ for device in "${DEVICES[@]}"; do
   adb -s "$device" shell monkey -p "$APP_PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
 done
 
-echo "Installed Vex Beta production APK on ${#DEVICES[@]} device(s)."
+echo "Installed Vex production APK on ${#DEVICES[@]} device(s)."

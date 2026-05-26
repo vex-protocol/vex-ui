@@ -1,4 +1,5 @@
 node_modules
+**/node_modules/
 
 # Agents
 .claude
@@ -7,9 +8,27 @@ node_modules
 
 AGENTS.md
 
+.git/
+.expo/
+**/.expo/
+.turbo/
+**/.turbo/
+
 # Mobile native dirs (Expo Prebuild / CNG generates these)
 apps/mobile/ios/
 apps/mobile/android/
+
+# Non-mobile apps are not needed for the mobile EAS archive and can
+# contain very large local build output.
+apps/desktop/
+apps/website/
+
+dist/
+build/
+coverage/
+**/dist/
+**/build/
+**/coverage/
 
 # EAS-managed signing material — NEVER commit. `eas credentials`
 # downloads keystores and a credentials.json with cleartext passwords.
@@ -31,8 +50,6 @@ apps/mobile/google-services*.json
 # Beads auto-generated backup dumps — noisy, regenerated per run
 .beads/backup/
 
-.expo
-
 # Verdaccio local registry
 .verdaccio/storage/
 .verdaccio/htpasswd
@@ -48,3 +65,5 @@ yarn.lock
 # `eas build --local`. They stay gitignored, but EAS must include them in its
 # project archive so Expo prebuild can copy android.googleServicesFile.
 !apps/mobile/google-services*.json
+
+**/.DS_Store

@@ -2,7 +2,8 @@ name: Mobile - Release Candidate
 
 # Publishes the development channel for every merge to development.
 # Native fingerprint unchanged -> EAS Update on the development channel.
-# Native fingerprint changed   -> local APK build plus GitHub prereleases:
+# Native fingerprint changed   -> local APK build, EAS iOS Ad Hoc build,
+#                                  plus GitHub prereleases:
 #   - mobile-rc-v<version>-<sha>  durable GitHub prerelease
 #   - mobile-rc-latest            rolling GitHub prerelease pointer
 #
@@ -258,6 +259,60 @@ jobs:
                     --non-interactive \
                     --output "${{ github.workspace }}/vex-development.apk"
 
+            - name: Build development iOS Ad Hoc
+              if: steps.decide.outputs.path == 'build'
+              working-directory: apps/mobile
+              env:
+                  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+                  EAS_BUILD_PROFILE: development
+                  EXPO_PUBLIC_ENABLE_DEV_SERVER: "1"
+                  EXPO_PUBLIC_SERVER_URL: dev.vex.wtf
+                  EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
+                  EXPO_PUBLIC_VEX_BUILD_LABEL: ${{ steps.meta.outputs.display_version }}
+                  EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
+                  VEX_APP_ENV: development
+                  VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
+                  VEX_ENABLE_DEV_BUILD: "1"
+              run: |
+                  eas build \
+                    --profile development \
+                    --platform ios \
+                    --non-interactive \
+                    --wait \
+                    --message "development ${GITHUB_SHA::8}" \
+                    --json > /tmp/ios-build.json
+
+                  node <<'NODE'
+                  const fs = require("node:fs");
+                  const path = require("node:path");
+
+                  const raw = fs.readFileSync("/tmp/ios-build.json", "utf8");
+                  const parsed = JSON.parse(raw);
+                  const build = Array.isArray(parsed) ? parsed[0] : parsed;
+                  if (!build?.id) {
+                    console.error("EAS iOS build output did not include a build id.");
+                    process.exit(1);
+                  }
+
+                  const install = {
+                    platform: "ios",
+                    provider: "expo",
+                    profile: "development",
+                    channel: "development",
+                    bundleIdentifier: "chat.vex.mobile.dev",
+                    buildId: build.id,
+                    installUrl: `https://expo.dev/accounts/vex-chat/projects/vex/builds/${build.id}`,
+                    artifactUrl: build.artifacts?.applicationArchiveUrl ?? build.artifacts?.buildUrl,
+                    commit: process.env.GITHUB_SHA,
+                    fingerprint: JSON.parse(fs.readFileSync("/tmp/current-fingerprint.json", "utf8")).hash,
+                    createdAt: new Date().toISOString()
+                  };
+                  fs.writeFileSync(
+                    path.join(process.env.GITHUB_WORKSPACE, "ios-install.json"),
+                    `${JSON.stringify(install, null, 2)}\n`
+                  );
+                  NODE
+
             - name: Build release candidate notes
               if: steps.decide.outputs.path == 'build'
               env:
@@ -278,6 +333,9 @@ jobs:
                     echo ""
                     echo "Direct latest APK:"
                     echo "https://github.com/${{ github.repository }}/releases/download/mobile-rc-latest/vex-development-latest.apk"
+                    echo ""
+                    echo "iOS install:"
+                    node -pe "require('${{ github.workspace }}/ios-install.json').installUrl"
                     echo ""
                     echo "- Package id: \`chat.vex.mobile.dev\`"
                     echo "- Branch: \`development\`"
@@ -307,6 +365,7 @@ jobs:
 
                   if gh release view "$TAG" >/dev/null 2>&1; then
                     gh release upload "$TAG" fingerprint.json --clobber
+                    gh release upload "$TAG" ios-install.json --clobber
                     gh release upload "$TAG" "${{ steps.meta.outputs.asset }}" --clobber
                     gh release upload "$TAG" "${{ steps.meta.outputs.asset }}.sha256" --clobber
                     gh release edit "$TAG" \
@@ -318,6 +377,7 @@ jobs:
                     gh release create "$TAG" "${{ steps.meta.outputs.asset }}" \
                       "${{ steps.meta.outputs.asset }}.sha256" \
                       fingerprint.json \
+                      ios-install.json \
                       --target "$GITHUB_SHA" \
                       --prerelease \
                       --title "$TITLE" \
@@ -335,7 +395,7 @@ jobs:
                   sha256sum vex-development-latest.apk > vex-development-latest.apk.sha256
                   sha256sum "${{ steps.meta.outputs.asset }}" > "${{ steps.meta.outputs.asset }}.sha256"
                   gh release delete "$TAG" --cleanup-tag --yes 2>/dev/null || true
-                  gh release create "$TAG" vex-development-latest.apk vex-development-latest.apk.sha256 "${{ steps.meta.outputs.asset }}" "${{ steps.meta.outputs.asset }}.sha256" fingerprint.json \
+                  gh release create "$TAG" vex-development-latest.apk vex-development-latest.apk.sha256 "${{ steps.meta.outputs.asset }}" "${{ steps.meta.outputs.asset }}.sha256" fingerprint.json ios-install.json \
                     --target "$GITHUB_SHA" \
                     --prerelease \
                     --latest=false \

@@ -2,7 +2,8 @@ name: Mobile - Release
 
 # Publishes production for every merge to master.
 # Native fingerprint unchanged -> EAS Update on the production channel.
-# Native fingerprint changed   -> local APK build plus GitHub Release.
+# Native fingerprint changed   -> local APK build, EAS iOS Ad Hoc build,
+#                                  plus GitHub Release.
 #
 # APK release versions are derived from mobile-v* tags. OTA updates reuse the
 # latest APK's version/runtime so installed builds can receive the update.
@@ -19,6 +20,12 @@ on:
     push:
         branches: [master]
     workflow_dispatch:
+        inputs:
+            force_build:
+                description: Build and publish fresh native artifacts even when the native fingerprint is unchanged.
+                required: false
+                default: false
+                type: boolean
 
 concurrency:
     group: release-mobile
@@ -120,7 +127,7 @@ jobs:
               env:
                   EAS_BUILD_PROFILE: production
                   VEX_APP_ENV: production
-                  VEX_APP_DISPLAY_NAME: Vex Beta
+                  VEX_APP_DISPLAY_NAME: Vex
                   VEX_APP_VERSION: ${{ steps.baseline.outputs.base_version }}
                   VEX_ENABLE_DEV_BUILD: "0"
               run: |
@@ -149,8 +156,13 @@ jobs:
 
             - name: Decide path
               id: decide
+              env:
+                  FORCE_BUILD: ${{ inputs.force_build || false }}
               run: |
-                  if [ "${{ steps.prev_fp.outputs.exists }}" = "true" ] && \
+                  if [ "$FORCE_BUILD" = "true" ]; then
+                    PATH_DECISION=build
+                    echo "Force build requested via workflow_dispatch."
+                  elif [ "${{ steps.prev_fp.outputs.exists }}" = "true" ] && \
                      [ "${{ steps.fp.outputs.hash }}" = "${{ steps.prev_fp.outputs.hash }}" ]; then
                     PATH_DECISION=ota
                   else
@@ -174,7 +186,7 @@ jobs:
                   EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.baseline.outputs.base_version }}
                   EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
                   VEX_APP_ENV: production
-                  VEX_APP_DISPLAY_NAME: Vex Beta
+                  VEX_APP_DISPLAY_NAME: Vex
                   VEX_APP_VERSION: ${{ steps.baseline.outputs.base_version }}
                   VEX_ENABLE_DEV_BUILD: "0"
               run: |
@@ -239,7 +251,7 @@ jobs:
               env:
                   EAS_BUILD_PROFILE: production
                   VEX_APP_ENV: production
-                  VEX_APP_DISPLAY_NAME: Vex Beta
+                  VEX_APP_DISPLAY_NAME: Vex
                   VEX_APP_VERSION: ${{ steps.version.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "0"
               run: |
@@ -286,7 +298,7 @@ jobs:
                   EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.version.outputs.version }}
                   EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
                   VEX_APP_ENV: production
-                  VEX_APP_DISPLAY_NAME: Vex Beta
+                  VEX_APP_DISPLAY_NAME: Vex
                   VEX_APP_VERSION: ${{ steps.version.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "0"
               run: |
@@ -296,6 +308,60 @@ jobs:
                     --local \
                     --non-interactive \
                     --output "${{ github.workspace }}/release.apk"
+
+            - name: Build production iOS Ad Hoc
+              if: steps.decide.outputs.path == 'build'
+              working-directory: apps/mobile
+              env:
+                  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+                  EAS_BUILD_PROFILE: production
+                  EXPO_PUBLIC_ENABLE_DEV_SERVER: "0"
+                  EXPO_PUBLIC_SERVER_URL: api.vex.wtf
+                  EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.version.outputs.version }}
+                  EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
+                  VEX_APP_ENV: production
+                  VEX_APP_DISPLAY_NAME: Vex
+                  VEX_APP_VERSION: ${{ steps.version.outputs.version }}
+                  VEX_ENABLE_DEV_BUILD: "0"
+              run: |
+                  eas build \
+                    --profile production \
+                    --platform ios \
+                    --non-interactive \
+                    --wait \
+                    --message "production ${GITHUB_SHA::8}" \
+                    --json > /tmp/ios-build.json
+
+                  node <<'NODE'
+                  const fs = require("node:fs");
+                  const path = require("node:path");
+
+                  const raw = fs.readFileSync("/tmp/ios-build.json", "utf8");
+                  const parsed = JSON.parse(raw);
+                  const build = Array.isArray(parsed) ? parsed[0] : parsed;
+                  if (!build?.id) {
+                    console.error("EAS iOS build output did not include a build id.");
+                    process.exit(1);
+                  }
+
+                  const install = {
+                    platform: "ios",
+                    provider: "expo",
+                    profile: "production",
+                    channel: "production",
+                    bundleIdentifier: "chat.vex.mobile",
+                    buildId: build.id,
+                    installUrl: `https://expo.dev/accounts/vex-chat/projects/vex/builds/${build.id}`,
+                    artifactUrl: build.artifacts?.applicationArchiveUrl ?? build.artifacts?.buildUrl,
+                    commit: process.env.GITHUB_SHA,
+                    fingerprint: JSON.parse(fs.readFileSync("/tmp/current-fingerprint.json", "utf8")).hash,
+                    createdAt: new Date().toISOString()
+                  };
+                  fs.writeFileSync(
+                    path.join(process.env.GITHUB_WORKSPACE, "ios-install.json"),
+                    `${JSON.stringify(install, null, 2)}\n`
+                  );
+                  NODE
 
             - name: Build release notes
               if: steps.decide.outputs.path == 'build'
@@ -324,6 +390,9 @@ jobs:
                         echo ""
                         echo "$BODY"
                       fi
+                      echo ""
+                      echo "iOS install:"
+                      node -pe "require('${{ github.workspace }}/ios-install.json').installUrl"
                     } > /tmp/release-notes.md
                   else
                     {
@@ -334,6 +403,9 @@ jobs:
                       else
                         git log --format='- %s' -20
                       fi
+                      echo ""
+                      echo "iOS install:"
+                      node -pe "require('${{ github.workspace }}/ios-install.json').installUrl"
                     } > /tmp/release-notes.md
                   fi
 
@@ -356,13 +428,14 @@ jobs:
                     gh release upload "$TAG" "$ASSET" --clobber
                     gh release upload "$TAG" "$ASSET.sha256" --clobber
                     gh release upload "$TAG" fingerprint.json --clobber
+                    gh release upload "$TAG" ios-install.json --clobber
                     gh release edit "$TAG" \
                       --target "$GITHUB_SHA" \
                       --title "$TITLE" \
                       --notes-file /tmp/release-notes.md \
                       --latest
                   else
-                    gh release create "$TAG" "$ASSET" "$ASSET.sha256" fingerprint.json \
+                    gh release create "$TAG" "$ASSET" "$ASSET.sha256" fingerprint.json ios-install.json \
                       --target "$GITHUB_SHA" \
                       --latest \
                       --title "$TITLE" \

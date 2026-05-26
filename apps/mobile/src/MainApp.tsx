@@ -1300,10 +1300,16 @@ function appUpdateNoticeForState(
 ): AppUpdateNotice | null {
     switch (state.status) {
         case "apk_available":
-            return {
-                message: "A new APK is ready. Tap to open the updater.",
-                title: "App update available",
-            };
+            return Platform.OS === "ios"
+                ? {
+                      message:
+                          "A new Vex build is ready. Tap to open the install page.",
+                      title: "Build update available",
+                  }
+                : {
+                      message: "A new APK is ready. Tap to open the updater.",
+                      title: "App update available",
+                  };
         case "ota_available":
             return {
                 message: state.latestCommit?.shortSha

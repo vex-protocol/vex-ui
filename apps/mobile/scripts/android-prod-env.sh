@@ -9,7 +9,7 @@ export EXPO_PUBLIC_SERVER_URL=api.vex.wtf
 export VEX_APP_ENV=production
 export VEX_ENABLE_DEV_BUILD=0
 export EAS_BUILD_PROFILE=production
-export VEX_APP_DISPLAY_NAME="${VEX_APP_DISPLAY_NAME:-Vex Beta}"
+export VEX_APP_DISPLAY_NAME="${VEX_APP_DISPLAY_NAME:-Vex}"
 export APP_PACKAGE=chat.vex.mobile
 
 EXPECTED_ANDROID_PACKAGE="chat.vex.mobile"
