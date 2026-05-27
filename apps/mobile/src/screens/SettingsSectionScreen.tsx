@@ -366,7 +366,7 @@ export function SettingsSectionScreen({
         if (updateBusy) return;
         setUpdateBusy(true);
         try {
-            const next = await fetchOtaUpdate();
+            const next = await fetchOtaUpdate({ autoReload: false });
             if (next.status === "ota_ready") {
                 Alert.alert(
                     "Restart to update?",

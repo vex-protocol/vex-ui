@@ -55,6 +55,10 @@ export interface NativeReleaseInfo {
     targetShortCommit?: string | undefined;
 }
 
+interface FetchOtaUpdateOptions {
+    autoReload?: boolean | undefined;
+}
+
 type GitHubCompareStatus = "ahead" | "behind" | "diverged" | "identical";
 
 const GITHUB_REPO = "vex-protocol/vex-ui";
@@ -78,6 +82,7 @@ export const $appUpdateState = atom<AppUpdateState>({
 });
 
 let updateCheckInFlight: null | Promise<AppUpdateState> = null;
+let pendingOtaAutoReloadSuppressed = false;
 
 export async function checkForAppUpdates(
     options: { force?: boolean; silent?: boolean } = {},
@@ -208,25 +213,43 @@ export async function downloadAndInstallApkUpdate(): Promise<void> {
     }
 }
 
-export async function fetchOtaUpdate(): Promise<AppUpdateState> {
+export async function fetchOtaUpdate(
+    options: FetchOtaUpdateOptions = {},
+): Promise<AppUpdateState> {
     if (!Updates.isEnabled || __DEV__) {
         throw new Error("OTA updates are not enabled in this build.");
     }
+    const suppressAutoReload = options.autoReload === false;
+    if (suppressAutoReload) {
+        pendingOtaAutoReloadSuppressed = true;
+    } else {
+        pendingOtaAutoReloadSuppressed = false;
+    }
     const current = $appUpdateState.get();
     $appUpdateState.set({ ...current, status: "checking" });
-    const result = await Updates.fetchUpdateAsync();
-    const next: AppUpdateState = {
-        ...$appUpdateState.get(),
-        checkedAt: new Date().toISOString(),
-        message: result.isNew
-            ? "OTA update downloaded. Restart Vex to run it."
-            : "No newer OTA update was downloaded.",
-        otaUpdateAvailable: result.isNew,
-        releaseTarget: getReleaseTarget(),
-        status: result.isNew ? "ota_ready" : "current",
-    };
-    $appUpdateState.set(next);
-    return next;
+    try {
+        const result = await Updates.fetchUpdateAsync();
+        if (!result.isNew && suppressAutoReload) {
+            pendingOtaAutoReloadSuppressed = false;
+        }
+        const next: AppUpdateState = {
+            ...$appUpdateState.get(),
+            checkedAt: new Date().toISOString(),
+            message: result.isNew
+                ? "OTA update downloaded. Restart Vex to run it."
+                : "No newer OTA update was downloaded.",
+            otaUpdateAvailable: result.isNew,
+            releaseTarget: getReleaseTarget(),
+            status: result.isNew ? "ota_ready" : "current",
+        };
+        $appUpdateState.set(next);
+        return next;
+    } catch (err: unknown) {
+        if (suppressAutoReload) {
+            pendingOtaAutoReloadSuppressed = false;
+        }
+        throw err;
+    }
 }
 
 export function getNativeBuildInstallUrl(
@@ -271,6 +294,10 @@ export async function restartForOtaUpdate(): Promise<void> {
         throw new Error("OTA restart is not available in this build.");
     }
     await Updates.reloadAsync();
+}
+
+export function shouldAutoReloadPendingOtaUpdate(): boolean {
+    return !pendingOtaAutoReloadSuppressed;
 }
 
 function arrayBufferToHex(buffer: ArrayBuffer): string {
@@ -670,7 +697,8 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
     const otaUpdateAvailable =
         canUseOtaUpdates &&
         branchHasNewerCommit &&
-        (ota.isAvailable || isOtaRuntimeCompatible(nativeRelease));
+        (ota.isAvailable ||
+            (ota.error == null && isOtaRuntimeCompatible(nativeRelease)));
 
     if (otaUpdateAvailable) {
         return {
@@ -724,9 +752,11 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
         message:
             releaseCandidateRunPending && latestCommit != null
                 ? `APK build is still running for ${latestCommit.shortSha}. Check again shortly.`
-                : latestCommit != null && !runningLatestCommit
-                  ? "GitHub has a newer commit, but no compatible OTA is published for this runtime yet."
-                  : "Vex is up to date.",
+                : latestCommit != null && !runningLatestCommit && ota.error
+                  ? "Could not confirm OTA availability. Continuing with installed build."
+                  : latestCommit != null && !runningLatestCommit
+                    ? "GitHub has a newer commit, but no compatible OTA is published for this runtime yet."
+                    : "Vex is up to date.",
         nativeRelease,
         otaCheckError: ota.error,
         otaUpdateAvailable: false,

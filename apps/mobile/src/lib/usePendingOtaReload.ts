@@ -2,7 +2,10 @@ import { useEffect, useRef } from "react";
 
 import * as Updates from "expo-updates";
 
-import { restartForOtaUpdate } from "./appUpdates";
+import {
+    restartForOtaUpdate,
+    shouldAutoReloadPendingOtaUpdate,
+} from "./appUpdates";
 
 interface PendingOtaReloadOptions {
     onError?: ((message: string) => void) | undefined;
@@ -25,6 +28,9 @@ export function usePendingOtaReload({
             return;
         }
         if (handledPendingUpdateRef.current) {
+            return;
+        }
+        if (!shouldAutoReloadPendingOtaUpdate()) {
             return;
         }
 
