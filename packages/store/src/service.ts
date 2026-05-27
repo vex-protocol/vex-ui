@@ -573,7 +573,7 @@ class VexService {
             }
             if (passkeyState === "not_registered") {
                 return {
-                    error: "No passkey is registered for this account.",
+                    error: "Add a passkey before approving another device.",
                     ok: false,
                 };
             }
@@ -1039,8 +1039,6 @@ class VexService {
         }
     }
 
-    // ── Server CRUD ─────────────────────────────────────────────────────
-
     /** Delete all local data — message history, sessions, keys. Credentials (keychain) cleared by consumer. */
     async deleteAllData(): Promise<void> {
         if (this.client) {
@@ -1053,6 +1051,8 @@ class VexService {
         this.client = null;
         this.resetAll();
     }
+
+    // ── Server CRUD ─────────────────────────────────────────────────────
 
     async deleteLocalMessage(
         conversationKey: string,
@@ -3324,17 +3324,17 @@ class VexService {
         authErr: Error | null;
         passkeyState: PasskeySessionState;
     }> {
-        let passkeyState = await this.satisfyPasskeyForCurrentClient(username);
         let authErr = await this.loginWithDeviceKeyWithRetry(client, deviceID);
         if (!isPasskeyRequiredError(authErr)) {
-            return { authErr, passkeyState };
+            return { authErr, passkeyState: "authenticated" };
         }
 
         const retryUsername = passkeyRequiredUsername(authErr) ?? username;
         debugAuth("device-login:passkey-required:retry", {
             username: retryUsername,
         });
-        passkeyState = await this.satisfyPasskeyForCurrentClient(retryUsername);
+        const passkeyState =
+            await this.satisfyPasskeyForCurrentClient(retryUsername);
         authErr = await this.loginWithDeviceKeyWithRetry(client, deviceID);
         return { authErr, passkeyState };
     }

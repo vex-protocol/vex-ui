@@ -30,7 +30,11 @@ import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
 import { VexLogo } from "../components/VexLogo";
 import { getServerOptions } from "../lib/config";
-import { keychainKeyStore, listKnownAccounts } from "../lib/keychain";
+import {
+    clearAllCredentials,
+    keychainKeyStore,
+    listKnownAccounts,
+} from "../lib/keychain";
 import {
     cleanupLegacyLocalKeyMaterialArtifacts,
     mobileConfig,
@@ -231,7 +235,15 @@ export function HangTightScreen({
                         return;
                     }
                     setPhase("form");
+                } else if (!result.ok && result.passkeySetupRequired) {
+                    setRetryMode("passkeySetup");
+                    setBootError(
+                        result.error ??
+                            "Passkey setup did not finish. Tap Retry to continue.",
+                    );
+                    setPhase("error");
                 } else if (!result.ok) {
+                    setRetryMode("auth");
                     setBootError(
                         result.error ?? "Could not initialize account.",
                     );
@@ -488,6 +500,37 @@ export function HangTightScreen({
                     err instanceof Error
                         ? err.message
                         : "Could not initialize account.",
+                );
+                setPhase("error");
+            })
+            .finally(() => {
+                setBusy(false);
+            });
+    };
+
+    const handleChooseAnotherAccount = () => {
+        setRetryMode("auth");
+        setBootError("");
+        navigation.replace("AccountSelector");
+    };
+
+    const handleResetLocalAccounts = () => {
+        if (busy) {
+            return;
+        }
+        setBusy(true);
+        void (async () => {
+            await clearAllCredentials();
+            setRetryMode("auth");
+            setBootError("");
+            setUsername("");
+            setPhase("form");
+        })()
+            .catch((err: unknown) => {
+                setBootError(
+                    err instanceof Error
+                        ? err.message
+                        : "Could not remove saved account.",
                 );
                 setPhase("error");
             })
@@ -814,6 +857,18 @@ export function HangTightScreen({
                             disabled={busy}
                             onPress={handleRetry}
                             title={busy ? "Retrying..." : "Retry"}
+                            variant="outline"
+                        />
+                        <VexButton
+                            disabled={busy}
+                            onPress={handleChooseAnotherAccount}
+                            title="Choose another account"
+                            variant="outline"
+                        />
+                        <VexButton
+                            disabled={busy}
+                            onPress={handleResetLocalAccounts}
+                            title="Reset local accounts"
                             variant="outline"
                         />
                     </View>
