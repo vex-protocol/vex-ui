@@ -32,6 +32,7 @@ import {
     restartForOtaUpdate,
 } from "../lib/appUpdates";
 import { buildInfo } from "../lib/buildInfo";
+import { usePendingOtaReload } from "../lib/usePendingOtaReload";
 import { colors, typography } from "../theme";
 
 type PrebootPhase =
@@ -177,6 +178,24 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
     const openedNativeInstallRef = useRef<string | undefined>(undefined);
     const visibleSinceRef = useRef(Date.now());
 
+    const handlePendingOtaRestarting = useCallback(() => {
+        setError("");
+        setOfflineContinueAllowed(false);
+        setPhase("ota_restarting");
+    }, []);
+    const handlePendingOtaError = useCallback((message: string) => {
+        setError(message);
+        setOfflineContinueAllowed(true);
+        setPhase("error");
+    }, []);
+    const nativeUpdateState = usePendingOtaReload({
+        onError: handlePendingOtaError,
+        onRestarting: handlePendingOtaRestarting,
+    });
+    const nativeStartupUpdateActive =
+        nativeUpdateState.isStartupProcedureRunning ||
+        nativeUpdateState.isDownloading;
+
     const complete = useCallback(() => {
         if (completeRef.current) {
             return;
@@ -187,6 +206,17 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
         const delay = Math.max(0, MIN_VISIBLE_MS - elapsed);
         setTimeout(onComplete, delay);
     }, [onComplete]);
+
+    useEffect(() => {
+        if (
+            completeRef.current ||
+            !nativeUpdateState.isDownloading ||
+            nativeUpdateState.isUpdatePending
+        ) {
+            return;
+        }
+        setPhase("ota_downloading");
+    }, [nativeUpdateState.isDownloading, nativeUpdateState.isUpdatePending]);
 
     useEffect(() => {
         let cancelled = false;
@@ -236,6 +266,9 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                         return;
                     case "current":
                     case "unsupported":
+                        if (nativeStartupUpdateActive) {
+                            return;
+                        }
                         complete();
                         return;
                     case "error":
@@ -245,6 +278,9 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                     case "apk_downloading":
                     case "checking":
                     case "idle":
+                        if (nativeStartupUpdateActive) {
+                            return;
+                        }
                         complete();
                         return;
                     case "ota_available": {
@@ -282,7 +318,7 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
         return () => {
             cancelled = true;
         };
-    }, [attempt, complete]);
+    }, [attempt, complete, nativeStartupUpdateActive]);
 
     useEffect(() => {
         if (phase !== "apk_installing" && phase !== "ios_installing") {
