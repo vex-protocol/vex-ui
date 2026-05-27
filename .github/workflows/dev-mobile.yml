@@ -63,7 +63,7 @@ jobs:
                   GOOGLE_SERVICES_JSON: ${{ secrets.VEX_ANDROID_GOOGLE_SERVICES_DEV_JSON }}
                   GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.VEX_ANDROID_GOOGLE_SERVICES_DEV_JSON_BASE64 }}
               run: |
-                  GOOGLE_SERVICES_PATH="ci-google-services.dev.json"
+                  GOOGLE_SERVICES_PATH="google-services.dev.json"
                   export GOOGLE_SERVICES_PATH
                   if [ -n "${GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
                     printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > "$GOOGLE_SERVICES_PATH"
@@ -144,8 +144,12 @@ jobs:
               env:
                   EAS_BUILD_PROFILE: development
                   VEX_APP_ENV: development
+                  VEX_APP_DISPLAY_NAME: Vex Development
                   VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile.dev
+                  VEX_PASSKEY_RP_HOST: dev.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: |
                   npx expo-updates fingerprint:generate --platform android --workflow managed > /tmp/current-fingerprint-android.json
                   npx expo-updates fingerprint:generate --platform ios --workflow managed > /tmp/current-fingerprint-ios.json
@@ -227,8 +231,12 @@ jobs:
                   EXPO_PUBLIC_VEX_BUILD_LABEL: ${{ steps.meta.outputs.display_version }}
                   EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
                   VEX_APP_ENV: development
+                  VEX_APP_DISPLAY_NAME: Vex Development
                   VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile.dev
+                  VEX_PASSKEY_RP_HOST: dev.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: |
                   eas update \
                     --channel development \
@@ -251,8 +259,12 @@ jobs:
                   EXPO_PUBLIC_VEX_BUILD_LABEL: ${{ steps.meta.outputs.display_version }}
                   EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
                   VEX_APP_ENV: development
+                  VEX_APP_DISPLAY_NAME: Vex Development
                   VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile.dev
+                  VEX_PASSKEY_RP_HOST: dev.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: node scripts/prepare-eas-build-env.cjs
 
             - name: Build development native artifacts
@@ -267,8 +279,12 @@ jobs:
                   EXPO_PUBLIC_VEX_BUILD_LABEL: ${{ steps.meta.outputs.display_version }}
                   EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
                   VEX_APP_ENV: development
+                  VEX_APP_DISPLAY_NAME: Vex Development
                   VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile.dev
+                  VEX_PASSKEY_RP_HOST: dev.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: |
                   eas build \
                     --profile development \

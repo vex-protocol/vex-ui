@@ -239,7 +239,11 @@ jobs:
                   GOOGLE_SERVICES_JSON_BASE64: ${{ needs.policy.outputs.profile == 'development' && secrets.VEX_ANDROID_GOOGLE_SERVICES_DEV_JSON_BASE64 || secrets.VEX_ANDROID_GOOGLE_SERVICES_PROD_JSON_BASE64 }}
                   EXPECTED_ANDROID_PACKAGE: ${{ needs.policy.outputs.expected_android_package }}
               run: |
-                  GOOGLE_SERVICES_PATH="ci-google-services.${EAS_BUILD_PROFILE}.json"
+                  if [ "$EAS_BUILD_PROFILE" = "development" ]; then
+                    GOOGLE_SERVICES_PATH="google-services.dev.json"
+                  else
+                    GOOGLE_SERVICES_PATH="google-services.prod.json"
+                  fi
                   export GOOGLE_SERVICES_PATH
                   if [ -n "${GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
                     printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > "$GOOGLE_SERVICES_PATH"

@@ -7,6 +7,7 @@
         "development": {
             "channel": "development",
             "distribution": "internal",
+            "environment": "development",
             "android": { "buildType": "apk" },
             "env": {
                 "VEX_APP_ENV": "development",
@@ -23,6 +24,7 @@
         "production": {
             "channel": "production",
             "distribution": "internal",
+            "environment": "production",
             "android": { "buildType": "apk" },
             "env": {
                 "VEX_APP_ENV": "production",

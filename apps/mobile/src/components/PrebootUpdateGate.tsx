@@ -489,9 +489,11 @@ function copyForPhase(
             };
         case "ota_downloading":
             return {
-                detail: state.latestCommit?.shortSha
-                    ? `Preparing update ${state.latestCommit.shortSha}.`
-                    : "Preparing a compatible update.",
+                detail: state.otaUpdate?.shortCommit
+                    ? `Preparing update ${state.otaUpdate.shortCommit}.`
+                    : state.otaUpdate?.shortId
+                      ? `Preparing OTA ${state.otaUpdate.shortId}.`
+                      : "Preparing a compatible update.",
                 message: "Downloading the latest OTA bundle.",
                 title: "Updating Vex",
             };

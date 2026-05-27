@@ -1322,9 +1322,11 @@ function appUpdateNoticeForState(
                   };
         case "ota_available":
             return {
-                message: state.latestCommit?.shortSha
-                    ? `Version ${state.latestCommit.shortSha} is ready. Tap to install.`
-                    : "A compatible OTA update is ready. Tap to install.",
+                message: state.otaUpdate?.shortCommit
+                    ? `Version ${state.otaUpdate.shortCommit} is ready. Tap to install.`
+                    : state.otaUpdate?.shortId
+                      ? `OTA ${state.otaUpdate.shortId} is ready. Tap to install.`
+                      : "A compatible OTA update is ready. Tap to install.",
                 title: "OTA update available",
             };
         case "ota_ready":
