@@ -184,12 +184,7 @@ export function ServerSettingsScreen({
 
     return (
         <View style={styles.container}>
-            <ChatHeader
-                onBack={() => {
-                    navigation.goBack();
-                }}
-                title={`${serverName} settings`}
-            />
+            <ChatHeader title={`${serverName} settings`} />
             <ScrollView
                 contentContainerStyle={styles.content}
                 style={styles.scroller}

@@ -1,5 +1,3 @@
-import type { AppScreenProps } from "../navigation/types";
-
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     RefreshControl,
@@ -18,9 +16,7 @@ import { MenuRow, MenuSection } from "../components/MenuRow";
 import { getServerUrl } from "../lib/config";
 import { colors, typography } from "../theme";
 
-export function SessionDetailsScreen({
-    navigation,
-}: AppScreenProps<"SessionDetails">) {
+export function SessionDetailsScreen() {
     const authStatus = useStore($authStatus);
     const user = useStore($user);
     const [sessionInfo, setSessionInfo] =
@@ -77,12 +73,7 @@ export function SessionDetailsScreen({
 
     return (
         <View style={styles.container}>
-            <ChatHeader
-                onBack={() => {
-                    navigation.goBack();
-                }}
-                title="Session"
-            />
+            <ChatHeader title="Session" />
             <ScrollView
                 contentContainerStyle={styles.content}
                 refreshControl={
