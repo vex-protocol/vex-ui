@@ -1,7 +1,9 @@
 name: Mobile - PR Native Build
 
 # Builds native Android + iOS artifacts for trusted PRs targeting development
-# or master. This intentionally does not publish OTA updates or GitHub Releases.
+# or master when native/runtime inputs changed, or when maintainers add the
+# `native-build` / `eas-native-build` label. This intentionally does not publish
+# OTA updates or GitHub Releases.
 #
 # Security model:
 # - uses pull_request, not pull_request_target, so fork PR code never receives
@@ -9,11 +11,20 @@ name: Mobile - PR Native Build
 # - additionally requires same-repository PR branches from users with repo write
 #   permission or stronger
 # - skips draft PRs to avoid burning EAS builds before review readiness
+# - skips JS-only PRs to preserve the limited EAS free-tier build quota
 
 on:
     pull_request:
         branches: [development, master]
-        types: [opened, synchronize, reopened, ready_for_review]
+        types:
+            [
+                opened,
+                synchronize,
+                reopened,
+                ready_for_review,
+                labeled,
+                unlabeled,
+            ]
 
 concurrency:
     group: mobile-pr-native-${{ github.event.pull_request.number }}
@@ -21,6 +32,7 @@ concurrency:
 
 permissions:
     contents: read
+    pull-requests: read
 
 jobs:
     policy:
@@ -33,6 +45,7 @@ jobs:
             enable_dev_build: ${{ steps.policy.outputs.enable_dev_build }}
             expected_android_package: ${{ steps.policy.outputs.expected_android_package }}
             ios_bundle_identifier: ${{ steps.policy.outputs.ios_bundle_identifier }}
+            should_build: ${{ steps.policy.outputs.should_build }}
             profile: ${{ steps.policy.outputs.profile }}
             server_url: ${{ steps.policy.outputs.server_url }}
         steps:
@@ -44,11 +57,15 @@ jobs:
                   DRAFT: ${{ github.event.pull_request.draft }}
                   GH_TOKEN: ${{ github.token }}
                   HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+                  PR_LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
+                  PR_NUMBER: ${{ github.event.pull_request.number }}
                   PR_USER: ${{ github.event.pull_request.user.login }}
                   REPOSITORY: ${{ github.repository }}
               run: |
                   ALLOWED=false
+                  BUILD_REASON=""
                   REASON=""
+                  SHOULD_BUILD=false
                   PERMISSION="unknown"
                   PROFILE=""
                   CHANNEL=""
@@ -57,6 +74,7 @@ jobs:
                   EXPECTED_ANDROID_PACKAGE=""
                   IOS_BUNDLE_IDENTIFIER=""
                   SERVER_URL=""
+                  NATIVE_CHANGED_FILES=""
 
                   if [ -n "${PR_USER:-}" ]; then
                     PERMISSION="$(
@@ -101,6 +119,47 @@ jobs:
                     esac
                   fi
 
+                  if [ "$ALLOWED" = "true" ]; then
+                    LABEL_BUILD="$(
+                      jq -r '.[].name' <<< "$PR_LABELS_JSON" |
+                        grep -Eix 'native-build|eas-native-build' >/dev/null &&
+                        echo true || echo false
+                    )"
+
+                    gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files" \
+                      --paginate \
+                      --jq '.[].filename' > /tmp/pr-files
+
+                    while IFS= read -r FILE; do
+                      case "$FILE" in
+                        .tool-versions | \
+                        package.json | \
+                        pnpm-lock.yaml | \
+                        pnpm-workspace.yaml | \
+                        apps/mobile/app.config.js | \
+                        apps/mobile/app.json | \
+                        apps/mobile/eas.json | \
+                        apps/mobile/package.json | \
+                        apps/mobile/assets/* | \
+                        apps/mobile/plugins/* | \
+                        apps/mobile/credentials* | \
+                        apps/mobile/google-services*.json)
+                          NATIVE_CHANGED_FILES="${NATIVE_CHANGED_FILES}${FILE}"$'\n'
+                          ;;
+                      esac
+                    done < /tmp/pr-files
+
+                    if [ "$LABEL_BUILD" = "true" ]; then
+                      SHOULD_BUILD=true
+                      BUILD_REASON="native-build label"
+                    elif [ -n "$NATIVE_CHANGED_FILES" ]; then
+                      SHOULD_BUILD=true
+                      BUILD_REASON="native/runtime-affecting file changes"
+                    else
+                      REASON="no native/runtime-affecting file changes and no native-build label"
+                    fi
+                  fi
+
                   {
                     echo "allowed=$ALLOWED"
                     echo "channel=$CHANNEL"
@@ -108,6 +167,7 @@ jobs:
                     echo "enable_dev_build=$ENABLE_DEV_BUILD"
                     echo "expected_android_package=$EXPECTED_ANDROID_PACKAGE"
                     echo "ios_bundle_identifier=$IOS_BUNDLE_IDENTIFIER"
+                    echo "should_build=$SHOULD_BUILD"
                     echo "profile=$PROFILE"
                     echo "server_url=$SERVER_URL"
                   } >> "$GITHUB_OUTPUT"
@@ -123,6 +183,17 @@ jobs:
                     if [ "$ALLOWED" = "true" ]; then
                       echo "- EAS profile: \`$PROFILE\`"
                       echo "- Channel: \`$CHANNEL\`"
+                      echo "- Will run EAS build: \`$SHOULD_BUILD\`"
+                      if [ "$SHOULD_BUILD" = "true" ]; then
+                        echo "- Build reason: $BUILD_REASON"
+                        if [ -n "$NATIVE_CHANGED_FILES" ]; then
+                          echo ""
+                          echo "Native/runtime-affecting files:"
+                          printf '%s' "$NATIVE_CHANGED_FILES" | sed 's/^/- `/' | sed 's/$/`/'
+                        fi
+                      else
+                        echo "- Skip reason: $REASON"
+                      fi
                     else
                       echo "- Skip reason: $REASON"
                     fi
@@ -131,7 +202,7 @@ jobs:
     native-build:
         name: EAS native build
         needs: policy
-        if: needs.policy.outputs.allowed == 'true'
+        if: needs.policy.outputs.should_build == 'true'
         runs-on: ubuntu-latest
         env:
             EAS_BUILD_PROFILE: ${{ needs.policy.outputs.profile }}
