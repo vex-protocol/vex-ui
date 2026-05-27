@@ -311,7 +311,7 @@ jobs:
                   VEX_ENABLE_DEV_BUILD: "0"
               run: node scripts/prepare-eas-build-env.cjs
 
-            - name: Build production Android APK
+            - name: Build production native artifacts
               if: steps.decide.outputs.path == 'build'
               working-directory: apps/mobile
               env:
@@ -328,22 +328,21 @@ jobs:
               run: |
                   eas build \
                     --profile production \
-                    --platform android \
+                    --platform all \
                     --non-interactive \
                     --wait \
                     --message "production ${GITHUB_SHA::8}" \
-                    --json > /tmp/android-build.json \
+                    --json > /tmp/native-builds.json \
                     2> >(node scripts/redact-eas-log.cjs)
 
                   node <<'NODE' > /tmp/android-artifact-url
                   const fs = require("node:fs");
-                  const raw = fs.readFileSync("/tmp/android-build.json", "utf8");
+                  const raw = fs.readFileSync("/tmp/native-builds.json", "utf8");
                   const parsed = JSON.parse(raw);
                   const builds = Array.isArray(parsed) ? parsed : [parsed];
-                  const build =
-                    builds.find((candidate) =>
-                      String(candidate?.platform ?? "").toLowerCase() === "android"
-                    ) ?? builds[0];
+                  const build = builds.find((candidate) =>
+                    String(candidate?.platform ?? "").toLowerCase() === "android"
+                  );
                   const artifactUrl = build?.artifacts?.applicationArchiveUrl;
                   if (!artifactUrl) {
                     console.error("EAS Android build output did not include an APK artifact URL.");
@@ -358,37 +357,16 @@ jobs:
                     --output "${{ github.workspace }}/release.apk"
                   test -s "${{ github.workspace }}/release.apk"
 
-            - name: Build production iOS Ad Hoc
-              if: steps.decide.outputs.path == 'build'
-              working-directory: apps/mobile
-              env:
-                  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-                  EAS_BUILD_PROFILE: production
-                  EXPO_PUBLIC_ENABLE_DEV_SERVER: "0"
-                  EXPO_PUBLIC_SERVER_URL: api.vex.wtf
-                  EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.version.outputs.version }}
-                  EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
-                  VEX_APP_ENV: production
-                  VEX_APP_DISPLAY_NAME: Vex
-                  VEX_APP_VERSION: ${{ steps.version.outputs.version }}
-                  VEX_ENABLE_DEV_BUILD: "0"
-              run: |
-                  eas build \
-                    --profile production \
-                    --platform ios \
-                    --non-interactive \
-                    --wait \
-                    --message "production ${GITHUB_SHA::8}" \
-                    --json > /tmp/ios-build.json \
-                    2> >(node scripts/redact-eas-log.cjs)
-
                   node <<'NODE'
                   const fs = require("node:fs");
                   const path = require("node:path");
 
-                  const raw = fs.readFileSync("/tmp/ios-build.json", "utf8");
+                  const raw = fs.readFileSync("/tmp/native-builds.json", "utf8");
                   const parsed = JSON.parse(raw);
-                  const build = Array.isArray(parsed) ? parsed[0] : parsed;
+                  const builds = Array.isArray(parsed) ? parsed : [parsed];
+                  const build = builds.find((candidate) =>
+                    String(candidate?.platform ?? "").toLowerCase() === "ios"
+                  );
                   if (!build?.id) {
                     console.error("EAS iOS build output did not include a build id.");
                     process.exit(1);
