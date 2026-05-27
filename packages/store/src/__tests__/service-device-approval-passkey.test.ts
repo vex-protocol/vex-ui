@@ -304,8 +304,8 @@ describe("vexService device approval passkeys", () => {
             vexService.publishDeferredDeviceApprovalAndStartWatching(keyStore),
         ).resolves.toEqual({ ok: true });
         await vi.advanceTimersByTimeAsync(2000);
-        await vi.advanceTimersByTimeAsync(750);
-        await vi.advanceTimersByTimeAsync(750);
+        await vi.advanceTimersByTimeAsync(1500);
+        await vi.advanceTimersByTimeAsync(1500);
 
         expect(client.passkeys.beginAuthentication).not.toHaveBeenCalled();
         expect(authenticate).not.toHaveBeenCalled();
@@ -358,7 +358,7 @@ describe("vexService device approval passkeys", () => {
         await expect(
             vexService.publishDeferredDeviceApprovalAndStartWatching(keyStore),
         ).resolves.toEqual({ ok: true });
-        await vi.advanceTimersByTimeAsync(2000 + 20 * 750 + 100);
+        await vi.advanceTimersByTimeAsync(2000 + 2 * 60 * 1000 + 100);
 
         expect(client.passkeys.beginAuthentication).not.toHaveBeenCalled();
         expect(authenticate).not.toHaveBeenCalled();

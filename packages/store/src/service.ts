@@ -392,8 +392,8 @@ interface WebSocketDebugLike {
 
 const REGISTER_STEP_TIMEOUT_MS = 12000;
 const PASSKEY_SETUP_TIMEOUT_MS = 5 * 60 * 1000;
-const APPROVED_DEVICE_LOGIN_ATTEMPTS = 20;
-const APPROVED_DEVICE_LOGIN_RETRY_MS = 750;
+const APPROVED_DEVICE_LOGIN_RETRY_MS = 1500;
+const APPROVED_DEVICE_LOGIN_TIMEOUT_MS = 2 * 60 * 1000;
 const DEVICE_AUTH_REFRESH_THRESHOLD_MS = 6 * 24 * 60 * 60 * 1000;
 const DEVICE_AUTH_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const LOCAL_DECRYPT_RECOVERY_ERROR =
@@ -3134,11 +3134,8 @@ class VexService {
         requestID: string,
     ): Promise<Error | null> {
         let lastErr: Error | null = null;
-        for (
-            let attempt = 0;
-            attempt < APPROVED_DEVICE_LOGIN_ATTEMPTS;
-            attempt++
-        ) {
+        const deadline = Date.now() + APPROVED_DEVICE_LOGIN_TIMEOUT_MS;
+        for (let attempt = 0; ; attempt++) {
             const authErr = await this.loginWithDeviceKeyWithRetry(
                 client,
                 deviceID,
@@ -3152,13 +3149,19 @@ class VexService {
             }
             debugAuth("approvalWatcher:approvedDevicePasskeyGatePending", {
                 attempt,
+                remainingMs: Math.max(0, deadline - Date.now()),
                 requestID,
             });
-            if (attempt === APPROVED_DEVICE_LOGIN_ATTEMPTS - 1) {
+            const remainingMs = deadline - Date.now();
+            if (remainingMs <= 0) {
                 break;
             }
-            await waitMs(APPROVED_DEVICE_LOGIN_RETRY_MS);
+            await waitMs(Math.min(APPROVED_DEVICE_LOGIN_RETRY_MS, remainingMs));
         }
+        debugAuth("approvalWatcher:approvedDevicePasskeyGateTimeout", {
+            message: lastErr ? errorMessage(lastErr) : null,
+            requestID,
+        });
         return lastErr;
     }
 

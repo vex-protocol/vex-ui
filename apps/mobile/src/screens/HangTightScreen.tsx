@@ -2,6 +2,7 @@ import type { AuthScreenProps } from "../navigation/types";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+    Alert,
     Animated,
     Easing,
     Keyboard,
@@ -29,6 +30,7 @@ import { CornerBracketBox } from "../components/CornerBracketBox";
 import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
 import { VexLogo } from "../components/VexLogo";
+import { buildInfo } from "../lib/buildInfo";
 import { getServerOptions } from "../lib/config";
 import {
     clearAllCredentials,
@@ -514,7 +516,7 @@ export function HangTightScreen({
         navigation.replace("AccountSelector");
     };
 
-    const handleResetLocalAccounts = () => {
+    const resetLocalAccounts = () => {
         if (busy) {
             return;
         }
@@ -539,7 +541,29 @@ export function HangTightScreen({
             });
     };
 
+    const handleResetLocalAccounts = () => {
+        if (busy || !showResetLocalAccounts) {
+            return;
+        }
+        Alert.alert(
+            "Reset local accounts?",
+            "This removes saved Vex accounts from this device only. It does not delete accounts or devices from the server.",
+            [
+                { style: "cancel", text: "Cancel" },
+                {
+                    onPress: resetLocalAccounts,
+                    style: "destructive",
+                    text: "Reset",
+                },
+            ],
+        );
+    };
+
     const handleValid = HANDLE_PATTERN.test(username.trim());
+    const showResetLocalAccounts =
+        __DEV__ ||
+        buildInfo.environment === "development" ||
+        buildInfo.channel === "development";
     const showHint = username.length > 0;
     const cornerColor = focused ? colors.accent : colors.border;
 
@@ -865,12 +889,14 @@ export function HangTightScreen({
                             title="Choose another account"
                             variant="outline"
                         />
-                        <VexButton
-                            disabled={busy}
-                            onPress={handleResetLocalAccounts}
-                            title="Reset local accounts"
-                            variant="outline"
-                        />
+                        {showResetLocalAccounts ? (
+                            <VexButton
+                                disabled={busy}
+                                onPress={handleResetLocalAccounts}
+                                title="Reset local accounts"
+                                variant="danger"
+                            />
+                        ) : null}
                     </View>
                 ) : null}
             </View>
