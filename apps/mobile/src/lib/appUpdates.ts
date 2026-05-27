@@ -581,6 +581,18 @@ function isNativeReleaseNewer(
     return false;
 }
 
+function isOtaRuntimeCompatible(
+    release: NativeReleaseInfo | undefined,
+): boolean {
+    const releaseFingerprint = normalizeFingerprint(release?.fingerprint);
+    const buildFingerprint = normalizeFingerprint(buildInfo.fingerprint);
+    return (
+        releaseFingerprint != null &&
+        buildFingerprint != null &&
+        releaseFingerprint === buildFingerprint
+    );
+}
+
 function normalizeFingerprint(value: string | undefined): string | undefined {
     if (!value) return undefined;
     const trimmed = value.trim().toLowerCase();
@@ -645,6 +657,8 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
 
     const runningLatestCommit =
         latestCommit != null && sameCommit(buildInfo.commit, latestCommit.sha);
+    const canUseOtaUpdates = Updates.isEnabled && !__DEV__;
+    const branchHasNewerCommit = latestCommit != null && !runningLatestCommit;
     const nativeUpdateAvailable =
         (Platform.OS === "android" || Platform.OS === "ios") &&
         isNativeReleaseNewer(
@@ -653,16 +667,22 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
             releaseCompareStatus,
             releaseCandidateRunPending,
         );
-    const otaUpdateAvailable = ota.isAvailable && !runningLatestCommit;
+    const otaUpdateAvailable =
+        canUseOtaUpdates &&
+        branchHasNewerCommit &&
+        (ota.isAvailable || isOtaRuntimeCompatible(nativeRelease));
 
     if (otaUpdateAvailable) {
         return {
             checkedAt,
             latestCommit,
             message: latestCommit
-                ? `Compatible OTA available at ${latestCommit.shortSha}.`
+                ? ota.isAvailable
+                    ? `Compatible OTA available at ${latestCommit.shortSha}.`
+                    : `Compatible OTA runtime detected for ${latestCommit.shortSha}.`
                 : "Compatible OTA update available.",
             nativeRelease,
+            otaCheckError: ota.error,
             otaUpdateAvailable: true,
             releaseTarget: target,
             status: "ota_available",

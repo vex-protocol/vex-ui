@@ -74,6 +74,7 @@ import {
     runtimeNotifiedMailIDs,
 } from "./lib/runtimeNotificationDedupe";
 import { getIncomingShareIntent, type IncomingShare } from "./lib/shareIntent";
+import { usePendingOtaReload } from "./lib/usePendingOtaReload";
 import {
     navigateToAboutSettings,
     navigateToDeviceRequests,
@@ -117,6 +118,15 @@ function MainApp() {
     const lastHandledShareIDRef = useRef<null | string>(null);
     const seenPendingRequestIDsRef = useRef<Set<string>>(new Set());
     const userID = user?.userID;
+
+    const handlePendingOtaReloadError = useCallback((message: string) => {
+        console.warn("[vex-update] failed to reload pending OTA", message);
+        setAppUpdateNotice({
+            message: "Restart Vex to finish installing the downloaded update.",
+            title: "Update ready",
+        });
+    }, []);
+    usePendingOtaReload({ onError: handlePendingOtaReloadError });
 
     const flushPendingInviteRoute = useCallback(() => {
         const inviteID = pendingInviteIDRef.current;
