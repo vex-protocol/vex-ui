@@ -1,4 +1,3 @@
-import type { AppScreenProps } from "../navigation/types";
 import type { Passkey } from "@vex-chat/libvex";
 
 import React, { useCallback, useEffect, useState } from "react";
@@ -35,7 +34,7 @@ interface AddState {
 
 const DEFAULT_PASSKEY_NAME_HINT = "iPhone, Yubikey, etc.";
 
-export function PasskeysScreen({ navigation }: AppScreenProps<"Passkeys">) {
+export function PasskeysScreen() {
     const [passkeys, setPasskeys] = useState<Passkey[]>([]);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<null | string>(null);
@@ -174,12 +173,7 @@ export function PasskeysScreen({ navigation }: AppScreenProps<"Passkeys">) {
 
     return (
         <View style={styles.container}>
-            <ChatHeader
-                onBack={() => {
-                    navigation.goBack();
-                }}
-                title="Passkeys"
-            />
+            <ChatHeader title="Passkeys" />
             <ScrollView
                 contentContainerStyle={styles.content}
                 refreshControl={

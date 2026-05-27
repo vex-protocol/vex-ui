@@ -1,5 +1,3 @@
-import type { AppScreenProps } from "../navigation/types";
-
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     RefreshControl,
@@ -21,9 +19,7 @@ import { MenuRow, MenuSection } from "../components/MenuRow";
 import { matchingCodeForSignKey } from "../lib/deviceApprovalCode";
 import { colors, typography } from "../theme";
 
-export function DeviceRequestsScreen({
-    navigation,
-}: AppScreenProps<"DeviceRequests">) {
+export function DeviceRequestsScreen() {
     const user = useStore($user);
     const [deviceRequestBusy, setDeviceRequestBusy] = useState<
         Record<string, boolean>
@@ -122,12 +118,7 @@ export function DeviceRequestsScreen({
 
     return (
         <View style={styles.container}>
-            <ChatHeader
-                onBack={() => {
-                    navigation.goBack();
-                }}
-                title="Device Requests"
-            />
+            <ChatHeader title="Device Requests" />
             <ScrollView
                 contentContainerStyle={styles.content}
                 refreshControl={
