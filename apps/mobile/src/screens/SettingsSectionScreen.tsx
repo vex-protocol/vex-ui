@@ -491,24 +491,35 @@ export function SettingsSectionScreen({
     const latestReleaseVersion =
         appUpdateState.nativeRelease?.tagName?.match(/^mobile-v(.+)$/)?.[1] ??
         buildInfo.version;
-    const latestShortCommit =
-        appUpdateState.latestCommit?.shortSha ??
-        appUpdateState.nativeRelease?.targetShortCommit;
+    const latestNativeVersionValue = appUpdateState.nativeRelease
+        ?.targetShortCommit
+        ? formatReleaseLabel(
+              latestReleaseVersion,
+              appUpdateState.nativeRelease.targetShortCommit,
+              appUpdateState.releaseTarget,
+          )
+        : latestReleaseVersion;
+    const latestOtaVersionValue = appUpdateState.otaUpdate?.shortCommit
+        ? formatReleaseLabel(
+              buildInfo.version,
+              appUpdateState.otaUpdate.shortCommit,
+              appUpdateState.releaseTarget,
+          )
+        : appUpdateState.otaUpdate?.shortId
+          ? `OTA ${appUpdateState.otaUpdate.shortId}`
+          : undefined;
     const latestVersionValue =
-        latestShortCommit != null
-            ? formatReleaseLabel(
-                  latestReleaseVersion,
-                  latestShortCommit,
-                  appUpdateState.releaseTarget,
-              )
-            : latestReleaseVersion;
+        appUpdateState.status === "ota_available" ||
+        appUpdateState.status === "ota_ready"
+            ? (latestOtaVersionValue ?? latestNativeVersionValue)
+            : appUpdateState.status === "apk_available"
+              ? latestNativeVersionValue
+              : buildInfo.displayVersion;
     const latestVersionDescription =
         latestVersionValue !== "unknown"
             ? `Latest ${latestVersionValue}`
             : undefined;
-    const isLatestVerified =
-        appUpdateState.status === "current" &&
-        commitsMatch(buildInfo.commit, appUpdateState.latestCommit?.sha);
+    const isLatestVerified = appUpdateState.status === "current";
     const aboutUpdateLoaded =
         appUpdateState.status !== "checking" &&
         appUpdateState.status !== "idle";
@@ -1233,16 +1244,6 @@ export function SettingsSectionScreen({
     );
 }
 
-function commitsMatch(
-    left: string | undefined,
-    right: string | undefined,
-): boolean {
-    const a = normalizeCommit(left);
-    const b = normalizeCommit(right);
-    if (!a || !b) return false;
-    return a === b || a.startsWith(b) || b.startsWith(a);
-}
-
 function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
 }
@@ -1280,12 +1281,6 @@ function InlineActionButton({
             <Text style={styles.inlineActionText}>{label}</Text>
         </Pressable>
     );
-}
-
-function normalizeCommit(value: string | undefined): string | undefined {
-    if (!value) return undefined;
-    const trimmed = value.trim().toLowerCase();
-    return /^[a-f0-9]{7,40}$/.test(trimmed) ? trimmed : undefined;
 }
 
 function VerifiedCheck() {

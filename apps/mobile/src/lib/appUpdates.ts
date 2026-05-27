@@ -1,3 +1,5 @@
+import type { Manifest } from "expo-updates";
+
 import { Linking, Platform } from "react-native";
 
 import * as Crypto from "expo-crypto";
@@ -13,10 +15,10 @@ export interface AppUpdateState {
     apkDownloadProgress?: number | undefined;
     checkedAt?: string | undefined;
     error?: string | undefined;
-    latestCommit?: GitHubCommitInfo | undefined;
     message?: string | undefined;
     nativeRelease?: NativeReleaseInfo | undefined;
     otaCheckError?: string | undefined;
+    otaUpdate?: OtaUpdateInfo | undefined;
     otaUpdateAvailable?: boolean | undefined;
     releaseTarget: "development" | "production";
     status: AppUpdateStatus;
@@ -33,13 +35,6 @@ export type AppUpdateStatus =
     | "ota_ready"
     | "unsupported";
 
-export interface GitHubCommitInfo {
-    committedAt?: string | undefined;
-    htmlUrl?: string | undefined;
-    sha: string;
-    shortSha: string;
-}
-
 export interface NativeReleaseInfo {
     apkName?: string | undefined;
     apkUrl?: string | undefined;
@@ -53,6 +48,17 @@ export interface NativeReleaseInfo {
     tagName: string;
     targetCommit?: string | undefined;
     targetShortCommit?: string | undefined;
+}
+
+export interface OtaUpdateInfo {
+    branchName?: string | undefined;
+    commit?: string | undefined;
+    createdAt?: string | undefined;
+    group?: string | undefined;
+    id?: string | undefined;
+    runtimeVersion?: string | undefined;
+    shortCommit?: string | undefined;
+    shortId?: string | undefined;
 }
 
 interface FetchOtaUpdateOptions {
@@ -238,6 +244,9 @@ export async function fetchOtaUpdate(
             message: result.isNew
                 ? "OTA update downloaded. Restart Vex to run it."
                 : "No newer OTA update was downloaded.",
+            otaUpdate: result.manifest
+                ? otaUpdateInfoFromManifest(result.manifest)
+                : $appUpdateState.get().otaUpdate,
             otaUpdateAvailable: result.isNew,
             releaseTarget: getReleaseTarget(),
             status: result.isNew ? "ota_ready" : "current",
@@ -319,6 +328,8 @@ function asRecord(value: unknown): Record<string, unknown> {
 async function checkOtaUpdate(): Promise<{
     error?: string;
     isAvailable: boolean;
+    reason?: string | undefined;
+    update?: OtaUpdateInfo | undefined;
 }> {
     if (!Updates.isEnabled || __DEV__) {
         return {
@@ -327,7 +338,13 @@ async function checkOtaUpdate(): Promise<{
         };
     }
     const result = await Updates.checkForUpdateAsync();
-    return { isAvailable: result.isAvailable };
+    return {
+        isAvailable: result.isAvailable,
+        reason: result.reason,
+        update: result.manifest
+            ? otaUpdateInfoFromManifest(result.manifest)
+            : undefined,
+    };
 }
 
 function errorMessage(err: unknown): string {
@@ -401,26 +418,6 @@ async function fetchIosInstallInfo(url: string | undefined): Promise<
                 stringField(ios, "buildUrl") ??
                 stringField(ios, "url"),
         ),
-    };
-}
-
-async function fetchLatestCommit(branch: string): Promise<GitHubCommitInfo> {
-    const record = asRecord(
-        await fetchGitHubJson(`${GITHUB_API_BASE}/commits/${branch}`),
-    );
-    const sha = stringField(record, "sha");
-    if (!sha) {
-        throw new Error("GitHub commit response did not include a SHA.");
-    }
-    const commitRecord = asRecord(record["commit"]);
-    const committer = asRecord(commitRecord["committer"]);
-    const author = asRecord(commitRecord["author"]);
-    return {
-        committedAt:
-            stringField(committer, "date") ?? stringField(author, "date"),
-        htmlUrl: stringField(record, "html_url"),
-        sha,
-        shortSha: sha.slice(0, 8).toLowerCase(),
     };
 }
 
@@ -503,31 +500,6 @@ async function fetchNativeRelease(
     };
 }
 
-async function fetchReleaseCandidateRunPending(
-    commit: string | undefined,
-): Promise<boolean> {
-    const sha = normalizeSha(commit);
-    if (!sha) return false;
-    const params = new URLSearchParams({
-        branch: "development",
-        event: "push",
-        head_sha: sha,
-        per_page: "1",
-    });
-    const record = asRecord(
-        await fetchGitHubJson(
-            `${GITHUB_API_BASE}/actions/workflows/dev-mobile.yml/runs?${params.toString()}`,
-        ),
-    );
-    const run = arrayField(record, "workflow_runs")
-        .map(asRecord)
-        .find((candidate) =>
-            sameCommit(stringField(candidate, "head_sha"), sha),
-        );
-    const status = stringField(run ?? {}, "status");
-    return status != null && status !== "completed";
-}
-
 async function fetchSha256(
     url: string | undefined,
 ): Promise<string | undefined> {
@@ -564,15 +536,10 @@ function isGitHubCompareStatus(
 
 function isNativeReleaseNewer(
     release: NativeReleaseInfo | undefined,
-    latestCommit: GitHubCommitInfo | undefined,
     releaseCompareStatus: GitHubCompareStatus | undefined,
-    releaseCandidateRunPending: boolean,
 ): boolean {
     if (!release) return false;
-    if (
-        sameCommit(buildInfo.commit, latestCommit?.sha) ||
-        sameCommit(buildInfo.commit, release.targetCommit)
-    ) {
+    if (sameCommit(buildInfo.commit, release.targetCommit)) {
         return false;
     }
     // APK releases are native baselines and may lag branch HEAD after OTA-only
@@ -580,7 +547,11 @@ function isNativeReleaseNewer(
     if (releaseCompareStatus === "ahead") {
         return false;
     }
-    if (releaseCandidateRunPending) {
+    if (
+        release.targetCommit != null &&
+        normalizeSha(buildInfo.commit) != null &&
+        releaseCompareStatus == null
+    ) {
         return false;
     }
 
@@ -608,18 +579,6 @@ function isNativeReleaseNewer(
     return false;
 }
 
-function isOtaRuntimeCompatible(
-    release: NativeReleaseInfo | undefined,
-): boolean {
-    const releaseFingerprint = normalizeFingerprint(release?.fingerprint);
-    const buildFingerprint = normalizeFingerprint(buildInfo.fingerprint);
-    return (
-        releaseFingerprint != null &&
-        buildFingerprint != null &&
-        releaseFingerprint === buildFingerprint
-    );
-}
-
 function normalizeFingerprint(value: string | undefined): string | undefined {
     if (!value) return undefined;
     const trimmed = value.trim().toLowerCase();
@@ -644,19 +603,40 @@ function normalizeSha(value: string | undefined): string | undefined {
     return /^[a-f0-9]{7,40}$/.test(trimmed) ? trimmed : undefined;
 }
 
+function otaUpdateInfoFromManifest(manifest: Manifest): OtaUpdateInfo {
+    const record = asRecord(manifest);
+    const metadata = asRecord(record["metadata"]);
+    const extra = asRecord(record["extra"]);
+    const expoClient = asRecord(extra["expoClient"]);
+    const expoExtra = asRecord(expoClient["extra"]);
+    const vexExtra = asRecord(expoExtra["vex"]);
+    const commit = normalizeSha(
+        stringField(vexExtra, "commit") ??
+            stringField(vexExtra, "commitSha") ??
+            stringField(metadata, "gitCommitHash"),
+    );
+    const id = stringField(record, "id");
+    return {
+        branchName: stringField(metadata, "branchName"),
+        commit,
+        createdAt: stringField(record, "createdAt"),
+        group: stringField(metadata, "updateGroup"),
+        id,
+        runtimeVersion: stringField(record, "runtimeVersion"),
+        shortCommit: commit?.slice(0, 8),
+        shortId: id?.slice(0, 8),
+    };
+}
+
 async function runUpdateCheck(): Promise<AppUpdateState> {
     const target = getReleaseTarget();
-    const branch = target === "development" ? "development" : "master";
     const checkedAt = new Date().toISOString();
 
-    const [commitResult, releaseResult, otaResult] = await Promise.allSettled([
-        fetchLatestCommit(branch),
+    const [releaseResult, otaResult] = await Promise.allSettled([
         fetchNativeRelease(target),
         checkOtaUpdate(),
     ]);
 
-    const latestCommit =
-        commitResult.status === "fulfilled" ? commitResult.value : undefined;
     const nativeRelease =
         releaseResult.status === "fulfilled" ? releaseResult.value : undefined;
     const releaseCompareStatus =
@@ -666,14 +646,6 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
                   buildInfo.commit,
               ).catch(() => undefined)
             : undefined;
-    const releaseCandidateRunPending =
-        target === "development" &&
-        latestCommit != null &&
-        nativeRelease?.targetCommit != null &&
-        !sameCommit(nativeRelease.targetCommit, latestCommit.sha) &&
-        (await fetchReleaseCandidateRunPending(latestCommit.sha).catch(
-            () => false,
-        ));
     const ota =
         otaResult.status === "fulfilled"
             ? otaResult.value
@@ -682,35 +654,22 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
                   isAvailable: false,
               };
 
-    const runningLatestCommit =
-        latestCommit != null && sameCommit(buildInfo.commit, latestCommit.sha);
     const canUseOtaUpdates = Updates.isEnabled && !__DEV__;
-    const branchHasNewerCommit = latestCommit != null && !runningLatestCommit;
     const nativeUpdateAvailable =
         (Platform.OS === "android" || Platform.OS === "ios") &&
-        isNativeReleaseNewer(
-            nativeRelease,
-            latestCommit,
-            releaseCompareStatus,
-            releaseCandidateRunPending,
-        );
-    const otaUpdateAvailable =
-        canUseOtaUpdates &&
-        branchHasNewerCommit &&
-        (ota.isAvailable ||
-            (ota.error == null && isOtaRuntimeCompatible(nativeRelease)));
+        isNativeReleaseNewer(nativeRelease, releaseCompareStatus);
 
-    if (otaUpdateAvailable) {
+    if (canUseOtaUpdates && ota.isAvailable) {
         return {
             checkedAt,
-            latestCommit,
-            message: latestCommit
-                ? ota.isAvailable
-                    ? `Compatible OTA available at ${latestCommit.shortSha}.`
-                    : `Compatible OTA runtime detected for ${latestCommit.shortSha}.`
-                : "Compatible OTA update available.",
+            message: ota.update?.shortCommit
+                ? `Expo OTA available at ${ota.update.shortCommit}.`
+                : ota.update?.shortId
+                  ? `Expo OTA available (${ota.update.shortId}).`
+                  : "Expo OTA update available.",
             nativeRelease,
             otaCheckError: ota.error,
+            otaUpdate: ota.update,
             otaUpdateAvailable: true,
             releaseTarget: target,
             status: "ota_available",
@@ -720,13 +679,13 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
     if (nativeUpdateAvailable && nativeRelease) {
         return {
             checkedAt,
-            latestCommit,
             message:
                 Platform.OS === "ios"
                     ? "Native runtime changed. Install the latest Vex build."
                     : "Native runtime changed. Install the latest APK.",
             nativeRelease,
             otaCheckError: ota.error,
+            otaUpdate: ota.update,
             otaUpdateAvailable: false,
             releaseTarget: target,
             status: "apk_available",
@@ -736,10 +695,10 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
     if (!Updates.isEnabled || __DEV__) {
         return {
             checkedAt,
-            latestCommit,
             message: "OTA updates are unavailable in this local build.",
             nativeRelease,
             otaCheckError: ota.error,
+            otaUpdate: ota.update,
             otaUpdateAvailable: false,
             releaseTarget: target,
             status: "unsupported",
@@ -748,17 +707,12 @@ async function runUpdateCheck(): Promise<AppUpdateState> {
 
     return {
         checkedAt,
-        latestCommit,
-        message:
-            releaseCandidateRunPending && latestCommit != null
-                ? `APK build is still running for ${latestCommit.shortSha}. Check again shortly.`
-                : latestCommit != null && !runningLatestCommit && ota.error
-                  ? "Could not confirm OTA availability. Continuing with installed build."
-                  : latestCommit != null && !runningLatestCommit
-                    ? "GitHub has a newer commit, but no compatible OTA is published for this runtime yet."
-                    : "Vex is up to date.",
+        message: ota.error
+            ? "Could not confirm Expo OTA availability. Continuing with installed build."
+            : "Vex is up to date.",
         nativeRelease,
         otaCheckError: ota.error,
+        otaUpdate: ota.update,
         otaUpdateAvailable: false,
         releaseTarget: target,
         status: "current",

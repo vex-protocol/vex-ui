@@ -96,7 +96,7 @@ jobs:
                   GOOGLE_SERVICES_JSON: ${{ secrets.VEX_ANDROID_GOOGLE_SERVICES_PROD_JSON }}
                   GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.VEX_ANDROID_GOOGLE_SERVICES_PROD_JSON_BASE64 }}
               run: |
-                  GOOGLE_SERVICES_PATH="ci-google-services.prod.json"
+                  GOOGLE_SERVICES_PATH="google-services.prod.json"
                   export GOOGLE_SERVICES_PATH
                   if [ -n "${GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
                     printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > "$GOOGLE_SERVICES_PATH"
@@ -132,6 +132,9 @@ jobs:
                   VEX_APP_DISPLAY_NAME: Vex
                   VEX_APP_VERSION: ${{ steps.baseline.outputs.base_version }}
                   VEX_ENABLE_DEV_BUILD: "0"
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile
+                  VEX_PASSKEY_RP_HOST: api.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: |
                   npx expo-updates fingerprint:generate --platform android --workflow managed > /tmp/current-fingerprint-android.json
                   npx expo-updates fingerprint:generate --platform ios --workflow managed > /tmp/current-fingerprint-ios.json
@@ -216,6 +219,9 @@ jobs:
                   VEX_APP_DISPLAY_NAME: Vex
                   VEX_APP_VERSION: ${{ steps.baseline.outputs.base_version }}
                   VEX_ENABLE_DEV_BUILD: "0"
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile
+                  VEX_PASSKEY_RP_HOST: api.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: |
                   eas update \
                     --channel production \
@@ -281,6 +287,9 @@ jobs:
                   VEX_APP_DISPLAY_NAME: Vex
                   VEX_APP_VERSION: ${{ steps.version.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "0"
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile
+                  VEX_PASSKEY_RP_HOST: api.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: |
                   npx expo-updates fingerprint:generate --platform android --workflow managed > /tmp/current-fingerprint-android.json
                   npx expo-updates fingerprint:generate --platform ios --workflow managed > /tmp/current-fingerprint-ios.json
@@ -309,6 +318,9 @@ jobs:
                   VEX_APP_DISPLAY_NAME: Vex
                   VEX_APP_VERSION: ${{ steps.version.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "0"
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile
+                  VEX_PASSKEY_RP_HOST: api.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: node scripts/prepare-eas-build-env.cjs
 
             - name: Build production native artifacts
@@ -325,6 +337,9 @@ jobs:
                   VEX_APP_DISPLAY_NAME: Vex
                   VEX_APP_VERSION: ${{ steps.version.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "0"
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile
+                  VEX_PASSKEY_RP_HOST: api.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: |
                   eas build \
                     --profile production \

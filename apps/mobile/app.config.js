@@ -68,7 +68,7 @@ module.exports = ({ config }) => {
         process.env.VEX_DISABLE_IOS_CAPABILITIES !== "1";
     const appDisplayName =
         process.env.VEX_APP_DISPLAY_NAME ||
-        (devMode ? "Vex Developer" : config.name);
+        (devMode ? "Vex Development" : config.name);
     const iconPath = devMode
         ? "./assets/icon-dev.png"
         : "./assets/icon-prod.png";
