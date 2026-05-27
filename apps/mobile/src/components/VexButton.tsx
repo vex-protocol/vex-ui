@@ -19,7 +19,7 @@ interface VexButtonProps {
     onPress: () => void;
     style?: ViewStyle;
     title: string;
-    variant?: "outline" | "primary";
+    variant?: "danger" | "outline" | "primary";
 }
 
 export function VexButton({
@@ -31,11 +31,19 @@ export function VexButton({
     title,
     variant = "primary",
 }: VexButtonProps) {
+    const isDanger = variant === "danger";
     const isPrimary = variant === "primary";
+    const isFilled = isPrimary || isDanger;
 
     return (
         <CornerBracketBox
-            color={isPrimary ? colors.accent : colors.border}
+            color={
+                isDanger
+                    ? colors.error
+                    : isPrimary
+                      ? colors.accent
+                      : colors.border
+            }
             size={8}
             style={StyleSheet.flatten([glow && styles.glow, style])}
         >
@@ -43,12 +51,16 @@ export function VexButton({
                 activeOpacity={0.7}
                 disabled={disabled || loading}
                 onPress={() => {
-                    haptic(isPrimary ? "confirm" : "tap");
+                    haptic(isFilled ? "confirm" : "tap");
                     onPress();
                 }}
                 style={[
                     styles.button,
-                    isPrimary ? styles.primary : styles.outline,
+                    isDanger
+                        ? styles.danger
+                        : isPrimary
+                          ? styles.primary
+                          : styles.outline,
                     (disabled || loading) && styles.disabled,
                 ]}
             >
@@ -56,7 +68,7 @@ export function VexButton({
                     <ActivityIndicator color={colors.text} size="small" />
                 ) : (
                     <Text
-                        style={[styles.text, !isPrimary && styles.outlineText]}
+                        style={[styles.text, !isFilled && styles.outlineText]}
                     >
                         {title}
                     </Text>
@@ -72,6 +84,9 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         paddingHorizontal: 48,
         paddingVertical: 14,
+    },
+    danger: {
+        backgroundColor: colors.error,
     },
     disabled: {
         opacity: 0.4,
