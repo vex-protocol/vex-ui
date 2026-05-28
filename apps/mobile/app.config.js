@@ -55,6 +55,11 @@ function resolveHost(value) {
     }
 }
 
+function resolveRuntimeVersion(value) {
+    const raw = value?.trim();
+    return raw && raw.length > 0 ? raw : undefined;
+}
+
 module.exports = ({ config }) => {
     const requestedEnvironment = process.env.VEX_APP_ENV;
     const devFlavorEnabled =
@@ -95,6 +100,15 @@ module.exports = ({ config }) => {
     const passkeyAssociatedDomain = `webcredentials:${passkeyRpHost}${
         useDeveloperAssociatedDomain ? "?mode=developer" : ""
     }`;
+    const runtimeVersionOverride = resolveRuntimeVersion(
+        process.env.VEX_RUNTIME_VERSION,
+    );
+    const androidRuntimeVersionOverride =
+        resolveRuntimeVersion(process.env.VEX_ANDROID_RUNTIME_VERSION) ??
+        runtimeVersionOverride;
+    const iosRuntimeVersionOverride =
+        resolveRuntimeVersion(process.env.VEX_IOS_RUNTIME_VERSION) ??
+        runtimeVersionOverride;
 
     // Permissions required for the optional "Always-on connection"
     // foreground-service mode (Settings → Connection). Even when the
@@ -123,6 +137,9 @@ module.exports = ({ config }) => {
         ios: {
             ...config.ios,
             bundleIdentifier: iosBundleIdentifier,
+            ...(iosRuntimeVersionOverride
+                ? { runtimeVersion: iosRuntimeVersionOverride }
+                : {}),
             associatedDomains: iosCapabilitiesEnabled
                 ? [passkeyAssociatedDomain]
                 : undefined,
@@ -138,6 +155,9 @@ module.exports = ({ config }) => {
                 foregroundImage: androidAdaptiveForegroundPath,
             },
             package: devMode ? "chat.vex.mobile.dev" : config.android?.package,
+            ...(androidRuntimeVersionOverride
+                ? { runtimeVersion: androidRuntimeVersionOverride }
+                : {}),
             ...(androidGoogleServicesFile
                 ? { googleServicesFile: androidGoogleServicesFile }
                 : {}),
