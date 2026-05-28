@@ -34,6 +34,12 @@ picked up a fresh AASA file. CI/TestFlight/App Store production builds
 do not set that override and should use plain
 `webcredentials:api.vex.wtf`.
 
+Because `?mode=developer` changes the iOS native configuration, it also
+changes Expo's fingerprint runtime. The mobile release workflows publish
+a second iOS OTA update for that developer-associated-domain runtime
+whenever the normal OTA path runs, so local iOS installs can keep taking
+OTA updates after the first native install.
+
 ## Useful knobs
 
 ```sh

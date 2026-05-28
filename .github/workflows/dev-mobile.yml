@@ -244,6 +244,32 @@ jobs:
                     --environment development \
                     --non-interactive
 
+            - name: Push iOS developer-mode OTA update
+              if: steps.decide.outputs.path == 'ota'
+              working-directory: apps/mobile
+              env:
+                  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+                  EAS_BUILD_PROFILE: development
+                  EXPO_PUBLIC_ENABLE_DEV_SERVER: "1"
+                  EXPO_PUBLIC_SERVER_URL: dev.vex.wtf
+                  EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
+                  EXPO_PUBLIC_VEX_BUILD_LABEL: ${{ steps.meta.outputs.display_version }}
+                  EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
+                  VEX_APP_ENV: development
+                  VEX_APP_DISPLAY_NAME: Vex Development
+                  VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
+                  VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile.dev
+                  VEX_PASSKEY_RP_HOST: dev.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: developer
+              run: |
+                  eas update \
+                    --channel development \
+                    --platform ios \
+                    --message "development ios-dev ${GITHUB_SHA::8}" \
+                    --environment development \
+                    --non-interactive
+
             - name: Install EAS CLI (build path)
               if: steps.decide.outputs.path == 'build'
               run: npm install -g eas-cli@latest
