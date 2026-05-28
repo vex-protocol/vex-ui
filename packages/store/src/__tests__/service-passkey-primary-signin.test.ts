@@ -253,6 +253,12 @@ describe("vexService passkey-primary sign-in", () => {
                 options,
                 keyStore,
             );
+        const duplicateApproval =
+            await vexService.requestDeviceApprovalForPasskeyAuthenticatedAccount(
+                config,
+                options,
+                keyStore,
+            );
         await vi.advanceTimersByTimeAsync(2000);
 
         expect(auth).toMatchObject({
@@ -268,12 +274,16 @@ describe("vexService passkey-primary sign-in", () => {
         });
         expect(libvexMock.create).toHaveBeenCalledOnce();
         expect(authClient.register).toHaveBeenCalledWith("blood");
+        expect(authClient.register).toHaveBeenCalledOnce();
         expect(
             authClient.devices.publishPendingRegistration,
         ).toHaveBeenCalledWith({
             challenge: "a".repeat(64),
             requestID: "pending-request",
         });
+        expect(
+            authClient.devices.publishPendingRegistration,
+        ).toHaveBeenCalledOnce();
         expect(authClient.devices.pollPendingRegistration).toHaveBeenCalledWith(
             {
                 challenge: "a".repeat(64),
@@ -291,6 +301,12 @@ describe("vexService passkey-primary sign-in", () => {
         });
         expect(authClient.connect).toHaveBeenCalledOnce();
         expect(approval).toMatchObject({
+            ok: false,
+            pendingDeviceApproval: true,
+            pendingRequestID: "pending-request",
+            pendingSignKey: "new-device-sign-key",
+        });
+        expect(duplicateApproval).toMatchObject({
             ok: false,
             pendingDeviceApproval: true,
             pendingRequestID: "pending-request",

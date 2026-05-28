@@ -247,8 +247,6 @@ export interface SendMessageOptions {
     extra?: null | string;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
 /** Server connection options — identical across all auth flows. */
 export interface ServerOptions {
     host: string;
@@ -268,6 +266,8 @@ export interface ServerOptions {
         | "warn";
     unsafeHttp?: boolean;
 }
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 export interface SessionInfo {
     authStatus:
@@ -418,6 +418,12 @@ interface PendingMessageEventMessage {
     queuedAt: number;
 }
 
+type PendingPasskeyDeviceApproval = {
+    pendingRequestID: string;
+    pendingSignKey?: string;
+    pendingUserID?: string;
+};
+
 interface PendingReactionMessage {
     attempts: number;
     message: Message;
@@ -535,10 +541,13 @@ class VexService {
         deviceKey: string;
         keyStore: KeyStore;
         localCredentials: null | StoredCredentials;
+        pendingApproval?: PendingPasskeyDeviceApproval;
         userID: string;
         username: string;
     } = null;
     private passkeyCeremonyDriver: null | PasskeyCeremonyDriver = null;
+    private passkeyDeviceApprovalRequestInFlight: null | Promise<AuthResult> =
+        null;
     private pendingApprovalWatchCancel: (() => void) | null = null;
     private readonly pendingMessageEventMessages = new Map<
         string,
@@ -1017,10 +1026,15 @@ class VexService {
         this.stopPendingApprovalWatcher();
         this.activePendingDeviceApproval = null;
         this.deferredDeviceApproval = null;
+        if (this.passkeyAccountSession?.pendingApproval) {
+            delete this.passkeyAccountSession.pendingApproval;
+        }
+        this.passkeyDeviceApprovalRequestInFlight = null;
         $pendingApprovalStageWritable.set("idle");
     }
 
     async close(): Promise<void> {
+        this.passkeyDeviceApprovalRequestInFlight = null;
         this.pendingMessageEventMessages.clear();
         this.pendingReactionMessages.clear();
         this.processedMessageEventMailIDs.clear();
@@ -2132,13 +2146,27 @@ class VexService {
         options: ServerOptions,
         keyStore: KeyStore,
     ): Promise<AuthResult> {
-        return this.trackAuthFlow(() =>
-            this.requestDeviceApprovalForPasskeyAuthenticatedAccountInternal(
-                config,
-                options,
-                keyStore,
-            ),
-        );
+        return this.trackAuthFlow(() => {
+            const inFlight = this.passkeyDeviceApprovalRequestInFlight;
+            if (inFlight) {
+                return inFlight;
+            }
+            const request =
+                this.requestDeviceApprovalForPasskeyAuthenticatedAccountInternal(
+                    config,
+                    options,
+                    keyStore,
+                );
+            this.passkeyDeviceApprovalRequestInFlight = request;
+            void request
+                .finally(() => {
+                    if (this.passkeyDeviceApprovalRequestInFlight === request) {
+                        this.passkeyDeviceApprovalRequestInFlight = null;
+                    }
+                })
+                .catch(() => undefined);
+            return request;
+        });
     }
 
     resetAllUnread(): void {
@@ -2903,6 +2931,15 @@ class VexService {
         void this.recoverConnection("watchdog-stale");
     }
 
+    private clearPasskeyDeviceApproval(requestID: string): void {
+        if (
+            this.passkeyAccountSession?.pendingApproval?.pendingRequestID ===
+            requestID
+        ) {
+            delete this.passkeyAccountSession.pendingApproval;
+        }
+    }
+
     private async clearStoredCredentials(
         keyStore: KeyStore,
         username: string,
@@ -2986,6 +3023,8 @@ class VexService {
         this.wrapHttpMethodsWithTimeout(http);
     }
 
+    // ── Private ─────────────────────────────────────────────────────────
+
     private async createClientWithRecovery(
         privateKey: string,
         clientOptions: ClientOptions,
@@ -3004,8 +3043,6 @@ class VexService {
             throw err;
         }
     }
-
-    // ── Private ─────────────────────────────────────────────────────────
 
     private currentClientUsername(): string {
         const user = $userWritable.get();
@@ -3312,6 +3349,7 @@ class VexService {
             this.activePendingDeviceApproval = null;
             this.deferredDeviceApproval = null;
             this.passkeyAccountSession = null;
+            this.passkeyDeviceApprovalRequestInFlight = null;
             $pendingApprovalStageWritable.set("idle");
             return { ok: true };
         } catch (err: unknown) {
@@ -3837,6 +3875,23 @@ class VexService {
         }
     }
 
+    private pendingPasskeyDeviceApprovalResult(
+        pending: PendingPasskeyDeviceApproval,
+    ): AuthResult {
+        return {
+            error: "Device approval requested. Confirm this new device from an existing signed-in device.",
+            ok: false,
+            pendingDeviceApproval: true,
+            pendingRequestID: pending.pendingRequestID,
+            ...(pending.pendingSignKey !== undefined
+                ? { pendingSignKey: pending.pendingSignKey }
+                : {}),
+            ...(pending.pendingUserID !== undefined
+                ? { pendingUserID: pending.pendingUserID }
+                : {}),
+        };
+    }
+
     private persistAppliedMessageEvent(msg: Message, thread: Message[]): void {
         const deleteEvent = messageDeleteEvent(msg);
         if (deleteEvent) {
@@ -4257,6 +4312,11 @@ class VexService {
         if (session.keyStore !== keyStore) {
             return { error: "Key store mismatch.", ok: false };
         }
+        if (session.pendingApproval) {
+            return this.pendingPasskeyDeviceApprovalResult(
+                session.pendingApproval,
+            );
+        }
         try {
             this.deferredDeviceApproval = null;
             $pendingApprovalStageWritable.set("idle");
@@ -4338,16 +4398,16 @@ class VexService {
             } catch {
                 pendingSignKey = undefined;
             }
-            const result: AuthResult = {
-                error: "Device approval requested. Confirm this new device from an existing signed-in device.",
-                ok: false,
-                pendingDeviceApproval: true,
+            const pendingApproval: PendingPasskeyDeviceApproval = {
                 pendingRequestID: pending.requestID,
                 ...(pendingSignKey !== undefined ? { pendingSignKey } : {}),
                 ...(pending.userID !== null
                     ? { pendingUserID: pending.userID }
                     : {}),
             };
+            session.pendingApproval = pendingApproval;
+            const result =
+                this.pendingPasskeyDeviceApprovalResult(pendingApproval);
             if (
                 !result.ok &&
                 result.pendingDeviceApproval &&
@@ -4388,6 +4448,7 @@ class VexService {
         this.activePendingDeviceApproval = null;
         this.deferredDeviceApproval = null;
         this.passkeyAccountSession = null;
+        this.passkeyDeviceApprovalRequestInFlight = null;
         this.detachWebsocketDebug();
         this.stopWebsocketWatchdog();
         this.populateStateAbort = false;
@@ -5202,6 +5263,7 @@ class VexService {
                 });
                 $pendingApprovalStageWritable.set("idle");
                 this.stopPendingApprovalWatcher();
+                this.clearPasskeyDeviceApproval(requestID);
                 if (this.activePendingDeviceApproval?.requestID === requestID) {
                     this.activePendingDeviceApproval = null;
                 }
@@ -5210,6 +5272,7 @@ class VexService {
             debugAuth("approvalWatcher:givingUp", { requestID });
             $pendingApprovalStageWritable.set("idle");
             this.stopPendingApprovalWatcher();
+            this.clearPasskeyDeviceApproval(requestID);
             if (this.activePendingDeviceApproval?.requestID === requestID) {
                 this.activePendingDeviceApproval = null;
             }
