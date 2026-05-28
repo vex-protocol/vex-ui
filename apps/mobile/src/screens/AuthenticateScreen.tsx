@@ -37,6 +37,7 @@ type DisplayPhase =
     | "expired"
     | "failed"
     | "loading_account"
+    | "passkey_setup"
     | "signing_in"
     | "waiting";
 
@@ -50,6 +51,10 @@ export function AuthenticateScreen({ navigation, route }: Props) {
     const [secondsLeft, setSecondsLeft] = useState(EXPIRY_SECONDS);
     const [expired, setExpired] = useState(false);
     const [otherMethodsOpen, setOtherMethodsOpen] = useState(false);
+    const [passkeySetupBusy, setPasskeySetupBusy] = useState(false);
+    const [passkeySetupError, setPasskeySetupError] = useState<null | string>(
+        null,
+    );
     const [restoreBusy, setRestoreBusy] = useState(false);
     const [restoreError, setRestoreError] = useState<null | string>(null);
     const passkeysSupported = isPasskeySupported();
@@ -60,9 +65,11 @@ export function AuthenticateScreen({ navigation, route }: Props) {
           ? "failed"
           : stage === "loading_account" || user
             ? "loading_account"
-            : stage === "signing_in"
-              ? "signing_in"
-              : "waiting";
+            : stage === "passkey_setup"
+              ? "passkey_setup"
+              : stage === "signing_in"
+                ? "signing_in"
+                : "waiting";
 
     // Soft pulsing focus ring around the code while we're still waiting,
     // so it's clear the digits are "live" and to be matched against the
@@ -174,6 +181,42 @@ export function AuthenticateScreen({ navigation, route }: Props) {
         );
     }
 
+    async function finishWithExistingPasskey(): Promise<void> {
+        if (passkeySetupBusy) return;
+        setPasskeySetupBusy(true);
+        setPasskeySetupError(null);
+        try {
+            const result =
+                await vexService.completePendingApprovalWithExistingPasskey();
+            if (!result.ok) {
+                setPasskeySetupError(
+                    result.error ?? "Could not verify this device.",
+                );
+            }
+        } finally {
+            setPasskeySetupBusy(false);
+        }
+    }
+
+    async function finishWithNewPasskey(): Promise<void> {
+        if (passkeySetupBusy) return;
+        setPasskeySetupBusy(true);
+        setPasskeySetupError(null);
+        try {
+            const result =
+                await vexService.completePendingApprovalWithNewPasskey(
+                    "This device",
+                );
+            if (!result.ok) {
+                setPasskeySetupError(
+                    result.error ?? "Could not create a passkey.",
+                );
+            }
+        } finally {
+            setPasskeySetupBusy(false);
+        }
+    }
+
     const haloOpacity = halo.interpolate({
         inputRange: [0, 1],
         outputRange: [0.18, 0.55],
@@ -230,7 +273,9 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                           ? "Verification window closed"
                           : phase === "failed"
                             ? "Sign-in needs retry"
-                            : "Code matched"}
+                            : phase === "passkey_setup"
+                              ? "Passkey required"
+                              : "Code matched"}
                 </Text>
 
                 {phase === "waiting" ? (
@@ -257,6 +302,43 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                         <Text style={styles.statusTextActive}>
                             Signing in...
                         </Text>
+                    </View>
+                ) : null}
+
+                {phase === "passkey_setup" ? (
+                    <View style={[styles.statusCard, styles.statusCardActive]}>
+                        <Text style={styles.statusTextActive}>
+                            Finish securing this device with a passkey.
+                        </Text>
+                        {!passkeysSupported ? (
+                            <Text style={styles.restoreError}>
+                                Passkeys aren&apos;t available on this device.
+                            </Text>
+                        ) : null}
+                        {passkeySetupError ? (
+                            <Text style={styles.restoreError}>
+                                {passkeySetupError}
+                            </Text>
+                        ) : null}
+                        <VexButton
+                            disabled={!passkeysSupported || passkeySetupBusy}
+                            loading={passkeySetupBusy}
+                            onPress={() => {
+                                void finishWithNewPasskey();
+                            }}
+                            style={styles.methodButton}
+                            title="Create passkey"
+                            variant="primary"
+                        />
+                        <VexButton
+                            disabled={!passkeysSupported || passkeySetupBusy}
+                            onPress={() => {
+                                void finishWithExistingPasskey();
+                            }}
+                            style={styles.methodButton}
+                            title="Use existing passkey"
+                            variant="outline"
+                        />
                     </View>
                 ) : null}
 
@@ -311,7 +393,9 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                     </View>
                 ) : null}
 
-                {phase === "waiting" || phase === "expired" ? (
+                {phase === "waiting" ||
+                phase === "expired" ||
+                phase === "passkey_setup" ? (
                     <>
                         {phase === "waiting" && requestID ? (
                             <TouchableOpacity

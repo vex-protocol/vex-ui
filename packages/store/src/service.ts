@@ -330,7 +330,21 @@ interface DevicesWithApprovalLike {
         requestID: string;
     }) => Promise<unknown>;
     approveRequest?: (requestID: string) => Promise<unknown>;
+    beginPendingPasskeyRegistration?: (args: {
+        challenge: string;
+        name: string;
+        requestID: string;
+    }) => Promise<{
+        options: unknown;
+        requestID: string;
+    }>;
     delete: (deviceID: string) => Promise<void>;
+    finishPendingPasskeyRegistration?: (args: {
+        challenge: string;
+        name: string;
+        requestID: string;
+        response: Record<string, unknown>;
+    }) => Promise<Passkey>;
     getRequest?: (requestID: string) => Promise<DeviceApprovalRequest | null>;
     listRequests?: () => Promise<DeviceApprovalRequest[]>;
     pollPendingRegistration?: (args: {
@@ -392,8 +406,6 @@ interface WebSocketDebugLike {
 
 const REGISTER_STEP_TIMEOUT_MS = 12000;
 const PASSKEY_SETUP_TIMEOUT_MS = 5 * 60 * 1000;
-const APPROVED_DEVICE_LOGIN_RETRY_MS = 1500;
-const APPROVED_DEVICE_LOGIN_TIMEOUT_MS = 2 * 60 * 1000;
 const DEVICE_AUTH_REFRESH_THRESHOLD_MS = 6 * 24 * 60 * 60 * 1000;
 const DEVICE_AUTH_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const LOCAL_DECRYPT_RECOVERY_ERROR =
@@ -448,8 +460,10 @@ class Disposable {
 
 class VexService {
     private activePendingDeviceApproval: null | {
+        approvedDeviceID?: string;
         challenge: null | string;
         deviceKey: string;
+        deviceName: string;
         keyStore: KeyStore;
         requestID: string;
         username: string;
@@ -467,6 +481,7 @@ class VexService {
     private deferredDeviceApproval: null | {
         challenge: string;
         deviceKey: string;
+        deviceName: string;
         keyStore: KeyStore;
         requestID: string;
         username: string;
@@ -981,6 +996,74 @@ class VexService {
         return this.trackAuthFlow(() =>
             this.completeInitialPasskeySetupInternal(config),
         );
+    }
+
+    async completePendingApprovalWithExistingPasskey(): Promise<OperationResult> {
+        return this.trackAuthFlow(() =>
+            this.finishApprovedPendingDeviceLogin(),
+        );
+    }
+
+    async completePendingApprovalWithNewPasskey(
+        name?: string,
+    ): Promise<OperationResult> {
+        return this.trackAuthFlow(async () => {
+            const pending = this.activePendingDeviceApproval;
+            if (!pending || !pending.approvedDeviceID) {
+                return {
+                    error: "No approved device enrollment is waiting for passkey setup.",
+                    ok: false,
+                };
+            }
+            if (!pending.challenge) {
+                return {
+                    error: "This server does not support passkey setup for approved devices. Update and try again.",
+                    ok: false,
+                };
+            }
+            const driver = this.passkeyCeremonyDriver;
+            if (!driver) {
+                return {
+                    error: "Passkeys aren't available on this device.",
+                    ok: false,
+                };
+            }
+            const client =
+                this.requireClient() as unknown as ClientWithDeviceApprovals;
+            const beginPending = client.devices.beginPendingPasskeyRegistration;
+            const finishPending =
+                client.devices.finishPendingPasskeyRegistration;
+            if (
+                typeof beginPending !== "function" ||
+                typeof finishPending !== "function"
+            ) {
+                return {
+                    error: "Update the Vex client to finish passkey setup on this device.",
+                    ok: false,
+                };
+            }
+            const passkeyName = name ?? pending.deviceName;
+            try {
+                $pendingApprovalStageWritable.set("passkey_setup");
+                const begin = await beginPending({
+                    challenge: pending.challenge,
+                    name: passkeyName,
+                    requestID: pending.requestID,
+                });
+                const response = await driver.register(
+                    begin.options as PublicKeyCredentialCreationOptionsJSON,
+                );
+                await finishPending({
+                    challenge: pending.challenge,
+                    name: passkeyName,
+                    requestID: pending.requestID,
+                    response,
+                });
+                return await this.finishApprovedPendingDeviceLogin();
+            } catch (err: unknown) {
+                return { error: errorMessage(err), ok: false };
+            }
+        });
     }
 
     consumeRateLimitNotice(): boolean {
@@ -1784,6 +1867,7 @@ class VexService {
         this.startPendingApprovalWatcher({
             challenge: d.challenge,
             deviceKey: d.deviceKey,
+            deviceName: d.deviceName,
             keyStore: d.keyStore,
             requestID: d.requestID,
             username: d.username,
@@ -2977,6 +3061,53 @@ class VexService {
         );
     }
 
+    private async finishApprovedPendingDeviceLogin(): Promise<OperationResult> {
+        const pending = this.activePendingDeviceApproval;
+        if (!pending || !pending.approvedDeviceID) {
+            return {
+                error: "No approved device enrollment is waiting for sign-in.",
+                ok: false,
+            };
+        }
+        const client = this.requireClient();
+        try {
+            $pendingApprovalStageWritable.set("signing_in");
+            const { authErr } = await this.loginWithDeviceKeyWithPasskeyRetry(
+                client,
+                pending.username,
+                pending.approvedDeviceID,
+            );
+            if (authErr) {
+                debugAuth("approvalWatcher:loginFailed", {
+                    message: errorMessage(authErr),
+                });
+                $pendingApprovalStageWritable.set("failed");
+                return { error: errorMessage(authErr), ok: false };
+            }
+            await this.saveCredentials(pending.keyStore, {
+                deviceID: pending.approvedDeviceID,
+                deviceKey: pending.deviceKey,
+                token: "",
+                username: pending.username,
+            });
+            $pendingApprovalStageWritable.set("loading_account");
+            await client.connect();
+            $userWritable.set(client.me.user());
+            this.setAuthStatus("authenticated");
+            this.kickPopulateState();
+            debugAuth("approvalWatcher:done", {
+                requestID: pending.requestID,
+            });
+            this.activePendingDeviceApproval = null;
+            this.deferredDeviceApproval = null;
+            $pendingApprovalStageWritable.set("idle");
+            return { ok: true };
+        } catch (err: unknown) {
+            $pendingApprovalStageWritable.set("failed");
+            return { error: errorMessage(err), ok: false };
+        }
+    }
+
     private handleDirectMessage(msg: Message): void {
         const me = $userWritable.get();
         const isOwnMessage = Boolean(me && msg.authorID === me.userID);
@@ -3126,43 +3257,6 @@ class VexService {
                 this.kickPopulateState(attempt + 1);
             }, backoffMs);
         });
-    }
-
-    private async loginApprovedDeviceWithoutPasskeyPrompt(
-        client: Client,
-        deviceID: string,
-        requestID: string,
-    ): Promise<Error | null> {
-        let lastErr: Error | null = null;
-        const deadline = Date.now() + APPROVED_DEVICE_LOGIN_TIMEOUT_MS;
-        for (let attempt = 0; ; attempt++) {
-            const authErr = await this.loginWithDeviceKeyWithRetry(
-                client,
-                deviceID,
-            );
-            if (!authErr) {
-                return null;
-            }
-            lastErr = authErr;
-            if (!isPasskeyRequiredError(authErr)) {
-                return authErr;
-            }
-            debugAuth("approvalWatcher:approvedDevicePasskeyGatePending", {
-                attempt,
-                remainingMs: Math.max(0, deadline - Date.now()),
-                requestID,
-            });
-            const remainingMs = deadline - Date.now();
-            if (remainingMs <= 0) {
-                break;
-            }
-            await waitMs(Math.min(APPROVED_DEVICE_LOGIN_RETRY_MS, remainingMs));
-        }
-        debugAuth("approvalWatcher:approvedDevicePasskeyGateTimeout", {
-            message: lastErr ? errorMessage(lastErr) : null,
-            requestID,
-        });
-        return lastErr;
     }
 
     private async loginInternal(
@@ -3746,6 +3840,7 @@ class VexService {
                         this.deferredDeviceApproval = {
                             challenge: pending.challenge,
                             deviceKey: privateKey,
+                            deviceName: config.deviceName || "This device",
                             keyStore,
                             requestID: pending.requestID,
                             username: registrationUsername,
@@ -3754,6 +3849,7 @@ class VexService {
                         this.startPendingApprovalWatcher({
                             challenge: pending.challenge,
                             deviceKey: privateKey,
+                            deviceName: config.deviceName || "This device",
                             keyStore,
                             requestID: pending.requestID,
                             username: registrationUsername,
@@ -4573,12 +4669,14 @@ class VexService {
     private startPendingApprovalWatcher({
         challenge,
         deviceKey,
+        deviceName,
         keyStore,
         requestID,
         username,
     }: {
         challenge: null | string;
         deviceKey: string;
+        deviceName: string;
         keyStore: KeyStore;
         requestID: string;
         username: string;
@@ -4587,6 +4685,7 @@ class VexService {
         this.activePendingDeviceApproval = {
             challenge,
             deviceKey,
+            deviceName,
             keyStore,
             requestID,
             username,
@@ -4674,47 +4773,17 @@ class VexService {
                         approvedDeviceID: pending.approvedDeviceID,
                         requestID,
                     });
-                    try {
-                        $pendingApprovalStageWritable.set("signing_in");
-                        const authErr =
-                            await this.loginApprovedDeviceWithoutPasskeyPrompt(
-                                client,
-                                pending.approvedDeviceID,
-                                requestID,
-                            );
-                        if (authErr) {
-                            debugAuth("approvalWatcher:loginFailed", {
-                                message: errorMessage(authErr),
-                            });
-                            $pendingApprovalStageWritable.set("failed");
-                            return;
-                        }
-                        await this.saveCredentials(keyStore, {
-                            deviceID: pending.approvedDeviceID,
-                            deviceKey,
-                            token: "",
-                            username,
-                        });
-                        $pendingApprovalStageWritable.set("loading_account");
-                        await client.connect();
-                        $userWritable.set(client.me.user());
-                        this.setAuthStatus("authenticated");
-                        this.kickPopulateState();
-                        debugAuth("approvalWatcher:done", {
-                            requestID,
-                        });
-                    } finally {
-                        if ($pendingApprovalStageWritable.get() !== "failed") {
-                            $pendingApprovalStageWritable.set("idle");
-                        }
-                        this.stopPendingApprovalWatcher();
-                        if (
-                            this.activePendingDeviceApproval?.requestID ===
-                            requestID
-                        ) {
-                            this.activePendingDeviceApproval = null;
-                        }
-                    }
+                    this.activePendingDeviceApproval = {
+                        approvedDeviceID: pending.approvedDeviceID,
+                        challenge,
+                        deviceKey,
+                        deviceName,
+                        keyStore,
+                        requestID,
+                        username,
+                    };
+                    $pendingApprovalStageWritable.set("passkey_setup");
+                    this.stopPendingApprovalWatcher();
                     return;
                 }
                 debugAuth("approvalWatcher:terminal", {
