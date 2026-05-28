@@ -34,6 +34,7 @@ export type PendingApprovalStage =
     | "failed"
     | "idle"
     | "loading_account"
+    | "passkey_setup"
     | "signing_in"
     | "waiting";
 
