@@ -43,13 +43,14 @@ type Props = AuthScreenProps<"AccountSelector">;
  * {@link HangTightScreen} (same boot path as cold start) so the “Hang tight”
  * experience is consistent. Long-press removes key material for that slot.
  */
-export function AccountSelectorScreen({ navigation }: Props) {
+export function AccountSelectorScreen({ navigation, route }: Props) {
     const [accounts, setAccounts] = useState<KnownAccount[]>([]);
     const [hydrated, setHydrated] = useState(false);
     const [signingInUsername, setSigningInUsername] = useState<null | string>(
         null,
     );
     const [errorText, setErrorText] = useState<null | string>(null);
+    const routeError = route.params?.error ?? null;
 
     const refresh = useCallback(async () => {
         const list = await listKnownAccounts();
@@ -59,8 +60,9 @@ export function AccountSelectorScreen({ navigation }: Props) {
 
     useFocusEffect(
         useCallback(() => {
+            setErrorText(routeError);
             void refresh();
-        }, [refresh]),
+        }, [refresh, routeError]),
     );
 
     const handleSelect = useCallback(
@@ -118,6 +120,7 @@ export function AccountSelectorScreen({ navigation }: Props) {
 
     const handleAddAccount = useCallback(() => {
         haptic("tap");
+        setErrorText(null);
         navigation.navigate("HangTight", { force: true });
     }, [navigation]);
 

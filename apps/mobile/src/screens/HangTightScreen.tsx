@@ -2,7 +2,6 @@ import type { AuthScreenProps } from "../navigation/types";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-    Alert,
     Animated,
     Easing,
     Keyboard,
@@ -30,13 +29,8 @@ import { CornerBracketBox } from "../components/CornerBracketBox";
 import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
 import { VexLogo } from "../components/VexLogo";
-import { buildInfo } from "../lib/buildInfo";
 import { getServerOptions } from "../lib/config";
-import {
-    clearAllCredentials,
-    keychainKeyStore,
-    listKnownAccounts,
-} from "../lib/keychain";
+import { keychainKeyStore, listKnownAccounts } from "../lib/keychain";
 import {
     cleanupLegacyLocalKeyMaterialArtifacts,
     mobileConfig,
@@ -57,8 +51,7 @@ interface PendingApprovalSnapshot {
     username: string;
 }
 
-type Phase = "boot" | "confirmExisting" | "error" | "form";
-type RetryMode = "auth" | "passkeySetup";
+type Phase = "boot" | "confirmExisting" | "form";
 
 const HANDLE_PATTERN = /^[A-Za-z0-9_]{3,19}$/;
 
@@ -77,7 +70,6 @@ export function HangTightScreen({
     const [busy, setBusy] = useState(true);
     const [username, setUsername] = useState("");
     const [phase, setPhase] = useState<Phase>("boot");
-    const [retryMode, setRetryMode] = useState<RetryMode>("auth");
     const [focused, setFocused] = useState(false);
     const [pendingApproval, setPendingApproval] =
         useState<null | PendingApprovalSnapshot>(null);
@@ -100,6 +92,35 @@ export function HangTightScreen({
     const inputGlow = useRef(new Animated.Value(0)).current;
     const buttonScale = useRef(new Animated.Value(1)).current;
     const errorShake = useRef(new Animated.Value(0)).current;
+
+    const replaceWithAccountSelector = (error?: string) => {
+        if (error) {
+            navigation.replace("AccountSelector", { error });
+            return;
+        }
+        navigation.replace("AccountSelector");
+    };
+
+    const finishRequiredPasskeySetup = async () => {
+        setBootError("");
+        setPhase("boot");
+        try {
+            const retry =
+                await vexService.completeInitialPasskeySetup(mobileConfig());
+            if (!retry.ok) {
+                replaceWithAccountSelector(
+                    retry.error ??
+                        "Passkey setup failed. Select the account to try again.",
+                );
+            }
+        } catch (err: unknown) {
+            replaceWithAccountSelector(
+                err instanceof Error
+                    ? err.message
+                    : "Passkey setup failed. Select the account to try again.",
+            );
+        }
+    };
 
     useEffect(() => {
         void cleanupLegacyLocalKeyMaterialArtifacts();
@@ -238,27 +259,19 @@ export function HangTightScreen({
                     }
                     setPhase("form");
                 } else if (!result.ok && result.passkeySetupRequired) {
-                    setRetryMode("passkeySetup");
-                    setBootError(
-                        result.error ??
-                            "Passkey setup did not finish. Tap Retry to continue.",
-                    );
-                    setPhase("error");
+                    await finishRequiredPasskeySetup();
                 } else if (!result.ok) {
-                    setRetryMode("auth");
-                    setBootError(
+                    replaceWithAccountSelector(
                         result.error ?? "Could not initialize account.",
                     );
-                    setPhase("error");
                 }
             } catch (err: unknown) {
                 if (!cancelled) {
-                    setBootError(
+                    replaceWithAccountSelector(
                         err instanceof Error
                             ? err.message
                             : "Could not initialize account.",
                     );
-                    setPhase("error");
                 }
             } finally {
                 if (!cancelled) {
@@ -338,14 +351,9 @@ export function HangTightScreen({
                 getServerOptions(),
                 keychainKeyStore,
             )
-            .then((result) => {
+            .then(async (result) => {
                 if (!result.ok && result.passkeySetupRequired) {
-                    setRetryMode("passkeySetup");
-                    setBootError(
-                        result.error ??
-                            "Passkey setup did not finish. Tap Retry to continue.",
-                    );
-                    setPhase("error");
+                    await finishRequiredPasskeySetup();
                     return;
                 }
                 if (
@@ -376,13 +384,11 @@ export function HangTightScreen({
                     return;
                 }
                 if (!result.ok) {
-                    setRetryMode("auth");
                     setBootError(result.error ?? "Could not sign in.");
                     playInvalidShake();
                 }
             })
             .catch((err: unknown) => {
-                setRetryMode("auth");
                 setBootError(
                     err instanceof Error ? err.message : "Could not sign in.",
                 );
@@ -436,134 +442,12 @@ export function HangTightScreen({
             setPendingApproval(null);
             setBootError("");
             setBusy(false);
-            setRetryMode("auth");
             setUsername("");
             setPhase("form");
         })();
     };
 
-    const handleRetry = () => {
-        setBusy(true);
-        setBootError("");
-        setPhase("boot");
-        const runRetry =
-            retryMode === "passkeySetup"
-                ? vexService.completeInitialPasskeySetup(mobileConfig())
-                : (async () => {
-                      await hydrateLocalMessageRetention();
-                      return vexService.autoLogin(
-                          keychainKeyStore,
-                          mobileConfig(),
-                          getServerOptions(),
-                      );
-                  })();
-        void runRetry
-            .then(async (result) => {
-                if (result.ok) {
-                    setRetryMode("auth");
-                    return;
-                }
-                if (result.passkeySetupRequired) {
-                    setRetryMode("passkeySetup");
-                    setBootError(
-                        result.error ??
-                            "Passkey setup did not finish. Tap Retry to continue.",
-                    );
-                    setPhase("error");
-                    return;
-                }
-                // Mirror the bootstrap path: a successful "no creds" or a
-                // requireReauth result both belong on the picker/form, not
-                // back in the error phase that dropped us here.
-                const noActiveCreds =
-                    !result.ok && (!result.error || result.requireReauth);
-                if (noActiveCreds) {
-                    const accounts = await listKnownAccounts();
-                    if (accounts.length > 0) {
-                        setRetryMode("auth");
-                        navigation.replace("AccountSelector");
-                        return;
-                    }
-                    setRetryMode("auth");
-                    setPhase("form");
-                    return;
-                }
-                if (!result.ok) {
-                    setRetryMode("auth");
-                    setBootError(
-                        result.error ?? "Could not initialize account.",
-                    );
-                    setPhase("error");
-                }
-            })
-            .catch((err: unknown) => {
-                setRetryMode("auth");
-                setBootError(
-                    err instanceof Error
-                        ? err.message
-                        : "Could not initialize account.",
-                );
-                setPhase("error");
-            })
-            .finally(() => {
-                setBusy(false);
-            });
-    };
-
-    const handleChooseAnotherAccount = () => {
-        setRetryMode("auth");
-        setBootError("");
-        navigation.replace("AccountSelector");
-    };
-
-    const resetLocalAccounts = () => {
-        if (busy) {
-            return;
-        }
-        setBusy(true);
-        void (async () => {
-            await clearAllCredentials();
-            setRetryMode("auth");
-            setBootError("");
-            setUsername("");
-            setPhase("form");
-        })()
-            .catch((err: unknown) => {
-                setBootError(
-                    err instanceof Error
-                        ? err.message
-                        : "Could not remove saved account.",
-                );
-                setPhase("error");
-            })
-            .finally(() => {
-                setBusy(false);
-            });
-    };
-
-    const handleResetLocalAccounts = () => {
-        if (busy || !showResetLocalAccounts) {
-            return;
-        }
-        Alert.alert(
-            "Reset local accounts?",
-            "This removes saved Vex accounts from this device only. It does not delete accounts or devices from the server.",
-            [
-                { style: "cancel", text: "Cancel" },
-                {
-                    onPress: resetLocalAccounts,
-                    style: "destructive",
-                    text: "Reset",
-                },
-            ],
-        );
-    };
-
     const handleValid = HANDLE_PATTERN.test(username.trim());
-    const showResetLocalAccounts =
-        __DEV__ ||
-        buildInfo.environment === "development" ||
-        buildInfo.channel === "development";
     const showHint = username.length > 0;
     const cornerColor = focused ? colors.accent : colors.border;
 
@@ -868,37 +752,10 @@ export function HangTightScreen({
                 </Animated.Text>
                 <Text style={styles.bootHeading}>Hang tight.</Text>
                 <Text style={styles.bootSubtitle}>
-                    {phase === "error"
-                        ? "Something went sideways"
-                        : historyRecoveryStatus === "recovering_local_history"
-                          ? "Repairing local message history..."
-                          : "We're getting your account ready"}
+                    {historyRecoveryStatus === "recovering_local_history"
+                        ? "Repairing local message history..."
+                        : "We're getting your account ready"}
                 </Text>
-                {phase === "error" && bootError ? (
-                    <View style={styles.errorWrap}>
-                        <Text style={styles.errorText}>{bootError}</Text>
-                        <VexButton
-                            disabled={busy}
-                            onPress={handleRetry}
-                            title={busy ? "Retrying..." : "Retry"}
-                            variant="outline"
-                        />
-                        <VexButton
-                            disabled={busy}
-                            onPress={handleChooseAnotherAccount}
-                            title="Choose another account"
-                            variant="outline"
-                        />
-                        {showResetLocalAccounts ? (
-                            <VexButton
-                                disabled={busy}
-                                onPress={handleResetLocalAccounts}
-                                title="Reset local accounts"
-                                variant="danger"
-                            />
-                        ) : null}
-                    </View>
-                ) : null}
             </View>
         </ScreenLayout>
     );
@@ -994,12 +851,6 @@ const styles = StyleSheet.create({
         ...typography.body,
         color: colors.error,
         textAlign: "center",
-    },
-    errorWrap: {
-        alignItems: "center",
-        gap: 10,
-        marginTop: 14,
-        maxWidth: 320,
     },
     eyebrow: {
         ...typography.label,
