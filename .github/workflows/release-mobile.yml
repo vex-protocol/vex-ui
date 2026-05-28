@@ -229,6 +229,31 @@ jobs:
                     --environment production \
                     --non-interactive
 
+            - name: Push iOS developer-mode OTA update
+              if: steps.decide.outputs.path == 'ota'
+              working-directory: apps/mobile
+              env:
+                  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+                  EAS_BUILD_PROFILE: production
+                  EXPO_PUBLIC_ENABLE_DEV_SERVER: "0"
+                  EXPO_PUBLIC_SERVER_URL: api.vex.wtf
+                  EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.baseline.outputs.base_version }}
+                  EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
+                  VEX_APP_ENV: production
+                  VEX_APP_DISPLAY_NAME: Vex
+                  VEX_APP_VERSION: ${{ steps.baseline.outputs.base_version }}
+                  VEX_ENABLE_DEV_BUILD: "0"
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile
+                  VEX_PASSKEY_RP_HOST: api.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: developer
+              run: |
+                  eas update \
+                    --channel production \
+                    --platform ios \
+                    --message "production ios-dev ${GITHUB_SHA::8}" \
+                    --environment production \
+                    --non-interactive
+
             - name: Resolve release version
               if: steps.decide.outputs.path == 'build'
               id: version

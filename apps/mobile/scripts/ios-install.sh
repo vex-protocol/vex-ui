@@ -53,53 +53,7 @@ if ! command -v xcrun >/dev/null 2>&1; then
   exit 1
 fi
 
-resolve_version() {
-  if [[ -n "${VEX_APP_VERSION:-}" ]]; then
-    echo "$VEX_APP_VERSION"
-    return 0
-  fi
-
-  local package_version
-  package_version="$(node -pe "require(process.argv[1]).version" "$ROOT_DIR/package.json")"
-
-  local exact_prod_tag
-  exact_prod_tag="$(git -C "$REPO_ROOT" tag --points-at HEAD --list 'mobile-v*' --sort=-v:refname | head -n 1 || true)"
-  if [[ -n "$exact_prod_tag" ]]; then
-    echo "${exact_prod_tag#mobile-v}"
-    return 0
-  fi
-
-  local latest_base
-  latest_base="$(git -C "$REPO_ROOT" tag --list 'mobile-v*' --sort=-v:refname | head -n 1 | sed 's/^mobile-v//' || true)"
-
-  node - "$package_version" "$latest_base" <<'NODE'
-const pkg = process.argv[2] || "0.0.0";
-const base = process.argv[3] || "";
-const parse = (value) => {
-  const match = String(value).trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
-  return match ? match.slice(1).map(Number) : undefined;
-};
-const compare = (a, b) => {
-  for (let i = 0; i < 3; i += 1) {
-    if (a[i] !== b[i]) return a[i] - b[i];
-  }
-  return 0;
-};
-const pkgParts = parse(pkg) || [0, 0, 0];
-const baseParts = parse(base);
-if (!baseParts) {
-  console.log(pkg);
-  process.exit(0);
-}
-if (compare(pkgParts, baseParts) > 0) {
-  console.log(pkg);
-  process.exit(0);
-}
-console.log(`${baseParts[0]}.${baseParts[1]}.${baseParts[2] + 1}`);
-NODE
-}
-
-VEX_APP_VERSION="$(resolve_version)"
+VEX_APP_VERSION="$(node "$ROOT_DIR/scripts/resolve-mobile-version.cjs")"
 export VEX_APP_VERSION
 export EXPO_PUBLIC_VEX_APP_VERSION="${EXPO_PUBLIC_VEX_APP_VERSION:-$VEX_APP_VERSION}"
 export EXPO_PUBLIC_VEX_COMMIT_SHA="${EXPO_PUBLIC_VEX_COMMIT_SHA:-$COMMIT_SHA}"
