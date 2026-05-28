@@ -166,36 +166,51 @@ jobs:
                   echo "Current iOS runtime fingerprint: $IOS_HASH"
                   echo "Current legacy fingerprint: $LEGACY_HASH"
 
-            - name: Download previous runtime fingerprint assets
+            - name: Install EAS CLI
+              run: npm install -g eas-cli@latest
+
+            - name: Resolve previous runtime fingerprints
               id: prev_fp
+              working-directory: apps/mobile
               env:
+                  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
+                  if eas build:list \
+                        --platform all \
+                        --status finished \
+                        --channel development \
+                        --build-profile development \
+                        --distribution internal \
+                        --limit 20 \
+                        --json \
+                        --non-interactive > /tmp/previous-eas-builds.json; then
+                    echo "Fetched previous EAS build runtimes."
+                  else
+                    echo "::warning::Could not fetch previous EAS build runtimes; falling back to GitHub release fingerprints."
+                    printf '[]\n' > /tmp/previous-eas-builds.json
+                  fi
+
                   if gh release download mobile-rc-latest \
                         --pattern 'fingerprint-android.json' \
                         --output /tmp/prev-fingerprint-android.json 2>/dev/null; then
-                    PREV_ANDROID_HASH=$(node -pe "require('/tmp/prev-fingerprint-android.json').hash")
-                    echo "android_hash=$PREV_ANDROID_HASH" >> "$GITHUB_OUTPUT"
-                    echo "Previous Android runtime fingerprint: $PREV_ANDROID_HASH"
+                    echo "Downloaded fallback Android runtime fingerprint asset."
                   else
-                    echo "Previous Android runtime fingerprint missing; will build"
+                    echo "Fallback Android runtime fingerprint asset missing."
                   fi
 
                   if gh release download mobile-rc-latest \
                         --pattern 'fingerprint-ios.json' \
                         --output /tmp/prev-fingerprint-ios.json 2>/dev/null; then
-                    PREV_IOS_HASH=$(node -pe "require('/tmp/prev-fingerprint-ios.json').hash")
-                    echo "ios_hash=$PREV_IOS_HASH" >> "$GITHUB_OUTPUT"
-                    echo "Previous iOS runtime fingerprint: $PREV_IOS_HASH"
+                    echo "Downloaded fallback iOS runtime fingerprint asset."
                   else
-                    echo "Previous iOS runtime fingerprint missing; will build"
+                    echo "Fallback iOS runtime fingerprint asset missing."
                   fi
 
-                  if [ -n "${PREV_ANDROID_HASH:-}" ] && [ -n "${PREV_IOS_HASH:-}" ]; then
-                    echo "exists=true" >> "$GITHUB_OUTPUT"
-                  else
-                    echo "exists=false" >> "$GITHUB_OUTPUT"
-                  fi
+                  EAS_BUILDS_JSON=/tmp/previous-eas-builds.json \
+                    FALLBACK_ANDROID_FINGERPRINT_JSON=/tmp/prev-fingerprint-android.json \
+                    FALLBACK_IOS_FINGERPRINT_JSON=/tmp/prev-fingerprint-ios.json \
+                    node scripts/resolve-previous-runtime-fingerprints.cjs
 
             - name: Decide path
               id: decide
@@ -215,10 +230,6 @@ jobs:
                   echo "path=$PATH_DECISION" >> "$GITHUB_OUTPUT"
                   echo "Decision: $PATH_DECISION"
 
-            - name: Install EAS CLI (OTA path)
-              if: steps.decide.outputs.path == 'ota'
-              run: npm install -g eas-cli@latest
-
             - name: Push OTA update
               if: steps.decide.outputs.path == 'ota'
               working-directory: apps/mobile
@@ -234,7 +245,9 @@ jobs:
                   VEX_APP_DISPLAY_NAME: Vex Development
                   VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_ANDROID_RUNTIME_VERSION: ${{ steps.prev_fp.outputs.android_hash }}
                   VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile.dev
+                  VEX_IOS_RUNTIME_VERSION: ${{ steps.prev_fp.outputs.ios_hash }}
                   VEX_PASSKEY_RP_HOST: dev.vex.wtf
                   VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: |
@@ -270,10 +283,6 @@ jobs:
                     --environment development \
                     --non-interactive
 
-            - name: Install EAS CLI (build path)
-              if: steps.decide.outputs.path == 'build'
-              run: npm install -g eas-cli@latest
-
             - name: Prepare EAS remote build env
               if: steps.decide.outputs.path == 'build'
               working-directory: apps/mobile
@@ -288,7 +297,9 @@ jobs:
                   VEX_APP_DISPLAY_NAME: Vex Development
                   VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_ANDROID_RUNTIME_VERSION: ${{ steps.fp.outputs.android_hash }}
                   VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile.dev
+                  VEX_IOS_RUNTIME_VERSION: ${{ steps.fp.outputs.ios_hash }}
                   VEX_PASSKEY_RP_HOST: dev.vex.wtf
                   VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: node scripts/prepare-eas-build-env.cjs
@@ -308,7 +319,9 @@ jobs:
                   VEX_APP_DISPLAY_NAME: Vex Development
                   VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_ANDROID_RUNTIME_VERSION: ${{ steps.fp.outputs.android_hash }}
                   VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile.dev
+                  VEX_IOS_RUNTIME_VERSION: ${{ steps.fp.outputs.ios_hash }}
                   VEX_PASSKEY_RP_HOST: dev.vex.wtf
                   VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: |
@@ -320,6 +333,10 @@ jobs:
                     --message "development ${GITHUB_SHA::8}" \
                     --json > /tmp/native-builds.json \
                     2> >(node scripts/redact-eas-log.cjs)
+
+                  EXPECTED_ANDROID_RUNTIME_VERSION="${{ steps.fp.outputs.android_hash }}" \
+                    EXPECTED_IOS_RUNTIME_VERSION="${{ steps.fp.outputs.ios_hash }}" \
+                    node scripts/assert-eas-runtime-versions.cjs
 
                   node <<'NODE' > /tmp/android-artifact-url
                   const fs = require("node:fs");
