@@ -1000,7 +1000,7 @@ class VexService {
 
     async completePendingApprovalWithExistingPasskey(): Promise<OperationResult> {
         return this.trackAuthFlow(() =>
-            this.finishApprovedPendingDeviceLogin(),
+            this.finishApprovedPendingDeviceLogin({ promptForPasskey: true }),
         );
     }
 
@@ -1059,11 +1059,19 @@ class VexService {
                     requestID: begin.requestID,
                     response,
                 });
-                return await this.finishApprovedPendingDeviceLogin();
+                return await this.finishApprovedPendingDeviceLogin({
+                    promptForPasskey: true,
+                });
             } catch (err: unknown) {
                 return { error: errorMessage(err), ok: false };
             }
         });
+    }
+
+    async completePendingApprovalWithoutPasskey(): Promise<OperationResult> {
+        return this.trackAuthFlow(() =>
+            this.finishApprovedPendingDeviceLogin({ promptForPasskey: false }),
+        );
     }
 
     consumeRateLimitNotice(): boolean {
@@ -3061,7 +3069,11 @@ class VexService {
         );
     }
 
-    private async finishApprovedPendingDeviceLogin(): Promise<OperationResult> {
+    private async finishApprovedPendingDeviceLogin({
+        promptForPasskey,
+    }: {
+        promptForPasskey: boolean;
+    }): Promise<OperationResult> {
         const pending = this.activePendingDeviceApproval;
         if (!pending || !pending.approvedDeviceID) {
             return {
@@ -3074,11 +3086,19 @@ class VexService {
             $pendingApprovalStageWritable.set("signing_in");
             let authErr: Error | null;
             try {
-                ({ authErr } = await this.loginWithDeviceKeyWithPasskeyRetry(
-                    client,
-                    pending.username,
-                    pending.approvedDeviceID,
-                ));
+                if (promptForPasskey) {
+                    ({ authErr } =
+                        await this.loginWithDeviceKeyWithPasskeyRetry(
+                            client,
+                            pending.username,
+                            pending.approvedDeviceID,
+                        ));
+                } else {
+                    authErr = await this.loginWithDeviceKeyWithRetry(
+                        client,
+                        pending.approvedDeviceID,
+                    );
+                }
             } catch (err: unknown) {
                 debugAuth("approvalWatcher:passkeyRetryable", {
                     message: errorMessage(err),
@@ -3089,13 +3109,20 @@ class VexService {
             if (authErr) {
                 debugAuth("approvalWatcher:loginFailed", {
                     message: errorMessage(authErr),
+                    promptForPasskey,
                 });
                 $pendingApprovalStageWritable.set(
                     isPasskeyRequiredError(authErr)
                         ? "passkey_setup"
                         : "failed",
                 );
-                return { error: errorMessage(authErr), ok: false };
+                return {
+                    error:
+                        !promptForPasskey && isPasskeyRequiredError(authErr)
+                            ? "This device still needs a passkey before it can finish signing in."
+                            : errorMessage(authErr),
+                    ok: false,
+                };
             }
             await this.saveCredentials(pending.keyStore, {
                 deviceID: pending.approvedDeviceID,

@@ -37,6 +37,7 @@ type Props = AuthScreenProps<"Authenticate">;
 
 const EXPIRY_SECONDS = 5 * 60;
 const APPROVE_GLOW = "rgba(74, 222, 128, 0.45)";
+const AUTO_PASSKEY_SETUP_DELAY_MS = 900;
 const SIGNING_BLUE = "#5DADE2";
 
 type DisplayPhase =
@@ -144,6 +145,9 @@ export function AuthenticateScreen({ navigation, route }: Props) {
         .toString()
         .padStart(2, "0");
     const seconds = (secondsLeft % 60).toString().padStart(2, "0");
+    const passkeySetupMessage = passkeysSupported
+        ? "Vex will ask this device to save a passkey. Use your face, fingerprint, screen lock, or password manager to sign in and approve devices later."
+        : "Passkeys aren't available on this device. We'll finish signing in if this server accepts the approved device key.";
 
     function goBackToSignIn(): void {
         navigation.replace("HangTight", { force: true });
@@ -189,6 +193,28 @@ export function AuthenticateScreen({ navigation, route }: Props) {
         );
     }
 
+    const continueWithoutPasskey = useCallback(
+        async (setupError?: string): Promise<void> => {
+            setPasskeySetupBusy(true);
+            setPasskeySetupError(null);
+            try {
+                const result =
+                    await vexService.completePendingApprovalWithoutPasskey();
+                if (!result.ok) {
+                    const fallback =
+                        result.error ??
+                        "Create or use a passkey to finish signing in.";
+                    setPasskeySetupError(
+                        setupError ? `${setupError} ${fallback}` : fallback,
+                    );
+                }
+            } finally {
+                setPasskeySetupBusy(false);
+            }
+        },
+        [],
+    );
+
     const finishWithExistingPasskey = useCallback(async (): Promise<void> => {
         if (passkeySetupBusy) return;
         setPasskeySetupBusy(true);
@@ -216,36 +242,44 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                     "This device",
                 );
             if (!result.ok) {
-                setPasskeySetupError(
-                    result.error ?? "Could not create a passkey.",
+                await continueWithoutPasskey(
+                    result.error ?? "Passkey setup was skipped.",
                 );
             }
         } finally {
             setPasskeySetupBusy(false);
         }
-    }, [passkeySetupBusy]);
+    }, [continueWithoutPasskey, passkeySetupBusy]);
 
     useEffect(() => {
         if (phase !== "passkey_setup") {
             autoPasskeySetupStarted.current = false;
             return;
         }
-        if (
-            !passkeysSupported ||
-            passkeySetupBusy ||
-            autoPasskeySetupStarted.current
-        ) {
+        if (passkeySetupBusy || autoPasskeySetupStarted.current) {
             return;
         }
 
         autoPasskeySetupStarted.current = true;
         const timer = setTimeout(() => {
-            void finishWithNewPasskey();
-        }, 250);
+            if (passkeysSupported) {
+                void finishWithNewPasskey();
+            } else {
+                void continueWithoutPasskey(
+                    "Passkeys aren't available on this device.",
+                );
+            }
+        }, AUTO_PASSKEY_SETUP_DELAY_MS);
         return () => {
             clearTimeout(timer);
         };
-    }, [finishWithNewPasskey, passkeySetupBusy, passkeysSupported, phase]);
+    }, [
+        continueWithoutPasskey,
+        finishWithNewPasskey,
+        passkeySetupBusy,
+        passkeysSupported,
+        phase,
+    ]);
 
     const haloOpacity = halo.interpolate({
         inputRange: [0, 1],
@@ -261,12 +295,20 @@ export function AuthenticateScreen({ navigation, route }: Props) {
             <BackButton />
 
             <View style={styles.content}>
-                <Text style={styles.label}>VERIFICATION REQUIRED</Text>
-                <Text style={styles.heading}>Match This Code.</Text>
+                <Text style={styles.label}>
+                    {phase === "passkey_setup"
+                        ? "DEVICE APPROVED"
+                        : "VERIFICATION REQUIRED"}
+                </Text>
+                <Text style={styles.heading}>
+                    {phase === "passkey_setup"
+                        ? "Set up quicker sign-in."
+                        : "Match This Code."}
+                </Text>
                 <Text style={styles.instructions}>
-                    The same four characters should appear on a device
-                    you&apos;re already signed in on. Tap Approve there to
-                    finish signing this device in.
+                    {phase === "passkey_setup"
+                        ? passkeySetupMessage
+                        : "The same four characters should appear on a device you're already signed in on. Tap Approve there to finish signing this device in."}
                 </Text>
 
                 <View style={styles.codeStage}>
@@ -304,7 +346,7 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                           : phase === "failed"
                             ? "Sign-in needs retry"
                             : phase === "passkey_setup"
-                              ? "Passkey required"
+                              ? "Setting up sign-in"
                               : "Code matched"}
                 </Text>
 
@@ -349,11 +391,14 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                                 styles.passkeySetupText,
                             ]}
                         >
-                            Setting up a passkey for this device.
+                            {passkeySetupBusy
+                                ? "Waiting for device confirmation..."
+                                : "Secure sign-in is ready."}
                         </Text>
                         {!passkeysSupported ? (
                             <Text style={styles.restoreError}>
                                 Passkeys aren&apos;t available on this device.
+                                You can add one later from Settings.
                             </Text>
                         ) : null}
                         {passkeySetupError ? (
@@ -382,7 +427,7 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                                         void finishWithNewPasskey();
                                     }}
                                     style={styles.methodButton}
-                                    title="Try setup again"
+                                    title="Create a passkey"
                                     variant="primary"
                                 />
                                 <VexButton
@@ -391,7 +436,7 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                                         void finishWithExistingPasskey();
                                     }}
                                     style={styles.methodButton}
-                                    title="Use saved passkey instead"
+                                    title="Use a saved passkey"
                                     variant="outline"
                                 />
                             </>
