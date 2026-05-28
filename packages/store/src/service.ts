@@ -3103,7 +3103,9 @@ class VexService {
                 debugAuth("approvalWatcher:passkeyRetryable", {
                     message: errorMessage(err),
                 });
-                $pendingApprovalStageWritable.set("passkey_setup");
+                $pendingApprovalStageWritable.set(
+                    promptForPasskey ? "passkey_setup" : "failed",
+                );
                 return { error: errorMessage(err), ok: false };
             }
             if (authErr) {
@@ -3112,7 +3114,7 @@ class VexService {
                     promptForPasskey,
                 });
                 $pendingApprovalStageWritable.set(
-                    isPasskeyRequiredError(authErr)
+                    isPasskeyRequiredError(authErr) && promptForPasskey
                         ? "passkey_setup"
                         : "failed",
                 );
@@ -4822,8 +4824,10 @@ class VexService {
                         requestID,
                         username,
                     };
-                    $pendingApprovalStageWritable.set("passkey_setup");
                     this.stopPendingApprovalWatcher();
+                    await this.finishApprovedPendingDeviceLogin({
+                        promptForPasskey: false,
+                    });
                     return;
                 }
                 debugAuth("approvalWatcher:terminal", {
