@@ -1,7 +1,7 @@
 import type { BootstrapConfig, ServerOptions } from "../service.ts";
 import type { KeyStore, Storage, StoredCredentials } from "@vex-chat/libvex";
 
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const libvexMock = vi.hoisted(() => ({
     create: vi.fn(),
@@ -22,6 +22,7 @@ type MockClient = {
     close: ReturnType<typeof vi.fn>;
     connect: ReturnType<typeof vi.fn>;
     devices: {
+        pollPendingRegistration: ReturnType<typeof vi.fn>;
         publishPendingRegistration: ReturnType<typeof vi.fn>;
     };
     getKeys: ReturnType<typeof vi.fn>;
@@ -63,6 +64,16 @@ function makeClient(): MockClient {
         close: vi.fn(async () => undefined),
         connect: vi.fn(async () => undefined),
         devices: {
+            pollPendingRegistration: vi.fn(async () => ({
+                approvedDeviceID: "new-device",
+                createdAt: "2026-05-22T00:00:00.000Z",
+                deviceName: "test-device",
+                expiresAt: "2026-05-22T00:10:00.000Z",
+                requestID: "pending-request",
+                signKey: "new-device-sign-key",
+                status: "approved",
+                username: "blood",
+            })),
             publishPendingRegistration: vi.fn(async () => undefined),
         },
         getKeys: vi.fn(() => ({ public: "new-device-sign-key" })),
@@ -150,11 +161,18 @@ function makeKeyStore(creds: null | StoredCredentials): {
 
 describe("vexService passkey-primary sign-in", () => {
     beforeEach(async () => {
+        vi.useRealTimers();
         await vexService.close();
         vexService.setPasskeyCeremonyDriver(null);
         libvexMock.create.mockReset();
         libvexMock.generateSecretKey.mockReset();
         libvexMock.generateSecretKey.mockReturnValue("generated-private-key");
+    });
+
+    afterEach(async () => {
+        vi.clearAllTimers();
+        vi.useRealTimers();
+        await vexService.close();
     });
 
     test("uses passkey account auth before signing in a saved local device", async () => {
@@ -211,18 +229,14 @@ describe("vexService passkey-primary sign-in", () => {
 
     test("requests cluster approval after passkey auth when no local device key exists", async () => {
         const authClient = makeClient();
-        const enrollmentClient = makeClient();
-        enrollmentClient.me.device.mockReturnValue({ deviceID: "new-device" });
         const config = makeConfig();
-        const { keyStore } = makeKeyStore(null);
+        const { keyStore, saveCredentials } = makeKeyStore(null);
         const options: ServerOptions = { host: "dev.vex.wtf" };
         vexService.setPasskeyCeremonyDriver({
             authenticate: vi.fn(async () => ({ id: "assertion" })),
             register: vi.fn(),
         });
-        libvexMock.create
-            .mockResolvedValueOnce(authClient)
-            .mockResolvedValueOnce(enrollmentClient);
+        libvexMock.create.mockResolvedValueOnce(authClient);
 
         const auth = await vexService.authenticateAccountWithPasskey(
             "blood",
@@ -232,12 +246,14 @@ describe("vexService passkey-primary sign-in", () => {
         );
         const finish =
             await vexService.finishPasskeyAuthenticatedDeviceSignIn(keyStore);
+        vi.useFakeTimers();
         const approval =
             await vexService.requestDeviceApprovalForPasskeyAuthenticatedAccount(
                 config,
                 options,
                 keyStore,
             );
+        await vi.advanceTimersByTimeAsync(2000);
 
         expect(auth).toMatchObject({
             hasLocalDevice: false,
@@ -250,13 +266,30 @@ describe("vexService passkey-primary sign-in", () => {
             userID: "user-blood",
             username: "blood",
         });
-        expect(enrollmentClient.register).toHaveBeenCalledWith("blood");
+        expect(libvexMock.create).toHaveBeenCalledOnce();
+        expect(authClient.register).toHaveBeenCalledWith("blood");
         expect(
-            enrollmentClient.devices.publishPendingRegistration,
+            authClient.devices.publishPendingRegistration,
         ).toHaveBeenCalledWith({
             challenge: "a".repeat(64),
             requestID: "pending-request",
         });
+        expect(authClient.devices.pollPendingRegistration).toHaveBeenCalledWith(
+            {
+                challenge: "a".repeat(64),
+                requestID: "pending-request",
+            },
+        );
+        expect(authClient.loginWithDeviceKey).toHaveBeenCalledWith(
+            "new-device",
+        );
+        expect(saveCredentials).toHaveBeenCalledWith({
+            deviceID: "new-device",
+            deviceKey: "generated-private-key",
+            token: "",
+            username: "blood",
+        });
+        expect(authClient.connect).toHaveBeenCalledOnce();
         expect(approval).toMatchObject({
             ok: false,
             pendingDeviceApproval: true,
