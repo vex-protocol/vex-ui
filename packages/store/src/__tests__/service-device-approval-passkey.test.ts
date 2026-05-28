@@ -69,7 +69,7 @@ function makeClient(): MockClient {
             approveRequest: vi.fn(async () => undefined),
             beginPendingPasskeyRegistration: vi.fn(async () => ({
                 options: { challenge: "new-passkey-challenge" },
-                requestID: "pending-request",
+                requestID: "pending-passkey-request",
             })),
             finishPendingPasskeyRegistration: vi.fn(async () => ({
                 createdAt: "2026-05-22T00:00:00.000Z",
@@ -396,7 +396,7 @@ describe("vexService device approval passkeys", () => {
         ).toHaveBeenCalledWith({
             challenge: "a".repeat(64),
             name: "ios",
-            requestID: "pending-request",
+            requestID: "pending-passkey-request",
             response: { id: "new-credential" },
         });
         expect(client.passkeys.beginAuthentication).toHaveBeenCalledWith(
@@ -422,14 +422,16 @@ describe("vexService device approval passkeys", () => {
         expect(client.connect).toHaveBeenCalledOnce();
     });
 
-    test("does not save credentials when new-device passkey auth fails", async () => {
+    test("keeps approved device passkey setup retryable when passkey auth fails", async () => {
         const client = makeClient();
         const passkeyRequired = makePasskeyRequiredError();
         client.loginWithDeviceKey.mockResolvedValue(passkeyRequired);
         const config = makeConfig();
         const { keyStore, saveCredentials } = makeKeyStore();
         const options: ServerOptions = { host: "dev.vex.wtf" };
-        const authenticate = vi.fn(async () => ({ id: "assertion" }));
+        const authenticate = vi.fn(async () => {
+            throw new Error("Passkey ceremony was cancelled.");
+        });
         vexService.setPasskeyCeremonyDriver({
             authenticate,
             register: vi.fn(),
@@ -462,8 +464,9 @@ describe("vexService device approval passkeys", () => {
         expect(authenticate).toHaveBeenCalledWith({
             challenge: "passkey-challenge",
         });
+        expect(client.passkeys.finishAuthentication).not.toHaveBeenCalled();
         expect(saveCredentials).not.toHaveBeenCalled();
         expect(client.connect).not.toHaveBeenCalled();
-        expect($pendingApprovalStage.get()).toBe("failed");
+        expect($pendingApprovalStage.get()).toBe("passkey_setup");
     });
 });

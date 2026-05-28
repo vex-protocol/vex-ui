@@ -1056,7 +1056,7 @@ class VexService {
                 await finishPending({
                     challenge: pending.challenge,
                     name: passkeyName,
-                    requestID: pending.requestID,
+                    requestID: begin.requestID,
                     response,
                 });
                 return await this.finishApprovedPendingDeviceLogin();
@@ -3072,16 +3072,29 @@ class VexService {
         const client = this.requireClient();
         try {
             $pendingApprovalStageWritable.set("signing_in");
-            const { authErr } = await this.loginWithDeviceKeyWithPasskeyRetry(
-                client,
-                pending.username,
-                pending.approvedDeviceID,
-            );
+            let authErr: Error | null;
+            try {
+                ({ authErr } = await this.loginWithDeviceKeyWithPasskeyRetry(
+                    client,
+                    pending.username,
+                    pending.approvedDeviceID,
+                ));
+            } catch (err: unknown) {
+                debugAuth("approvalWatcher:passkeyRetryable", {
+                    message: errorMessage(err),
+                });
+                $pendingApprovalStageWritable.set("passkey_setup");
+                return { error: errorMessage(err), ok: false };
+            }
             if (authErr) {
                 debugAuth("approvalWatcher:loginFailed", {
                     message: errorMessage(authErr),
                 });
-                $pendingApprovalStageWritable.set("failed");
+                $pendingApprovalStageWritable.set(
+                    isPasskeyRequiredError(authErr)
+                        ? "passkey_setup"
+                        : "failed",
+                );
                 return { error: errorMessage(authErr), ok: false };
             }
             await this.saveCredentials(pending.keyStore, {

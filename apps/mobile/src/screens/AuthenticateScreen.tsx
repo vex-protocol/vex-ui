@@ -58,6 +58,7 @@ export function AuthenticateScreen({ navigation, route }: Props) {
     const [restoreBusy, setRestoreBusy] = useState(false);
     const [restoreError, setRestoreError] = useState<null | string>(null);
     const passkeysSupported = isPasskeySupported();
+    const footerBusy = restoreBusy || passkeySetupBusy;
 
     const phase: DisplayPhase = expired
         ? "expired"
@@ -306,8 +307,19 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                 ) : null}
 
                 {phase === "passkey_setup" ? (
-                    <View style={[styles.statusCard, styles.statusCardActive]}>
-                        <Text style={styles.statusTextActive}>
+                    <View
+                        style={[
+                            styles.statusCard,
+                            styles.statusCardActive,
+                            styles.passkeySetupCard,
+                        ]}
+                    >
+                        <Text
+                            style={[
+                                styles.statusTextActive,
+                                styles.passkeySetupText,
+                            ]}
+                        >
                             Finish securing this device with a passkey.
                         </Text>
                         {!passkeysSupported ? (
@@ -424,7 +436,7 @@ export function AuthenticateScreen({ navigation, route }: Props) {
 
                         <TouchableOpacity
                             activeOpacity={0.7}
-                            disabled={restoreBusy}
+                            disabled={footerBusy}
                             hitSlop={{
                                 bottom: 12,
                                 left: 12,
@@ -434,7 +446,7 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                             onPress={goBackToSignIn}
                             style={[
                                 styles.linkRow,
-                                restoreBusy && styles.linkDisabled,
+                                footerBusy && styles.linkDisabled,
                             ]}
                         >
                             <Text style={styles.linkArrow}>‹</Text>
@@ -662,6 +674,14 @@ const styles = StyleSheet.create({
     modalLabel: {
         ...typography.label,
         color: colors.muted,
+    },
+    passkeySetupCard: {
+        alignItems: "stretch",
+        flexDirection: "column",
+    },
+    passkeySetupText: {
+        flex: 0,
+        textAlign: "center",
     },
     primaryButtonRow: {
         alignItems: "center",
