@@ -1,6 +1,12 @@
 import type { AuthScreenProps } from "../navigation/types";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -57,6 +63,7 @@ export function AuthenticateScreen({ navigation, route }: Props) {
     );
     const [restoreBusy, setRestoreBusy] = useState(false);
     const [restoreError, setRestoreError] = useState<null | string>(null);
+    const autoPasskeySetupStarted = useRef(false);
     const passkeysSupported = isPasskeySupported();
     const footerBusy = restoreBusy || passkeySetupBusy;
 
@@ -182,7 +189,7 @@ export function AuthenticateScreen({ navigation, route }: Props) {
         );
     }
 
-    async function finishWithExistingPasskey(): Promise<void> {
+    const finishWithExistingPasskey = useCallback(async (): Promise<void> => {
         if (passkeySetupBusy) return;
         setPasskeySetupBusy(true);
         setPasskeySetupError(null);
@@ -197,9 +204,9 @@ export function AuthenticateScreen({ navigation, route }: Props) {
         } finally {
             setPasskeySetupBusy(false);
         }
-    }
+    }, [passkeySetupBusy]);
 
-    async function finishWithNewPasskey(): Promise<void> {
+    const finishWithNewPasskey = useCallback(async (): Promise<void> => {
         if (passkeySetupBusy) return;
         setPasskeySetupBusy(true);
         setPasskeySetupError(null);
@@ -216,7 +223,29 @@ export function AuthenticateScreen({ navigation, route }: Props) {
         } finally {
             setPasskeySetupBusy(false);
         }
-    }
+    }, [passkeySetupBusy]);
+
+    useEffect(() => {
+        if (phase !== "passkey_setup") {
+            autoPasskeySetupStarted.current = false;
+            return;
+        }
+        if (
+            !passkeysSupported ||
+            passkeySetupBusy ||
+            autoPasskeySetupStarted.current
+        ) {
+            return;
+        }
+
+        autoPasskeySetupStarted.current = true;
+        const timer = setTimeout(() => {
+            void finishWithNewPasskey();
+        }, 250);
+        return () => {
+            clearTimeout(timer);
+        };
+    }, [finishWithNewPasskey, passkeySetupBusy, passkeysSupported, phase]);
 
     const haloOpacity = halo.interpolate({
         inputRange: [0, 1],
@@ -320,7 +349,7 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                                 styles.passkeySetupText,
                             ]}
                         >
-                            Finish securing this device with a passkey.
+                            Setting up a passkey for this device.
                         </Text>
                         {!passkeysSupported ? (
                             <Text style={styles.restoreError}>
@@ -332,25 +361,41 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                                 {passkeySetupError}
                             </Text>
                         ) : null}
-                        <VexButton
-                            disabled={!passkeysSupported || passkeySetupBusy}
-                            loading={passkeySetupBusy}
-                            onPress={() => {
-                                void finishWithNewPasskey();
-                            }}
-                            style={styles.methodButton}
-                            title="Create passkey"
-                            variant="primary"
-                        />
-                        <VexButton
-                            disabled={!passkeysSupported || passkeySetupBusy}
-                            onPress={() => {
-                                void finishWithExistingPasskey();
-                            }}
-                            style={styles.methodButton}
-                            title="Use existing passkey"
-                            variant="outline"
-                        />
+                        {passkeysSupported && !passkeySetupError ? (
+                            <View style={styles.passkeySetupStatusRow}>
+                                <ActivityIndicator
+                                    animating
+                                    color={SIGNING_BLUE}
+                                    size="small"
+                                />
+                                <Text style={styles.passkeySetupStatusText}>
+                                    Your device will ask you to confirm.
+                                </Text>
+                            </View>
+                        ) : null}
+                        {passkeySetupError && passkeysSupported ? (
+                            <>
+                                <VexButton
+                                    disabled={passkeySetupBusy}
+                                    loading={passkeySetupBusy}
+                                    onPress={() => {
+                                        void finishWithNewPasskey();
+                                    }}
+                                    style={styles.methodButton}
+                                    title="Try setup again"
+                                    variant="primary"
+                                />
+                                <VexButton
+                                    disabled={passkeySetupBusy}
+                                    onPress={() => {
+                                        void finishWithExistingPasskey();
+                                    }}
+                                    style={styles.methodButton}
+                                    title="Use saved passkey instead"
+                                    variant="outline"
+                                />
+                            </>
+                        ) : null}
                     </View>
                 ) : null}
 
@@ -678,6 +723,18 @@ const styles = StyleSheet.create({
     passkeySetupCard: {
         alignItems: "stretch",
         flexDirection: "column",
+    },
+    passkeySetupStatusRow: {
+        alignItems: "center",
+        flexDirection: "row",
+        gap: 10,
+        justifyContent: "center",
+        paddingVertical: 4,
+    },
+    passkeySetupStatusText: {
+        ...typography.body,
+        color: "#D4ECFB",
+        flexShrink: 1,
     },
     passkeySetupText: {
         flex: 0,
