@@ -42,7 +42,9 @@ export interface NativeReleaseInfo {
     fingerprintShort?: string | undefined;
     htmlUrl: string;
     iosBuildId?: string | undefined;
+    iosDirectInstallUrl?: string | undefined;
     iosInstallUrl?: string | undefined;
+    iosManifestUrl?: string | undefined;
     publishedAt?: string | undefined;
     sha256?: string | undefined;
     tagName: string;
@@ -79,6 +81,10 @@ const FINGERPRINT_ASSET_BY_PLATFORM = {
 const IOS_INSTALL_ASSET_NAMES = new Set([
     "ios-install.json",
     "vex-ios-install.json",
+]);
+const IOS_MANIFEST_ASSET_NAMES = new Set([
+    "ios-manifest.plist",
+    "vex-ios-manifest.plist",
 ]);
 const externalFetch = globalThis.fetch.bind(globalThis);
 
@@ -267,17 +273,34 @@ export function getNativeBuildInstallUrl(
 ): string | undefined {
     if (!release) return undefined;
     if (Platform.OS === "ios") {
-        return release.iosInstallUrl ?? release.htmlUrl;
+        return (
+            release.iosDirectInstallUrl ??
+            release.iosInstallUrl ??
+            release.htmlUrl
+        );
     }
     return release.htmlUrl;
 }
 
 export async function openNativeBuildInstallPage(): Promise<void> {
+    const release = $appUpdateState.get().nativeRelease;
     const url = getNativeBuildInstallUrl();
     if (!url) {
         throw new Error("No native build install page is available.");
     }
-    await Linking.openURL(url);
+    try {
+        await Linking.openURL(url);
+    } catch (err) {
+        const fallbackUrl =
+            Platform.OS === "ios" && release
+                ? (release.iosInstallUrl ?? release.htmlUrl)
+                : undefined;
+        if (fallbackUrl && fallbackUrl !== url) {
+            await Linking.openURL(fallbackUrl);
+            return;
+        }
+        throw err;
+    }
 }
 
 export async function openUnknownAppSourcesSettings(): Promise<void> {
@@ -323,6 +346,15 @@ function asRecord(value: unknown): Record<string, unknown> {
     return typeof value === "object" && value != null
         ? (value as Record<string, unknown>)
         : {};
+}
+
+function buildItmsServicesInstallUrl(
+    manifestUrl: string | undefined,
+): string | undefined {
+    if (!manifestUrl) return undefined;
+    return `itms-services://?action=download-manifest&url=${encodeURIComponent(
+        manifestUrl,
+    )}`;
 }
 
 async function checkOtaUpdate(): Promise<{
@@ -402,7 +434,9 @@ async function fetchIosInstallInfo(url: string | undefined): Promise<
     | undefined
     | {
           buildId?: string | undefined;
+          directInstallUrl?: string | undefined;
           installUrl?: string | undefined;
+          manifestUrl?: string | undefined;
       }
 > {
     if (!url) return undefined;
@@ -410,6 +444,10 @@ async function fetchIosInstallInfo(url: string | undefined): Promise<
     const ios = asRecord(record["ios"]);
     return {
         buildId: stringField(record, "buildId") ?? stringField(ios, "buildId"),
+        directInstallUrl: normalizeNativeInstallUrl(
+            stringField(record, "directInstallUrl") ??
+                stringField(ios, "directInstallUrl"),
+        ),
         installUrl: normalizeHttpUrl(
             stringField(record, "installUrl") ??
                 stringField(record, "buildUrl") ??
@@ -417,6 +455,10 @@ async function fetchIosInstallInfo(url: string | undefined): Promise<
                 stringField(ios, "installUrl") ??
                 stringField(ios, "buildUrl") ??
                 stringField(ios, "url"),
+        ),
+        manifestUrl: normalizeHttpUrl(
+            stringField(record, "manifestUrl") ??
+                stringField(ios, "manifestUrl"),
         ),
     };
 }
@@ -464,6 +506,10 @@ async function fetchNativeRelease(
         const name = stringField(asset, "name")?.toLowerCase();
         return name != null && IOS_INSTALL_ASSET_NAMES.has(name);
     });
+    const iosManifestAsset = assets.find((asset) => {
+        const name = stringField(asset, "name")?.toLowerCase();
+        return name != null && IOS_MANIFEST_ASSET_NAMES.has(name);
+    });
 
     const fingerprint = fingerprintAsset
         ? await fetchFingerprintHash(
@@ -475,6 +521,12 @@ async function fetchNativeRelease(
               stringField(iosInstallAsset, "browser_download_url"),
           )
         : undefined;
+    const iosManifestUrl =
+        iosInstallInfo?.manifestUrl ??
+        normalizeHttpUrl(stringField(iosManifestAsset, "browser_download_url"));
+    const iosDirectInstallUrl =
+        buildItmsServicesInstallUrl(iosManifestUrl) ??
+        iosInstallInfo?.directInstallUrl;
     const sha256 = checksumAsset
         ? await fetchSha256(stringField(checksumAsset, "browser_download_url"))
         : undefined;
@@ -491,7 +543,9 @@ async function fetchNativeRelease(
             stringField(release, "html_url") ??
             "https://github.com/vex-protocol/vex-ui/releases",
         iosBuildId: iosInstallInfo?.buildId,
+        iosDirectInstallUrl,
         iosInstallUrl: iosInstallInfo?.installUrl ?? extractExpoBuildUrl(body),
+        iosManifestUrl,
         publishedAt: stringField(release, "published_at"),
         sha256,
         tagName: stringField(release, "tag_name") ?? "unknown",
@@ -590,6 +644,22 @@ function normalizeHttpUrl(value: string | undefined): string | undefined {
     try {
         const url = new URL(value);
         return url.protocol === "https:" || url.protocol === "http:"
+            ? url.toString()
+            : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function normalizeNativeInstallUrl(
+    value: string | undefined,
+): string | undefined {
+    if (!value) return undefined;
+    try {
+        const url = new URL(value);
+        return url.protocol === "itms-services:" ||
+            url.protocol === "https:" ||
+            url.protocol === "http:"
             ? url.toString()
             : undefined;
     } catch {

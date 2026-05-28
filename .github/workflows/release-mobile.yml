@@ -397,39 +397,11 @@ jobs:
                     --output "${{ github.workspace }}/release.apk"
                   test -s "${{ github.workspace }}/release.apk"
 
-                  node <<'NODE'
-                  const fs = require("node:fs");
-                  const path = require("node:path");
-
-                  const raw = fs.readFileSync("/tmp/native-builds.json", "utf8");
-                  const parsed = JSON.parse(raw);
-                  const builds = Array.isArray(parsed) ? parsed : [parsed];
-                  const build = builds.find((candidate) =>
-                    String(candidate?.platform ?? "").toLowerCase() === "ios"
-                  );
-                  if (!build?.id) {
-                    console.error("EAS iOS build output did not include a build id.");
-                    process.exit(1);
-                  }
-
-                  const install = {
-                    platform: "ios",
-                    provider: "expo",
-                    profile: "production",
-                    channel: "production",
-                    bundleIdentifier: "chat.vex.mobile",
-                    buildId: build.id,
-                    installUrl: `https://expo.dev/accounts/vex-chat/projects/vex/builds/${build.id}`,
-                    artifactUrl: build.artifacts?.applicationArchiveUrl ?? build.artifacts?.buildUrl,
-                    commit: process.env.GITHUB_SHA,
-                    fingerprint: JSON.parse(fs.readFileSync("/tmp/current-fingerprint-ios.json", "utf8")).hash,
-                    createdAt: new Date().toISOString()
-                  };
-                  fs.writeFileSync(
-                    path.join(process.env.GITHUB_WORKSPACE, "ios-install.json"),
-                    `${JSON.stringify(install, null, 2)}\n`
-                  );
-                  NODE
+                  IOS_INSTALL_PROFILE=production \
+                    IOS_INSTALL_CHANNEL=production \
+                    IOS_BUNDLE_IDENTIFIER=chat.vex.mobile \
+                    IOS_APP_VERSION="${{ steps.version.outputs.version }}" \
+                    node scripts/write-ios-install-metadata.cjs
 
             - name: Build release notes
               if: steps.decide.outputs.path == 'build'

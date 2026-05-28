@@ -380,7 +380,7 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
             {phase === "ios_installing" ? (
                 <View style={styles.actions}>
                     <PrimaryAction
-                        label="Open install page"
+                        label="Open installer"
                         onPress={() => {
                             void openNativeBuildInstallPage().catch(
                                 () => undefined,
@@ -408,7 +408,7 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                         <SecondaryAction
                             label={
                                 Platform.OS === "ios"
-                                    ? "Open install page"
+                                    ? "Open installer"
                                     : "Open release"
                             }
                             onPress={() => {
@@ -483,8 +483,8 @@ function copyForPhase(
             };
         case "ios_installing":
             return {
-                detail: "Install the new build from Safari, then open Vex again. This gate will check again before loading chats.",
-                message: "The Vex install page should be open.",
+                detail: "Confirm the install, then open Vex again. This gate will check again before loading chats.",
+                message: "The iOS installer should be open.",
                 title: "Install update",
             };
         case "ota_downloading":
