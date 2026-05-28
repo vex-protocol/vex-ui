@@ -343,15 +343,45 @@ export function HangTightScreen({
 
         setBootError("");
         setBusy(true);
-        void vexService
-            .register(
+        void (async () => {
+            const passkey = await vexService.authenticateAccountWithPasskey(
+                candidate,
+                mobileConfig(),
+                getServerOptions(),
+                keychainKeyStore,
+            );
+            if (passkey.ok && passkey.username) {
+                navigation.replace("ProvisionDevice", {
+                    hasLocalDevice: passkey.hasLocalDevice === true,
+                    ...(passkey.userID !== undefined
+                        ? { userID: passkey.userID }
+                        : {}),
+                    username: passkey.username,
+                });
+                return;
+            }
+            if (!passkey.shouldTryDeviceApproval) {
+                setBootError(
+                    passkey.userCancelled
+                        ? "Passkey sign-in was cancelled."
+                        : (passkey.error ?? "Could not sign in with passkey."),
+                );
+                playInvalidShake();
+                return;
+            }
+
+            return vexService.register(
                 candidate,
                 "",
                 mobileConfig(),
                 getServerOptions(),
                 keychainKeyStore,
-            )
+            );
+        })()
             .then(async (result) => {
+                if (result === undefined) {
+                    return;
+                }
                 if (!result.ok && result.passkeySetupRequired) {
                     await finishRequiredPasskeySetup();
                     return;
@@ -505,8 +535,8 @@ export function HangTightScreen({
                             <Text style={styles.eyebrow}>SIGN IN</Text>
                             <Text style={styles.heading}>Welcome.</Text>
                             <Text style={styles.subheading}>
-                                Enter your handle to sign in or create an
-                                account.
+                                Enter your handle. If it&apos;s yours, your
+                                passkey opens the next step.
                             </Text>
 
                             <View style={styles.inputArea}>
@@ -617,8 +647,8 @@ export function HangTightScreen({
 
                             {!busy ? (
                                 <Text style={styles.bottomHint}>
-                                    We'll create an account if this handle is
-                                    new, or sign you in if it's yours.
+                                    New handles create an account. Existing
+                                    handles use passkey sign-in first.
                                 </Text>
                             ) : null}
                         </Animated.View>

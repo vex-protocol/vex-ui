@@ -58,8 +58,9 @@ const DEVICE_APPROVAL_CHANNEL_ID = "vex-device-approval";
 // 4-character code displayed inside the app, not via anything the OS
 // might log. We just need the visible banner to nudge the user to
 // open the app and look at the approval screen.
-const DEVICE_APPROVAL_TITLE = "Vex";
-const DEVICE_APPROVAL_BODY = "New device sign-in request";
+const DEVICE_APPROVAL_TITLE = "New Device Approval";
+const DEVICE_APPROVAL_BODY =
+    "Someone is trying to sign in to your Vex account.";
 
 // Resilience caps for the notification pipeline. When the
 // foreground-service has been pulling messages while the screen was
@@ -118,6 +119,7 @@ function summarizePushData(
         keys: Object.keys(data).sort(),
         kind: data["kind"],
         mailID: data["mailID"],
+        requestID: data["requestID"],
     };
 }
 
@@ -346,9 +348,11 @@ export async function showDeviceApprovalNotification(
             content: {
                 body: DEVICE_APPROVAL_BODY,
                 data: {
+                    event: "deviceRequest",
                     kind: "deviceApproval",
                     requestID,
                 },
+                priority: Notifications.AndroidNotificationPriority.MAX,
                 ...iosDefaultNotificationSound(),
                 title: DEVICE_APPROVAL_TITLE,
             },
@@ -529,11 +533,12 @@ function handleNotificationPress(
 ): void {
     const kind = data?.["kind"];
     const event = data?.["event"];
-    if (kind === "deviceApproval") {
+    if (isDeviceApprovalNotificationData(data)) {
         // Land on the actual approve/deny applet — the matching code is
         // displayed inside that screen, and that's the only thing the
         // user has to do here.
         logPushDelivery("routing notification tap", {
+            event,
             kind,
             target: "DeviceRequests",
         });
@@ -596,6 +601,15 @@ function iosDefaultNotificationSound(): { sound?: "default" } {
     return Platform.OS === "ios" ? { sound: "default" } : {};
 }
 
+function isDeviceApprovalNotificationData(
+    data: Record<string, unknown> | undefined,
+): boolean {
+    return (
+        data?.["kind"] === "deviceApproval" ||
+        data?.["event"] === "deviceRequest"
+    );
+}
+
 function isMessageNotificationData(data: Record<string, unknown>): boolean {
     const kind = data["kind"];
     return data["event"] === "mail" || kind === "dm" || kind === "group";
@@ -643,6 +657,38 @@ function routeNotificationTap(
     options: { syncFirst?: boolean } = {},
 ): void {
     if (!data || typeof data !== "object") {
+        return;
+    }
+    if (isDeviceApprovalNotificationData(data)) {
+        if (canRouteNotificationNow()) {
+            if (options.syncFirst === true) {
+                void (async () => {
+                    await handleRemotePushWake(data);
+                    handleNotificationPress(data);
+                })().catch((err: unknown) => {
+                    console.warn(
+                        "[vex-push] device approval notification tap handling failed",
+                        err instanceof Error ? err.message : String(err),
+                    );
+                    handleNotificationPress(data);
+                });
+                return;
+            }
+            handleNotificationPress(data);
+            return;
+        }
+        logPushDelivery("device approval notification tap queued", {
+            navigationReady: navigationRef.isReady(),
+            signedIn: $user.get() !== null,
+            ...summarizePushData(data),
+        });
+        enqueuePendingNotificationRoute(data, {
+            dedupeKey:
+                typeof data["requestID"] === "string"
+                    ? data["requestID"]
+                    : undefined,
+            syncFirst: options.syncFirst === true,
+        });
         return;
     }
     if (isMessageNotificationData(data)) {
