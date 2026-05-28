@@ -532,6 +532,7 @@ class VexService {
     private lastDeviceAuthRefreshAttemptAt = 0;
     private logoutInFlight: null | Promise<void> = null;
     private passkeyAccountSession: null | {
+        deviceKey: string;
         keyStore: KeyStore;
         localCredentials: null | StoredCredentials;
         userID: string;
@@ -2818,6 +2819,7 @@ class VexService {
                 localCredentials.username.toLowerCase() ===
                     canonicalUsername.toLowerCase();
             this.passkeyAccountSession = {
+                deviceKey: privateKey,
                 keyStore,
                 localCredentials: sameLocalAccount ? localCredentials : null,
                 userID: finish.user.userID,
@@ -3309,6 +3311,7 @@ class VexService {
             });
             this.activePendingDeviceApproval = null;
             this.deferredDeviceApproval = null;
+            this.passkeyAccountSession = null;
             $pendingApprovalStageWritable.set("idle");
             return { ok: true };
         } catch (err: unknown) {
@@ -4254,34 +4257,125 @@ class VexService {
         if (session.keyStore !== keyStore) {
             return { error: "Key store mismatch.", ok: false };
         }
-        const username = session.username;
-        const result = await this.registerInternal(
-            username,
-            "",
-            config,
-            options,
-            keyStore,
-        );
-        if (
-            !result.ok &&
-            result.pendingDeviceApproval &&
-            result.pendingRequestID &&
-            this.deferredDeviceApproval
-        ) {
-            const published =
-                await this.publishDeferredDeviceApprovalAndStartWatching(
-                    keyStore,
-                );
-            if (!published.ok) {
+        try {
+            this.deferredDeviceApproval = null;
+            $pendingApprovalStageWritable.set("idle");
+            this.setAuthStatus("checking");
+
+            const client = this.requireClient();
+            const hasXKeyRing = Boolean(
+                (client as unknown as { xKeyRing?: unknown }).xKeyRing,
+            );
+            if (!hasXKeyRing) {
                 return {
-                    error:
-                        published.error ??
-                        "Could not notify your other devices. Try again.",
+                    error: "Local crypto keyring did not initialize. Please retry.",
                     ok: false,
                 };
             }
+
+            const username = session.username.trim().toLowerCase();
+            const [user, regErr] = await withTimeout(
+                client.register(username),
+                REGISTER_STEP_TIMEOUT_MS,
+                `Device approval stalled before reaching server registration at ${options.host}.`,
+            );
+            if (!regErr && user) {
+                await this.saveCredentials(keyStore, {
+                    deviceID: client.me.device().deviceID,
+                    deviceKey: session.deviceKey,
+                    token: "",
+                    username: client.me.user().username,
+                });
+                await withTimeout(
+                    client.connect(),
+                    REGISTER_STEP_TIMEOUT_MS,
+                    "Device approval stalled while opening realtime connection.",
+                );
+                $userWritable.set(client.me.user());
+                this.setAuthStatus("authenticated");
+                this.kickPopulateState();
+                this.passkeyAccountSession = null;
+                return { ok: true };
+            }
+
+            const pending = regErr
+                ? this.extractPendingApprovalDetails(regErr)
+                : null;
+            if (!pending) {
+                return {
+                    error: regErr?.message ?? "Device approval request failed",
+                    ok: false,
+                };
+            }
+
+            const deviceName = config.deviceName || "This device";
+            if (
+                typeof pending.challenge === "string" &&
+                pending.challenge.length > 0
+            ) {
+                this.deferredDeviceApproval = {
+                    challenge: pending.challenge,
+                    deviceKey: session.deviceKey,
+                    deviceName,
+                    keyStore,
+                    requestID: pending.requestID,
+                    username,
+                };
+            } else {
+                this.startPendingApprovalWatcher({
+                    challenge: pending.challenge,
+                    deviceKey: session.deviceKey,
+                    deviceName,
+                    keyStore,
+                    requestID: pending.requestID,
+                    username,
+                });
+            }
+
+            let pendingSignKey: string | undefined;
+            try {
+                pendingSignKey = client.getKeys().public;
+            } catch {
+                pendingSignKey = undefined;
+            }
+            const result: AuthResult = {
+                error: "Device approval requested. Confirm this new device from an existing signed-in device.",
+                ok: false,
+                pendingDeviceApproval: true,
+                pendingRequestID: pending.requestID,
+                ...(pendingSignKey !== undefined ? { pendingSignKey } : {}),
+                ...(pending.userID !== null
+                    ? { pendingUserID: pending.userID }
+                    : {}),
+            };
+            if (
+                !result.ok &&
+                result.pendingDeviceApproval &&
+                result.pendingRequestID &&
+                this.deferredDeviceApproval
+            ) {
+                const published =
+                    await this.publishDeferredDeviceApprovalAndStartWatching(
+                        keyStore,
+                    );
+                if (!published.ok) {
+                    return {
+                        error:
+                            published.error ??
+                            "Could not notify your other devices. Try again.",
+                        ok: false,
+                    };
+                }
+            }
+            return result;
+        } catch (err: unknown) {
+            if (isUnauthorizedError(err)) {
+                this.setAuthStatus("unauthorized");
+            } else if (isNetworkError(err)) {
+                this.setAuthStatus("offline");
+            }
+            return { error: errorMessage(err), ok: false };
         }
-        return result;
     }
 
     private requireClient(): Client {
