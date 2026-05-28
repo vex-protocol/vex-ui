@@ -1,12 +1,6 @@
 import type { AuthScreenProps } from "../navigation/types";
 
-import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
-} from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -37,14 +31,12 @@ type Props = AuthScreenProps<"Authenticate">;
 
 const EXPIRY_SECONDS = 5 * 60;
 const APPROVE_GLOW = "rgba(74, 222, 128, 0.45)";
-const AUTO_PASSKEY_SETUP_DELAY_MS = 900;
 const SIGNING_BLUE = "#5DADE2";
 
 type DisplayPhase =
     | "expired"
     | "failed"
     | "loading_account"
-    | "passkey_setup"
     | "signing_in"
     | "waiting";
 
@@ -58,15 +50,10 @@ export function AuthenticateScreen({ navigation, route }: Props) {
     const [secondsLeft, setSecondsLeft] = useState(EXPIRY_SECONDS);
     const [expired, setExpired] = useState(false);
     const [otherMethodsOpen, setOtherMethodsOpen] = useState(false);
-    const [passkeySetupBusy, setPasskeySetupBusy] = useState(false);
-    const [passkeySetupError, setPasskeySetupError] = useState<null | string>(
-        null,
-    );
     const [restoreBusy, setRestoreBusy] = useState(false);
     const [restoreError, setRestoreError] = useState<null | string>(null);
-    const autoPasskeySetupStarted = useRef(false);
     const passkeysSupported = isPasskeySupported();
-    const footerBusy = restoreBusy || passkeySetupBusy;
+    const footerBusy = restoreBusy;
 
     const phase: DisplayPhase = expired
         ? "expired"
@@ -74,11 +61,9 @@ export function AuthenticateScreen({ navigation, route }: Props) {
           ? "failed"
           : stage === "loading_account" || user
             ? "loading_account"
-            : stage === "passkey_setup"
-              ? "passkey_setup"
-              : stage === "signing_in"
-                ? "signing_in"
-                : "waiting";
+            : stage === "signing_in" || stage === "passkey_setup"
+              ? "signing_in"
+              : "waiting";
 
     // Soft pulsing focus ring around the code while we're still waiting,
     // so it's clear the digits are "live" and to be matched against the
@@ -145,9 +130,6 @@ export function AuthenticateScreen({ navigation, route }: Props) {
         .toString()
         .padStart(2, "0");
     const seconds = (secondsLeft % 60).toString().padStart(2, "0");
-    const passkeySetupMessage = passkeysSupported
-        ? "Vex will ask this device to save a passkey. Use your face, fingerprint, screen lock, or password manager to sign in and approve devices later."
-        : "Passkeys aren't available on this device. We'll finish signing in if this server accepts the approved device key.";
 
     function goBackToSignIn(): void {
         navigation.replace("HangTight", { force: true });
@@ -193,94 +175,6 @@ export function AuthenticateScreen({ navigation, route }: Props) {
         );
     }
 
-    const continueWithoutPasskey = useCallback(
-        async (setupError?: string): Promise<void> => {
-            setPasskeySetupBusy(true);
-            setPasskeySetupError(null);
-            try {
-                const result =
-                    await vexService.completePendingApprovalWithoutPasskey();
-                if (!result.ok) {
-                    const fallback =
-                        result.error ??
-                        "Create or use a passkey to finish signing in.";
-                    setPasskeySetupError(
-                        setupError ? `${setupError} ${fallback}` : fallback,
-                    );
-                }
-            } finally {
-                setPasskeySetupBusy(false);
-            }
-        },
-        [],
-    );
-
-    const finishWithExistingPasskey = useCallback(async (): Promise<void> => {
-        if (passkeySetupBusy) return;
-        setPasskeySetupBusy(true);
-        setPasskeySetupError(null);
-        try {
-            const result =
-                await vexService.completePendingApprovalWithExistingPasskey();
-            if (!result.ok) {
-                setPasskeySetupError(
-                    result.error ?? "Could not verify this device.",
-                );
-            }
-        } finally {
-            setPasskeySetupBusy(false);
-        }
-    }, [passkeySetupBusy]);
-
-    const finishWithNewPasskey = useCallback(async (): Promise<void> => {
-        if (passkeySetupBusy) return;
-        setPasskeySetupBusy(true);
-        setPasskeySetupError(null);
-        try {
-            const result =
-                await vexService.completePendingApprovalWithNewPasskey(
-                    "This device",
-                );
-            if (!result.ok) {
-                await continueWithoutPasskey(
-                    result.error ?? "Passkey setup was skipped.",
-                );
-            }
-        } finally {
-            setPasskeySetupBusy(false);
-        }
-    }, [continueWithoutPasskey, passkeySetupBusy]);
-
-    useEffect(() => {
-        if (phase !== "passkey_setup") {
-            autoPasskeySetupStarted.current = false;
-            return;
-        }
-        if (passkeySetupBusy || autoPasskeySetupStarted.current) {
-            return;
-        }
-
-        autoPasskeySetupStarted.current = true;
-        const timer = setTimeout(() => {
-            if (passkeysSupported) {
-                void finishWithNewPasskey();
-            } else {
-                void continueWithoutPasskey(
-                    "Passkeys aren't available on this device.",
-                );
-            }
-        }, AUTO_PASSKEY_SETUP_DELAY_MS);
-        return () => {
-            clearTimeout(timer);
-        };
-    }, [
-        continueWithoutPasskey,
-        finishWithNewPasskey,
-        passkeySetupBusy,
-        passkeysSupported,
-        phase,
-    ]);
-
     const haloOpacity = halo.interpolate({
         inputRange: [0, 1],
         outputRange: [0.18, 0.55],
@@ -295,20 +189,12 @@ export function AuthenticateScreen({ navigation, route }: Props) {
             <BackButton />
 
             <View style={styles.content}>
-                <Text style={styles.label}>
-                    {phase === "passkey_setup"
-                        ? "DEVICE APPROVED"
-                        : "VERIFICATION REQUIRED"}
-                </Text>
-                <Text style={styles.heading}>
-                    {phase === "passkey_setup"
-                        ? "Set up quicker sign-in."
-                        : "Match This Code."}
-                </Text>
+                <Text style={styles.label}>VERIFICATION REQUIRED</Text>
+                <Text style={styles.heading}>Match This Code.</Text>
                 <Text style={styles.instructions}>
-                    {phase === "passkey_setup"
-                        ? passkeySetupMessage
-                        : "The same four characters should appear on a device you're already signed in on. Tap Approve there to finish signing this device in."}
+                    The same four characters should appear on a device
+                    you&apos;re already signed in on. Tap Approve there to
+                    finish signing this device in.
                 </Text>
 
                 <View style={styles.codeStage}>
@@ -345,9 +231,7 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                           ? "Verification window closed"
                           : phase === "failed"
                             ? "Sign-in needs retry"
-                            : phase === "passkey_setup"
-                              ? "Setting up sign-in"
-                              : "Code matched"}
+                            : "Code matched"}
                 </Text>
 
                 {phase === "waiting" ? (
@@ -374,73 +258,6 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                         <Text style={styles.statusTextActive}>
                             Signing in...
                         </Text>
-                    </View>
-                ) : null}
-
-                {phase === "passkey_setup" ? (
-                    <View
-                        style={[
-                            styles.statusCard,
-                            styles.statusCardActive,
-                            styles.passkeySetupCard,
-                        ]}
-                    >
-                        <Text
-                            style={[
-                                styles.statusTextActive,
-                                styles.passkeySetupText,
-                            ]}
-                        >
-                            {passkeySetupBusy
-                                ? "Waiting for device confirmation..."
-                                : "Secure sign-in is ready."}
-                        </Text>
-                        {!passkeysSupported ? (
-                            <Text style={styles.restoreError}>
-                                Passkeys aren&apos;t available on this device.
-                                You can add one later from Settings.
-                            </Text>
-                        ) : null}
-                        {passkeySetupError ? (
-                            <Text style={styles.restoreError}>
-                                {passkeySetupError}
-                            </Text>
-                        ) : null}
-                        {passkeysSupported && !passkeySetupError ? (
-                            <View style={styles.passkeySetupStatusRow}>
-                                <ActivityIndicator
-                                    animating
-                                    color={SIGNING_BLUE}
-                                    size="small"
-                                />
-                                <Text style={styles.passkeySetupStatusText}>
-                                    Your device will ask you to confirm.
-                                </Text>
-                            </View>
-                        ) : null}
-                        {passkeySetupError && passkeysSupported ? (
-                            <>
-                                <VexButton
-                                    disabled={passkeySetupBusy}
-                                    loading={passkeySetupBusy}
-                                    onPress={() => {
-                                        void finishWithNewPasskey();
-                                    }}
-                                    style={styles.methodButton}
-                                    title="Create a passkey"
-                                    variant="primary"
-                                />
-                                <VexButton
-                                    disabled={passkeySetupBusy}
-                                    onPress={() => {
-                                        void finishWithExistingPasskey();
-                                    }}
-                                    style={styles.methodButton}
-                                    title="Use a saved passkey"
-                                    variant="outline"
-                                />
-                            </>
-                        ) : null}
                     </View>
                 ) : null}
 
@@ -495,9 +312,7 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                     </View>
                 ) : null}
 
-                {phase === "waiting" ||
-                phase === "expired" ||
-                phase === "passkey_setup" ? (
+                {phase === "waiting" || phase === "expired" ? (
                     <>
                         {phase === "waiting" && requestID ? (
                             <TouchableOpacity
@@ -764,26 +579,6 @@ const styles = StyleSheet.create({
     modalLabel: {
         ...typography.label,
         color: colors.muted,
-    },
-    passkeySetupCard: {
-        alignItems: "stretch",
-        flexDirection: "column",
-    },
-    passkeySetupStatusRow: {
-        alignItems: "center",
-        flexDirection: "row",
-        gap: 10,
-        justifyContent: "center",
-        paddingVertical: 4,
-    },
-    passkeySetupStatusText: {
-        ...typography.body,
-        color: "#D4ECFB",
-        flexShrink: 1,
-    },
-    passkeySetupText: {
-        flex: 0,
-        textAlign: "center",
     },
     primaryButtonRow: {
         alignItems: "center",
