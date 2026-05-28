@@ -83,6 +83,7 @@ module.exports = ({ config }) => {
         config.android?.googleServicesFile;
     const appVersion = process.env.VEX_APP_VERSION || pkg.version;
     const environment = devMode ? "development" : "production";
+    const updateChannel = devMode ? "development" : "production";
     const passkeyRpHost =
         resolveHost(
             process.env.VEX_PASSKEY_RP_HOST ||
@@ -145,13 +146,18 @@ module.exports = ({ config }) => {
         updates: {
             enabled: true,
             url: `https://u.expo.dev/${EAS_PROJECT_ID}`,
+            // Local USB installs do not get EAS Build's profile-derived
+            // channel injection, so stamp the channel into native config here.
+            requestHeaders: {
+                "expo-channel-name": updateChannel,
+            },
             checkAutomatically: "ON_LOAD",
             fallbackToCacheTimeout: 0,
         },
         runtimeVersion: { policy: "fingerprint" },
         extra: {
             ...config.extra,
-            vex: { environment },
+            vex: { environment, updateChannel },
             eas: { projectId: EAS_PROJECT_ID },
         },
         plugins: [

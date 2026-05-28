@@ -29,7 +29,12 @@ const environment =
             ? vexExtra["environment"]
             : undefined,
     ) ?? "production";
-const channel = Updates.channel ?? "embedded";
+const configuredUpdateChannel = normalize(
+    typeof vexExtra?.["updateChannel"] === "string"
+        ? vexExtra["updateChannel"]
+        : undefined,
+);
+const channel = Updates.channel ?? configuredUpdateChannel ?? "embedded";
 const releaseTarget =
     environment === "development" || channel === "development"
         ? "development"
