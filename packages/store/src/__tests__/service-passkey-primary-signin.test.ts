@@ -253,6 +253,12 @@ describe("vexService passkey-primary sign-in", () => {
                 options,
                 keyStore,
             );
+        const duplicateApproval =
+            await vexService.requestDeviceApprovalForPasskeyAuthenticatedAccount(
+                config,
+                options,
+                keyStore,
+            );
         await vi.advanceTimersByTimeAsync(2000);
 
         expect(auth).toMatchObject({
@@ -268,12 +274,16 @@ describe("vexService passkey-primary sign-in", () => {
         });
         expect(libvexMock.create).toHaveBeenCalledOnce();
         expect(authClient.register).toHaveBeenCalledWith("blood");
+        expect(authClient.register).toHaveBeenCalledOnce();
         expect(
             authClient.devices.publishPendingRegistration,
         ).toHaveBeenCalledWith({
             challenge: "a".repeat(64),
             requestID: "pending-request",
         });
+        expect(
+            authClient.devices.publishPendingRegistration,
+        ).toHaveBeenCalledOnce();
         expect(authClient.devices.pollPendingRegistration).toHaveBeenCalledWith(
             {
                 challenge: "a".repeat(64),
@@ -295,6 +305,77 @@ describe("vexService passkey-primary sign-in", () => {
             pendingDeviceApproval: true,
             pendingRequestID: "pending-request",
             pendingSignKey: "new-device-sign-key",
+        });
+        expect(duplicateApproval).toMatchObject({
+            ok: false,
+            pendingDeviceApproval: true,
+            pendingRequestID: "pending-request",
+            pendingSignKey: "new-device-sign-key",
+        });
+    });
+
+    test("retries publishing an unpublished passkey approval request", async () => {
+        const authClient = makeClient();
+        authClient.devices.publishPendingRegistration
+            .mockRejectedValueOnce(new Error("offline"))
+            .mockResolvedValueOnce(undefined);
+        const config = makeConfig();
+        const { keyStore, saveCredentials } = makeKeyStore(null);
+        const options: ServerOptions = { host: "dev.vex.wtf" };
+        vexService.setPasskeyCeremonyDriver({
+            authenticate: vi.fn(async () => ({ id: "assertion" })),
+            register: vi.fn(),
+        });
+        libvexMock.create.mockResolvedValueOnce(authClient);
+
+        await vexService.authenticateAccountWithPasskey(
+            "blood",
+            config,
+            options,
+            keyStore,
+        );
+        await vexService.finishPasskeyAuthenticatedDeviceSignIn(keyStore);
+        vi.useFakeTimers();
+
+        const failed =
+            await vexService.requestDeviceApprovalForPasskeyAuthenticatedAccount(
+                config,
+                options,
+                keyStore,
+            );
+        const retry =
+            await vexService.requestDeviceApprovalForPasskeyAuthenticatedAccount(
+                config,
+                options,
+                keyStore,
+            );
+        await vi.advanceTimersByTimeAsync(2000);
+
+        expect(failed).toEqual({
+            error: "offline",
+            ok: false,
+        });
+        expect(retry).toMatchObject({
+            ok: false,
+            pendingDeviceApproval: true,
+            pendingRequestID: "pending-request",
+            pendingSignKey: "new-device-sign-key",
+        });
+        expect(authClient.register).toHaveBeenCalledOnce();
+        expect(
+            authClient.devices.publishPendingRegistration,
+        ).toHaveBeenCalledTimes(2);
+        expect(authClient.devices.pollPendingRegistration).toHaveBeenCalledWith(
+            {
+                challenge: "a".repeat(64),
+                requestID: "pending-request",
+            },
+        );
+        expect(saveCredentials).toHaveBeenCalledWith({
+            deviceID: "new-device",
+            deviceKey: "generated-private-key",
+            token: "",
+            username: "blood",
         });
     });
 });
