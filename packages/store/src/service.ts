@@ -3875,6 +3875,23 @@ class VexService {
         }
     }
 
+    private pendingPasskeyDeviceApprovalForRequest(
+        pendingRequestID: string,
+        pendingUserID: null | string,
+    ): PendingPasskeyDeviceApproval {
+        let pendingSignKey: string | undefined;
+        try {
+            pendingSignKey = this.requireClient().getKeys().public;
+        } catch {
+            pendingSignKey = undefined;
+        }
+        return {
+            pendingRequestID,
+            ...(pendingSignKey !== undefined ? { pendingSignKey } : {}),
+            ...(pendingUserID !== null ? { pendingUserID } : {}),
+        };
+    }
+
     private pendingPasskeyDeviceApprovalResult(
         pending: PendingPasskeyDeviceApproval,
     ): AuthResult {
@@ -4317,6 +4334,32 @@ class VexService {
                 session.pendingApproval,
             );
         }
+        const deferred = this.deferredDeviceApproval;
+        const username = session.username.trim().toLowerCase();
+        if (
+            deferred &&
+            deferred.keyStore === keyStore &&
+            deferred.username === username
+        ) {
+            const pendingApproval = this.pendingPasskeyDeviceApprovalForRequest(
+                deferred.requestID,
+                null,
+            );
+            const published =
+                await this.publishDeferredDeviceApprovalAndStartWatching(
+                    keyStore,
+                );
+            if (!published.ok) {
+                return {
+                    error:
+                        published.error ??
+                        "Could not notify your other devices. Try again.",
+                    ok: false,
+                };
+            }
+            session.pendingApproval = pendingApproval;
+            return this.pendingPasskeyDeviceApprovalResult(pendingApproval);
+        }
         try {
             this.deferredDeviceApproval = null;
             $pendingApprovalStageWritable.set("idle");
@@ -4333,7 +4376,6 @@ class VexService {
                 };
             }
 
-            const username = session.username.trim().toLowerCase();
             const [user, regErr] = await withTimeout(
                 client.register(username),
                 REGISTER_STEP_TIMEOUT_MS,
@@ -4392,20 +4434,10 @@ class VexService {
                 });
             }
 
-            let pendingSignKey: string | undefined;
-            try {
-                pendingSignKey = client.getKeys().public;
-            } catch {
-                pendingSignKey = undefined;
-            }
-            const pendingApproval: PendingPasskeyDeviceApproval = {
-                pendingRequestID: pending.requestID,
-                ...(pendingSignKey !== undefined ? { pendingSignKey } : {}),
-                ...(pending.userID !== null
-                    ? { pendingUserID: pending.userID }
-                    : {}),
-            };
-            session.pendingApproval = pendingApproval;
+            const pendingApproval = this.pendingPasskeyDeviceApprovalForRequest(
+                pending.requestID,
+                pending.userID,
+            );
             const result =
                 this.pendingPasskeyDeviceApprovalResult(pendingApproval);
             if (
@@ -4427,6 +4459,7 @@ class VexService {
                     };
                 }
             }
+            session.pendingApproval = pendingApproval;
             return result;
         } catch (err: unknown) {
             if (isUnauthorizedError(err)) {
