@@ -193,7 +193,7 @@ describe("vexService device approval passkeys", () => {
         await vexService.close();
     });
 
-    test("approves a pending device request with a passkey assertion from the approving device", async () => {
+    test("approves a pending device request without another passkey prompt", async () => {
         const client = makeClient();
         const creds: StoredCredentials = {
             deviceID: "device-blood",
@@ -204,39 +204,25 @@ describe("vexService device approval passkeys", () => {
         const { keyStore } = makeKeyStore(creds);
         const config = makeConfig();
         const options: ServerOptions = { host: "dev.vex.wtf" };
-        const authenticate = vi.fn(async () => ({ id: "assertion" }));
         libvexMock.create.mockResolvedValueOnce(client);
 
         await expect(
             vexService.autoLogin(keyStore, config, options),
         ).resolves.toEqual({ ok: true });
 
-        vexService.setPasskeyCeremonyDriver({
-            authenticate,
-            register: vi.fn(),
-        });
         await expect(
             vexService.approveDeviceRequest("pending-request"),
         ).resolves.toEqual({ ok: true });
 
-        expect(client.passkeys.beginAuthentication).toHaveBeenCalledWith(
-            "blood",
-        );
-        expect(authenticate).toHaveBeenCalledWith({
-            challenge: "passkey-challenge",
-        });
-        expect(client.passkeys.finishAuthentication).toHaveBeenCalledWith({
-            requestID: "passkey-request",
-            response: { id: "assertion" },
-        });
+        expect(client.passkeys.beginAuthentication).not.toHaveBeenCalled();
+        expect(client.passkeys.finishAuthentication).not.toHaveBeenCalled();
         expect(client.devices.approveRequest).toHaveBeenCalledWith(
             "pending-request",
         );
-        expect(client.loginWithDeviceKey).toHaveBeenCalledTimes(2);
+        expect(client.loginWithDeviceKey).toHaveBeenCalledTimes(1);
         expect(client.loginWithDeviceKey.mock.calls[0]).toEqual([
             "device-blood",
         ]);
-        expect(client.loginWithDeviceKey.mock.calls[1]).toEqual([undefined]);
     });
 
     test("signs in the approved new device without prompting for passkey setup", async () => {
