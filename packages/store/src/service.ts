@@ -617,7 +617,6 @@ class VexService {
     }
 
     async approveDeviceRequest(requestID: string): Promise<OperationResult> {
-        let shouldRestoreDeviceSession = false;
         try {
             const client = this.requireClient();
             const withApprovals =
@@ -628,48 +627,9 @@ class VexService {
                     ok: false,
                 };
             }
-            const username = this.currentClientUsername();
-            const passkeyState =
-                await this.satisfyPasskeyForCurrentClient(username);
-            if (passkeyState === "unavailable") {
-                return {
-                    error: "Passkeys aren't available on this device.",
-                    ok: false,
-                };
-            }
-            if (passkeyState === "not_registered") {
-                return {
-                    error: "Add a passkey before approving another device.",
-                    ok: false,
-                };
-            }
-
-            shouldRestoreDeviceSession = true;
             await withApprovals.devices.approveRequest(requestID);
-            const restoreErr = await this.loginWithDeviceKeyWithRetry(client);
-            if (restoreErr) {
-                debugAuth("deviceApproval:restoreDeviceSession:failed", {
-                    message: errorMessage(restoreErr),
-                    requestID,
-                });
-                return {
-                    error: `Device approved, but this device could not restore its session: ${errorMessage(restoreErr)}`,
-                    ok: false,
-                };
-            }
             return { ok: true };
         } catch (err: unknown) {
-            if (shouldRestoreDeviceSession && this.client) {
-                const restoreErr = await this.loginWithDeviceKeyWithRetry(
-                    this.client,
-                );
-                if (restoreErr) {
-                    debugAuth("deviceApproval:restoreAfterFailure:failed", {
-                        message: errorMessage(restoreErr),
-                        requestID,
-                    });
-                }
-            }
             return { error: errorMessage(err), ok: false };
         }
     }

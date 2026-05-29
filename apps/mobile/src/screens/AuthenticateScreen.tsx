@@ -242,8 +242,8 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                             size="small"
                         />
                         <Text style={styles.statusText}>
-                            Waiting for approval on your other device. That
-                            device may ask for its passkey.
+                            Waiting for approval on one of your signed-in
+                            devices.
                         </Text>
                     </View>
                 ) : null}
