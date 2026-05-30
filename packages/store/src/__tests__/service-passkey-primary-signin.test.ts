@@ -227,6 +227,44 @@ describe("vexService passkey-primary sign-in", () => {
         expect(client.connect).toHaveBeenCalledOnce();
     });
 
+    test("falls through to registration when passkey begin returns unauthorized", async () => {
+        const client = makeClient();
+        const config = makeConfig();
+        const { keyStore } = makeKeyStore(null);
+        const options: ServerOptions = { host: "dev.vex.wtf" };
+        const authenticate = vi.fn();
+        const err = Object.assign(new Error("Request failed with status 401"), {
+            response: {
+                data: "Not Authorized",
+                status: 401,
+            },
+        });
+        client.passkeys.beginAuthentication.mockRejectedValueOnce(err);
+        vexService.setPasskeyCeremonyDriver({
+            authenticate,
+            register: vi.fn(),
+        });
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        const auth = await vexService.authenticateAccountWithPasskey(
+            "NewBlood",
+            config,
+            options,
+            keyStore,
+        );
+
+        expect(auth).toEqual({
+            error: "Not Authorized",
+            ok: false,
+            shouldTryDeviceApproval: true,
+            userCancelled: false,
+        });
+        expect(client.passkeys.beginAuthentication).toHaveBeenCalledWith(
+            "newblood",
+        );
+        expect(authenticate).not.toHaveBeenCalled();
+    });
+
     test("requests cluster approval after passkey auth when no local device key exists", async () => {
         const authClient = makeClient();
         const config = makeConfig();
