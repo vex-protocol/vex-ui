@@ -6022,6 +6022,9 @@ function shouldTryDeviceApprovalAfterPasskeyFailure(err: unknown): boolean {
     if (isPasskeyUserCancelledError(err) || isNetworkError(err)) {
         return false;
     }
+    if (isUnauthorizedError(err)) {
+        return true;
+    }
     if (isNotFoundError(err)) {
         return true;
     }
