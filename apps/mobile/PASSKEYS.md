@@ -8,6 +8,28 @@ to make the ceremony actually succeed on iOS and Android.
 The library that drives the platform ceremony is
 [`react-native-passkey`](https://www.npmjs.com/package/react-native-passkey).
 
+## Product model
+
+Vex treats passkeys as **account authentication** and Vex device keys
+as **identity-cluster membership**:
+
+- A passkey proves "this is the account owner."
+- A Vex device key proves "this device is a trusted member of the
+  encrypted identity cluster."
+- Adding a new device without destroying the existing cluster still
+  requires approval from a currently trusted device.
+- Passkey recovery is the destructive path: the server approves the
+  pending device and revokes prior devices before the new device can
+  enter the account.
+
+The mobile UX follows that boundary. Handle sign-in runs a passkey
+ceremony first. After the passkey succeeds, the app moves to a
+provisioning step: if this phone already has a saved Vex device key,
+it signs that device in; otherwise it requests approval from an
+already-signed-in device and shows the matching-code screen. The
+new-device approval path does not create a passkey on the new phone
+automatically.
+
 ## Choosing the relying-party host
 
 Apple and Google fetch the well-known association files from the
@@ -189,8 +211,15 @@ Development iOS builds add `?mode=developer` to the
 `webcredentials:` entitlement so test devices can bypass Apple's
 associated-domain CDN while you are iterating on the AASA file. The
 device must have Developer Mode enabled and the Associated Domains
-Development option turned on in Settings > Developer. Production
-builds must not include the query string.
+Development option turned on in Settings > Developer. Distribution
+production builds must not include the query string.
+
+Local production installs created with `pnpm ios:prod:install` are
+still development-signed iPhone builds, so that lane defaults
+`VEX_IOS_ASSOCIATED_DOMAIN_MODE=developer` while keeping the production
+bundle id, icon, and server host. Set
+`VEX_IOS_ASSOCIATED_DOMAIN_MODE=normal pnpm ios:prod:install` to test
+the exact distribution entitlement.
 
 After setting them and restarting spire:
 

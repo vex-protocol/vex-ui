@@ -12,6 +12,8 @@ import {
     type ViewStyle,
 } from "react-native";
 
+import { vexService } from "@vex-chat/store";
+
 import { useFocusEffect } from "@react-navigation/native";
 import { BlurView } from "expo-blur";
 
@@ -19,13 +21,15 @@ import { Avatar } from "../components/Avatar";
 import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
 import { VexLogo } from "../components/VexLogo";
+import { getServerOptions } from "../lib/config";
 import { haptic } from "../lib/haptics";
 import {
     clearCredentials,
+    keychainKeyStore,
     type KnownAccount,
     listKnownAccounts,
-    setActiveUsername,
 } from "../lib/keychain";
+import { mobileConfig } from "../lib/platform";
 import { colors, typography } from "../theme";
 
 interface AccountRowProps {
@@ -39,17 +43,19 @@ interface AccountRowProps {
 type Props = AuthScreenProps<"AccountSelector">;
 
 /**
- * Account picker: saved slots on this device. Choosing one routes through
- * {@link HangTightScreen} (same boot path as cold start) so the “Hang tight”
- * experience is consistent. Long-press removes key material for that slot.
+ * Account picker: saved slots on this device. Choosing one starts passkey
+ * account auth first, then the provisioning screen uses the saved Vex device
+ * key to enter the identity cluster. Long-press removes key material for that
+ * slot.
  */
-export function AccountSelectorScreen({ navigation }: Props) {
+export function AccountSelectorScreen({ navigation, route }: Props) {
     const [accounts, setAccounts] = useState<KnownAccount[]>([]);
     const [hydrated, setHydrated] = useState(false);
     const [signingInUsername, setSigningInUsername] = useState<null | string>(
         null,
     );
     const [errorText, setErrorText] = useState<null | string>(null);
+    const routeError = route.params?.error ?? null;
 
     const refresh = useCallback(async () => {
         const list = await listKnownAccounts();
@@ -59,8 +65,9 @@ export function AccountSelectorScreen({ navigation }: Props) {
 
     useFocusEffect(
         useCallback(() => {
+            setErrorText(routeError);
             void refresh();
-        }, [refresh]),
+        }, [refresh, routeError]),
     );
 
     const handleSelect = useCallback(
@@ -72,10 +79,29 @@ export function AccountSelectorScreen({ navigation }: Props) {
             setErrorText(null);
             setSigningInUsername(account.username);
             try {
-                await setActiveUsername(account.username);
-                // Same bootstrap path as startup: HangTight runs retention
-                // hydrate + autoLogin (and shows the spinner UI).
-                navigation.replace("HangTight", { fromAccountPicker: true });
+                const result = await vexService.authenticateAccountWithPasskey(
+                    account.username,
+                    mobileConfig(),
+                    getServerOptions(),
+                    keychainKeyStore,
+                );
+                if (!result.ok || !result.username) {
+                    setErrorText(
+                        result.userCancelled
+                            ? "Passkey sign-in was cancelled."
+                            : (result.error ??
+                                  "Could not sign in with passkey."),
+                    );
+                    await refresh();
+                    return;
+                }
+                navigation.replace("ProvisionDevice", {
+                    hasLocalDevice: result.hasLocalDevice === true,
+                    ...(result.userID !== undefined
+                        ? { userID: result.userID }
+                        : {}),
+                    username: result.username,
+                });
             } catch (err: unknown) {
                 setErrorText(
                     err instanceof Error
@@ -118,6 +144,7 @@ export function AccountSelectorScreen({ navigation }: Props) {
 
     const handleAddAccount = useCallback(() => {
         haptic("tap");
+        setErrorText(null);
         navigation.navigate("HangTight", { force: true });
     }, [navigation]);
 

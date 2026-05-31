@@ -25,19 +25,16 @@ export interface HydrationStatus {
     totalSteps: number;
 }
 
-export interface LocalPasskeySetupPrompt {
-    promptID: string;
-    username: string;
-}
-
 // Sub-status for the multi-device enrollment flow on the *new* (requesting)
 // device. Lets the AuthenticateScreen show distinct UI states between
 // "still waiting for the existing device to approve", "approval landed —
 // signing in", and "signed in — loading your account" before the
 // navigator swaps to the App stack on $user.
 export type PendingApprovalStage =
+    | "failed"
     | "idle"
     | "loading_account"
+    | "passkey_setup"
     | "signing_in"
     | "waiting";
 
@@ -63,8 +60,6 @@ export const $keyReplacedWritable = atom<boolean>(false);
 // straight back into autoLogin from the kept keychain credentials.
 export const $signedOutIntentWritable = atom<boolean>(false);
 export const $pendingApprovalStageWritable = atom<PendingApprovalStage>("idle");
-export const $localPasskeySetupPromptWritable =
-    atom<LocalPasskeySetupPrompt | null>(null);
 export const $historyRecoveryStatusWritable =
     atom<HistoryRecoveryStatus>("idle");
 export const $hydrationStatusWritable = atom<HydrationStatus>({
@@ -86,9 +81,6 @@ export const $keyReplaced = readonlyType($keyReplacedWritable);
 export const $signedOutIntent = readonlyType($signedOutIntentWritable);
 export const $pendingApprovalStage = readonlyType(
     $pendingApprovalStageWritable,
-);
-export const $localPasskeySetupPrompt = readonlyType(
-    $localPasskeySetupPromptWritable,
 );
 export const $historyRecoveryStatus = readonlyType(
     $historyRecoveryStatusWritable,

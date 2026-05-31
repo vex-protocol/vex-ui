@@ -13,7 +13,6 @@ const commit = normalize(process.env.EXPO_PUBLIC_VEX_COMMIT_SHA) ?? "local";
 const shortCommit =
     commit === "local" ? commit : commit.slice(0, 8).toLowerCase();
 const version = publicVersion ?? expoVersion ?? "0.0.0";
-const displayVersion = publicBuildLabel ?? `${version}-${shortCommit}`;
 const updateId = Updates.updateId ?? undefined;
 const shortUpdateId = updateId?.slice(0, 8);
 const createdAt = Updates.createdAt?.toISOString();
@@ -30,10 +29,25 @@ const environment =
             ? vexExtra["environment"]
             : undefined,
     ) ?? "production";
+const configuredUpdateChannel = normalize(
+    typeof vexExtra?.["updateChannel"] === "string"
+        ? vexExtra["updateChannel"]
+        : undefined,
+);
+const channel = Updates.channel ?? configuredUpdateChannel ?? "embedded";
+const releaseTarget =
+    environment === "development" || channel === "development"
+        ? "development"
+        : "production";
+const displayVersion =
+    publicBuildLabel ??
+    (releaseTarget === "development"
+        ? `${version}RC-${shortCommit}`
+        : `${version}-${shortCommit}`);
 
 export const buildInfo = {
     androidPackage: Constants.expoConfig?.android?.package,
-    channel: Updates.channel ?? "embedded",
+    channel,
     commit,
     createdAt,
     displayVersion,

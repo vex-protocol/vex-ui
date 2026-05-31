@@ -2,7 +2,6 @@ import type { Message } from "@vex-chat/libvex";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-    Alert,
     AppState,
     Linking,
     Platform,
@@ -18,7 +17,6 @@ import {
     $groupMessages,
     $hydrationStatus,
     $keyReplaced,
-    $localPasskeySetupPrompt,
     $messages,
     $user,
     parseVexLink,
@@ -62,11 +60,7 @@ import {
     showDeviceApprovalNotification,
     showMessageNotification,
 } from "./lib/notifications";
-import {
-    authenticatePasskey,
-    isPasskeySupported,
-    registerPasskey,
-} from "./lib/passkey";
+import { authenticatePasskey, registerPasskey } from "./lib/passkey";
 import { mobileConfig } from "./lib/platform";
 import {
     hydratePushNotificationPreference,
@@ -80,10 +74,10 @@ import {
     runtimeNotifiedMailIDs,
 } from "./lib/runtimeNotificationDedupe";
 import { getIncomingShareIntent, type IncomingShare } from "./lib/shareIntent";
+import { usePendingOtaReload } from "./lib/usePendingOtaReload";
 import {
     navigateToAboutSettings,
     navigateToDeviceRequests,
-    navigateToPasskeys,
     navigationRef,
 } from "./navigation/navigationRef";
 import { RootNavigator } from "./navigation/RootNavigator";
@@ -102,7 +96,6 @@ interface AppUpdateNotice {
 function MainApp() {
     const keyReplaced = useStore($keyReplaced);
     const hydrationStatus = useStore($hydrationStatus);
-    const localPasskeySetupPrompt = useStore($localPasskeySetupPrompt);
     const user = useStore($user);
     const appStateRef = useRef(AppState.currentState);
     const bootstrappedRef = useRef(false);
@@ -121,11 +114,19 @@ function MainApp() {
     );
     const notificationHistoryCutoffMsRef = useRef(0);
     const pendingInviteIDRef = useRef<null | string>(null);
-    const shownLocalPasskeyPromptIDRef = useRef<null | string>(null);
     const pendingShareIDRef = useRef<null | string>(null);
     const lastHandledShareIDRef = useRef<null | string>(null);
     const seenPendingRequestIDsRef = useRef<Set<string>>(new Set());
     const userID = user?.userID;
+
+    const handlePendingOtaReloadError = useCallback((message: string) => {
+        console.warn("[vex-update] failed to reload pending OTA", message);
+        setAppUpdateNotice({
+            message: "Restart Vex to finish installing the downloaded update.",
+            title: "Update ready",
+        });
+    }, []);
+    usePendingOtaReload({ onError: handlePendingOtaReloadError });
 
     const flushPendingInviteRoute = useCallback(() => {
         const inviteID = pendingInviteIDRef.current;
@@ -575,46 +576,6 @@ function MainApp() {
         runtimeNotifiedMailIDs.clear();
         notificationHistoryCutoffMsRef.current = Date.now();
     }, [user, user?.userID]);
-
-    useEffect(() => {
-        const prompt = localPasskeySetupPrompt;
-        if (!user?.userID || !prompt) {
-            shownLocalPasskeyPromptIDRef.current = null;
-            return;
-        }
-        if (!isPasskeySupported()) {
-            vexService.dismissLocalPasskeySetupPrompt(prompt.promptID);
-            return;
-        }
-        if (shownLocalPasskeyPromptIDRef.current === prompt.promptID) {
-            return;
-        }
-        shownLocalPasskeyPromptIDRef.current = prompt.promptID;
-        Alert.alert(
-            "Add a passkey to this device?",
-            "This device can sign in now. Add a passkey here so it can approve future devices too.",
-            [
-                {
-                    onPress: () => {
-                        vexService.dismissLocalPasskeySetupPrompt(
-                            prompt.promptID,
-                        );
-                    },
-                    style: "cancel",
-                    text: "Later",
-                },
-                {
-                    onPress: () => {
-                        vexService.dismissLocalPasskeySetupPrompt(
-                            prompt.promptID,
-                        );
-                        navigateToPasskeys();
-                    },
-                    text: "Add passkey",
-                },
-            ],
-        );
-    }, [localPasskeySetupPrompt, user?.userID]);
 
     useEffect(() => {
         seenPendingRequestIDsRef.current = new Set();
@@ -1349,15 +1310,23 @@ function appUpdateNoticeForState(
 ): AppUpdateNotice | null {
     switch (state.status) {
         case "apk_available":
-            return {
-                message: "A new APK is ready. Tap to open the updater.",
-                title: "App update available",
-            };
+            return Platform.OS === "ios"
+                ? {
+                      message:
+                          "A new Vex build is ready. Tap to open the install page.",
+                      title: "Build update available",
+                  }
+                : {
+                      message: "A new APK is ready. Tap to open the updater.",
+                      title: "App update available",
+                  };
         case "ota_available":
             return {
-                message: state.latestCommit?.shortSha
-                    ? `Version ${state.latestCommit.shortSha} is ready. Tap to install.`
-                    : "A compatible OTA update is ready. Tap to install.",
+                message: state.otaUpdate?.shortCommit
+                    ? `Version ${state.otaUpdate.shortCommit} is ready. Tap to install.`
+                    : state.otaUpdate?.shortId
+                      ? `OTA ${state.otaUpdate.shortId} is ready. Tap to install.`
+                      : "A compatible OTA update is ready. Tap to install.",
                 title: "OTA update available",
             };
         case "ota_ready":

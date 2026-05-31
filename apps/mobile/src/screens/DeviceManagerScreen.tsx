@@ -99,12 +99,7 @@ export function DeviceManagerScreen({
 
     return (
         <View style={styles.container}>
-            <ChatHeader
-                onBack={() => {
-                    navigation.goBack();
-                }}
-                title="Device Manager"
-            />
+            <ChatHeader title="Device Manager" />
             <ScrollView
                 contentContainerStyle={styles.content}
                 refreshControl={

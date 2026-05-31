@@ -22,8 +22,8 @@ catalogs:
       specifier: 7.0.0
       version: 7.0.0
     '@vex-chat/libvex':
-      specifier: 7.0.0
-      version: 7.0.0
+      specifier: 7.1.3
+      version: 7.1.3
     '@vex-chat/types':
       specifier: 4.0.0
       version: 4.0.0
@@ -218,7 +218,7 @@ importers:
         version: link:../../packages/eslint-config
       '@vex-chat/libvex':
         specifier: 'catalog:'
-        version: 7.0.0(better-sqlite3@11.10.0)(typescript@5.9.3)
+        version: 7.1.3(better-sqlite3@11.10.0)(typescript@5.9.3)
       eslint-plugin-svelte:
         specifier: ^3.17.0
         version: 3.17.0(eslint@10.2.0(jiti@2.6.1))(svelte@5.55.7)
@@ -375,7 +375,7 @@ importers:
         version: link:../../packages/eslint-config
       '@vex-chat/libvex':
         specifier: 'catalog:'
-        version: 7.0.0(better-sqlite3@11.10.0)(typescript@5.9.3)
+        version: 7.1.3(better-sqlite3@11.10.0)(typescript@5.9.3)
       babel-preset-expo:
         specifier: ^55.0.15
         version: 55.0.15(@babel/core@7.29.0)(@babel/runtime@7.29.2)(expo@55.0.13)(react-refresh@0.14.2)
@@ -454,7 +454,7 @@ importers:
         version: 7.0.0(@vex-chat/types@4.0.0)(typescript@5.9.3)
       '@vex-chat/libvex':
         specifier: 'catalog:'
-        version: 7.0.0(better-sqlite3@11.10.0)(typescript@5.9.3)
+        version: 7.1.3(better-sqlite3@11.10.0)(typescript@5.9.3)
       '@vex-chat/types':
         specifier: 'catalog:'
         version: 4.0.0
@@ -2532,8 +2532,8 @@ packages:
       typescript:
         optional: true
 
-  '@vex-chat/libvex@7.0.0':
-    resolution: {integrity: sha512-p2IZRoeV0YmTKbMUwdd/Xf/muFPVvJ2dp0oevebuM6eIgTY5B+jbqNthOCx0bqGxAHU68A0e4qD/7wWm0jTRIw==}
+  '@vex-chat/libvex@7.1.3':
+    resolution: {integrity: sha512-p9vIv1Az6pdr0zSmfe0oMQ1mjeNe9rt10DP7jsH7sQPhpz45Q2JDyrK2h+YkbsDfLfKFdqH6jzcGj8hQNBgRFQ==}
     engines: {node: '>=24.0.0'}
     peerDependencies:
       better-sqlite3: '>=11.0.0'
@@ -9323,7 +9323,7 @@ snapshots:
     optionalDependencies:
       typescript: 5.9.3
 
-  '@vex-chat/libvex@7.0.0(better-sqlite3@11.10.0)(typescript@5.9.3)':
+  '@vex-chat/libvex@7.1.3(better-sqlite3@11.10.0)(typescript@5.9.3)':
     dependencies:
       '@vex-chat/crypto': 7.0.0(@vex-chat/types@4.0.0)(typescript@5.9.3)
       '@vex-chat/types': 4.0.0

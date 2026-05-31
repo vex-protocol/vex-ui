@@ -5,6 +5,7 @@
 //   default (all profiles)             → production flavor
 //   VEX_ENABLE_DEV_BUILD=1 + profile=development → dev flavor (opt-in)
 //   env override                        → VEX_IOS_BUNDLE_IDENTIFIER (optional)
+//   local prod iOS install              → VEX_IOS_ASSOCIATED_DOMAIN_MODE=developer
 //   local personal-team iOS builds      → VEX_DISABLE_IOS_CAPABILITIES=1
 //
 // Dev and production APKs both use EAS Update. Runtime compatibility is
@@ -54,6 +55,11 @@ function resolveHost(value) {
     }
 }
 
+function resolveRuntimeVersion(value) {
+    const raw = value?.trim();
+    return raw && raw.length > 0 ? raw : undefined;
+}
+
 module.exports = ({ config }) => {
     const requestedEnvironment = process.env.VEX_APP_ENV;
     const devFlavorEnabled =
@@ -67,7 +73,7 @@ module.exports = ({ config }) => {
         process.env.VEX_DISABLE_IOS_CAPABILITIES !== "1";
     const appDisplayName =
         process.env.VEX_APP_DISPLAY_NAME ||
-        (devMode ? "Vex Developer" : config.name);
+        (devMode ? "Vex Development" : config.name);
     const iconPath = devMode
         ? "./assets/icon-dev.png"
         : "./assets/icon-prod.png";
@@ -82,14 +88,27 @@ module.exports = ({ config }) => {
         config.android?.googleServicesFile;
     const appVersion = process.env.VEX_APP_VERSION || pkg.version;
     const environment = devMode ? "development" : "production";
+    const updateChannel = devMode ? "development" : "production";
     const passkeyRpHost =
         resolveHost(
             process.env.VEX_PASSKEY_RP_HOST ||
                 process.env.EXPO_PUBLIC_SERVER_URL,
         ) || (devMode ? DEV_PASSKEY_RP_HOST : PROD_PASSKEY_RP_HOST);
+    const associatedDomainMode =
+        process.env.VEX_IOS_ASSOCIATED_DOMAIN_MODE?.trim().toLowerCase();
+    const useDeveloperAssociatedDomain = associatedDomainMode === "developer";
     const passkeyAssociatedDomain = `webcredentials:${passkeyRpHost}${
-        devMode ? "?mode=developer" : ""
+        useDeveloperAssociatedDomain ? "?mode=developer" : ""
     }`;
+    const runtimeVersionOverride = resolveRuntimeVersion(
+        process.env.VEX_RUNTIME_VERSION,
+    );
+    const androidRuntimeVersionOverride =
+        resolveRuntimeVersion(process.env.VEX_ANDROID_RUNTIME_VERSION) ??
+        runtimeVersionOverride;
+    const iosRuntimeVersionOverride =
+        resolveRuntimeVersion(process.env.VEX_IOS_RUNTIME_VERSION) ??
+        runtimeVersionOverride;
 
     // Permissions required for the optional "Always-on connection"
     // foreground-service mode (Settings → Connection). Even when the
@@ -118,9 +137,16 @@ module.exports = ({ config }) => {
         ios: {
             ...config.ios,
             bundleIdentifier: iosBundleIdentifier,
+            ...(iosRuntimeVersionOverride
+                ? { runtimeVersion: iosRuntimeVersionOverride }
+                : {}),
             associatedDomains: iosCapabilitiesEnabled
                 ? [passkeyAssociatedDomain]
                 : undefined,
+            config: {
+                ...config.ios?.config,
+                usesNonExemptEncryption: true,
+            },
         },
         android: {
             ...config.android,
@@ -129,6 +155,9 @@ module.exports = ({ config }) => {
                 foregroundImage: androidAdaptiveForegroundPath,
             },
             package: devMode ? "chat.vex.mobile.dev" : config.android?.package,
+            ...(androidRuntimeVersionOverride
+                ? { runtimeVersion: androidRuntimeVersionOverride }
+                : {}),
             ...(androidGoogleServicesFile
                 ? { googleServicesFile: androidGoogleServicesFile }
                 : {}),
@@ -137,13 +166,18 @@ module.exports = ({ config }) => {
         updates: {
             enabled: true,
             url: `https://u.expo.dev/${EAS_PROJECT_ID}`,
+            // Local USB installs do not get EAS Build's profile-derived
+            // channel injection, so stamp the channel into native config here.
+            requestHeaders: {
+                "expo-channel-name": updateChannel,
+            },
             checkAutomatically: "ON_LOAD",
             fallbackToCacheTimeout: 0,
         },
         runtimeVersion: { policy: "fingerprint" },
         extra: {
             ...config.extra,
-            vex: { environment },
+            vex: { environment, updateChannel },
             eas: { projectId: EAS_PROJECT_ID },
         },
         plugins: [

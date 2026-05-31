@@ -20,6 +20,20 @@ export function enqueueNotificationRouteFromAndroidBackground(data: {
     [key: string]: number | object | string;
 }): void {
     const kind = data["kind"];
+    const event = data["event"];
+    if (kind === "deviceApproval" || event === "deviceRequest") {
+        enqueuePendingNotificationRoute(
+            normalizeAndroidMessageRouteData(data),
+            {
+                dedupeKey:
+                    typeof data["requestID"] === "string"
+                        ? data["requestID"]
+                        : undefined,
+                syncFirst: true,
+            },
+        );
+        return;
+    }
     if (kind !== "dm" && kind !== "group") {
         return;
     }
@@ -70,6 +84,9 @@ export function normalizeAndroidMessageRouteData(raw: {
     }
     if (raw["mailID"] != null) {
         out["mailID"] = stringifyRouteField(raw["mailID"]);
+    }
+    if (raw["requestID"] != null) {
+        out["requestID"] = stringifyRouteField(raw["requestID"]);
     }
     if (kind === "group") {
         out["channelID"] = stringifyRouteField(raw["channelID"]);

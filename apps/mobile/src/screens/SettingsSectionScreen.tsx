@@ -41,6 +41,7 @@ import {
     checkForAppUpdates,
     downloadAndInstallApkUpdate,
     fetchOtaUpdate,
+    openNativeBuildInstallPage,
     openUnknownAppSourcesSettings,
     restartForOtaUpdate,
 } from "../lib/appUpdates";
@@ -365,7 +366,7 @@ export function SettingsSectionScreen({
         if (updateBusy) return;
         setUpdateBusy(true);
         try {
-            const next = await fetchOtaUpdate();
+            const next = await fetchOtaUpdate({ autoReload: false });
             if (next.status === "ota_ready") {
                 Alert.alert(
                     "Restart to update?",
@@ -390,24 +391,31 @@ export function SettingsSectionScreen({
 
     function handleDownloadApkUpdate(): void {
         const release = appUpdateState.nativeRelease;
-        if (!release?.apkUrl) {
-            Alert.alert("APK unavailable", "No APK asset was found.");
-            return;
-        }
         if (Platform.OS !== "android") {
             Alert.alert(
-                "Open release?",
-                "APK self-updates are Android-only. Open the GitHub release instead?",
+                "Open install page?",
+                "Vex will open the iOS install page in Safari. Confirm the install there, then reopen Vex.",
                 [
                     { style: "cancel", text: "Cancel" },
                     {
                         onPress: () => {
-                            void downloadAndInstallApkUpdate();
+                            void openNativeBuildInstallPage().catch(
+                                (err: unknown) => {
+                                    Alert.alert(
+                                        "Install page unavailable",
+                                        errorMessage(err),
+                                    );
+                                },
+                            );
                         },
                         text: "Open",
                     },
                 ],
             );
+            return;
+        }
+        if (!release?.apkUrl) {
+            Alert.alert("APK unavailable", "No APK asset was found.");
             return;
         }
         Alert.alert(
@@ -483,20 +491,35 @@ export function SettingsSectionScreen({
     const latestReleaseVersion =
         appUpdateState.nativeRelease?.tagName?.match(/^mobile-v(.+)$/)?.[1] ??
         buildInfo.version;
-    const latestShortCommit =
-        appUpdateState.latestCommit?.shortSha ??
-        appUpdateState.nativeRelease?.targetShortCommit;
+    const latestNativeVersionValue = appUpdateState.nativeRelease
+        ?.targetShortCommit
+        ? formatReleaseLabel(
+              latestReleaseVersion,
+              appUpdateState.nativeRelease.targetShortCommit,
+              appUpdateState.releaseTarget,
+          )
+        : latestReleaseVersion;
+    const latestOtaVersionValue = appUpdateState.otaUpdate?.shortCommit
+        ? formatReleaseLabel(
+              buildInfo.version,
+              appUpdateState.otaUpdate.shortCommit,
+              appUpdateState.releaseTarget,
+          )
+        : appUpdateState.otaUpdate?.shortId
+          ? `OTA ${appUpdateState.otaUpdate.shortId}`
+          : undefined;
     const latestVersionValue =
-        latestShortCommit != null
-            ? `${latestReleaseVersion}-${latestShortCommit}`
-            : latestReleaseVersion;
+        appUpdateState.status === "ota_available" ||
+        appUpdateState.status === "ota_ready"
+            ? (latestOtaVersionValue ?? latestNativeVersionValue)
+            : appUpdateState.status === "apk_available"
+              ? latestNativeVersionValue
+              : buildInfo.displayVersion;
     const latestVersionDescription =
         latestVersionValue !== "unknown"
             ? `Latest ${latestVersionValue}`
             : undefined;
-    const isLatestVerified =
-        appUpdateState.status === "current" &&
-        commitsMatch(buildInfo.commit, appUpdateState.latestCommit?.sha);
+    const isLatestVerified = appUpdateState.status === "current";
     const aboutUpdateLoaded =
         appUpdateState.status !== "checking" &&
         appUpdateState.status !== "idle";
@@ -527,7 +550,7 @@ export function SettingsSectionScreen({
     function updateActionLabel(): string {
         switch (appUpdateState.status) {
             case "apk_available":
-                return "Install APK";
+                return Platform.OS === "ios" ? "Install Build" : "Install APK";
             case "apk_downloading":
                 return appUpdateState.apkDownloadProgress != null
                     ? `${String(
@@ -808,12 +831,7 @@ export function SettingsSectionScreen({
 
     return (
         <View style={styles.container}>
-            <ChatHeader
-                onBack={() => {
-                    navigation.goBack();
-                }}
-                title={title}
-            />
+            <ChatHeader title={title} />
             <ScrollView
                 contentContainerStyle={styles.content}
                 refreshControl={
@@ -1226,18 +1244,18 @@ export function SettingsSectionScreen({
     );
 }
 
-function commitsMatch(
-    left: string | undefined,
-    right: string | undefined,
-): boolean {
-    const a = normalizeCommit(left);
-    const b = normalizeCommit(right);
-    if (!a || !b) return false;
-    return a === b || a.startsWith(b) || b.startsWith(a);
-}
-
 function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
+}
+
+function formatReleaseLabel(
+    version: string,
+    shortCommit: string,
+    target: "development" | "production",
+): string {
+    return target === "development"
+        ? `${version}RC-${shortCommit}`
+        : `${version}-${shortCommit}`;
 }
 
 function InlineActionButton({
@@ -1263,12 +1281,6 @@ function InlineActionButton({
             <Text style={styles.inlineActionText}>{label}</Text>
         </Pressable>
     );
-}
-
-function normalizeCommit(value: string | undefined): string | undefined {
-    if (!value) return undefined;
-    const trimmed = value.trim().toLowerCase();
-    return /^[a-f0-9]{7,40}$/.test(trimmed) ? trimmed : undefined;
 }
 
 function VerifiedCheck() {

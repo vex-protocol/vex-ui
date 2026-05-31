@@ -2,13 +2,14 @@ name: Mobile - Release Candidate
 
 # Publishes the development channel for every merge to development.
 # Native fingerprint unchanged -> EAS Update on the development channel.
-# Native fingerprint changed   -> local APK build plus GitHub prereleases:
+# Native fingerprint changed   -> EAS Android APK + iOS Ad Hoc builds,
+#                                  plus GitHub prereleases:
 #   - mobile-rc-v<version>-<sha>  durable GitHub prerelease
 #   - mobile-rc-latest            rolling GitHub prerelease pointer
 #
-# Concurrency: cancel-in-progress:false. Canceling an EAS local build while it
-# is talking to remote versionCode state can corrupt the queued version state,
-# so queued builds always run to completion.
+# Concurrency: cancel-in-progress:false. Canceling an EAS build while it is
+# talking to remote versionCode state can corrupt the queued version state, so
+# queued builds always run to completion.
 #
 # Secrets: EXPO_TOKEN, GITHUB_TOKEN (automatic).
 # Required secret: VEX_ANDROID_GOOGLE_SERVICES_DEV_JSON_BASE64.
@@ -62,10 +63,12 @@ jobs:
                   GOOGLE_SERVICES_JSON: ${{ secrets.VEX_ANDROID_GOOGLE_SERVICES_DEV_JSON }}
                   GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.VEX_ANDROID_GOOGLE_SERVICES_DEV_JSON_BASE64 }}
               run: |
+                  GOOGLE_SERVICES_PATH="google-services.dev.json"
+                  export GOOGLE_SERVICES_PATH
                   if [ -n "${GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
-                    printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > google-services.dev.json
+                    printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > "$GOOGLE_SERVICES_PATH"
                   elif [ -n "${GOOGLE_SERVICES_JSON:-}" ]; then
-                    printf '%s' "$GOOGLE_SERVICES_JSON" > google-services.dev.json
+                    printf '%s' "$GOOGLE_SERVICES_JSON" > "$GOOGLE_SERVICES_PATH"
                   else
                     echo "::error::Missing VEX_ANDROID_GOOGLE_SERVICES_DEV_JSON_BASE64. Add it from apps/mobile/google-services.dev.json so CI can reproduce the local dev build."
                     exit 1
@@ -73,7 +76,7 @@ jobs:
 
                   node -e '
                     const fs = require("node:fs");
-                    const path = "google-services.dev.json";
+                    const path = process.env.GOOGLE_SERVICES_PATH;
                     const expected = "chat.vex.mobile.dev";
                     const data = JSON.parse(fs.readFileSync(path, "utf8"));
                     const packages = (data.client ?? [])
@@ -85,7 +88,7 @@ jobs:
                       process.exit(1);
                     }
                   '
-                  echo "VEX_ANDROID_GOOGLE_SERVICES_FILE=./google-services.dev.json" >> "$GITHUB_ENV"
+                  echo "VEX_ANDROID_GOOGLE_SERVICES_FILE=./${GOOGLE_SERVICES_PATH}" >> "$GITHUB_ENV"
 
             - name: Resolve release candidate version
               id: meta
@@ -135,36 +138,79 @@ jobs:
                   echo "Latest production mobile tag: ${LATEST_TAG:-none}"
                   echo "Release candidate version: $DISPLAY_VERSION"
 
-            - name: Compute current fingerprint
+            - name: Compute current runtime fingerprints
               id: fp
               working-directory: apps/mobile
               env:
                   EAS_BUILD_PROFILE: development
                   VEX_APP_ENV: development
+                  VEX_APP_DISPLAY_NAME: Vex Development
                   VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile.dev
+                  VEX_PASSKEY_RP_HOST: dev.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: |
+                  npx expo-updates fingerprint:generate --platform android --workflow managed > /tmp/current-fingerprint-android.json
+                  npx expo-updates fingerprint:generate --platform ios --workflow managed > /tmp/current-fingerprint-ios.json
                   npx @expo/fingerprint@latest . > /tmp/current-fingerprint.json
-                  HASH=$(node -pe "require('/tmp/current-fingerprint.json').hash")
-                  echo "hash=$HASH" >> "$GITHUB_OUTPUT"
-                  echo "Current fingerprint hash: $HASH"
 
-            - name: Download previous fingerprint asset
+                  ANDROID_HASH=$(node -pe "require('/tmp/current-fingerprint-android.json').hash")
+                  IOS_HASH=$(node -pe "require('/tmp/current-fingerprint-ios.json').hash")
+                  LEGACY_HASH=$(node -pe "require('/tmp/current-fingerprint.json').hash")
+
+                  echo "android_hash=$ANDROID_HASH" >> "$GITHUB_OUTPUT"
+                  echo "ios_hash=$IOS_HASH" >> "$GITHUB_OUTPUT"
+                  echo "legacy_hash=$LEGACY_HASH" >> "$GITHUB_OUTPUT"
+                  echo "Current Android runtime fingerprint: $ANDROID_HASH"
+                  echo "Current iOS runtime fingerprint: $IOS_HASH"
+                  echo "Current legacy fingerprint: $LEGACY_HASH"
+
+            - name: Install EAS CLI
+              run: npm install -g eas-cli@latest
+
+            - name: Resolve previous runtime fingerprints
               id: prev_fp
+              working-directory: apps/mobile
               env:
+                  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
-                  if gh release download mobile-rc-latest \
-                        --pattern 'fingerprint.json' \
-                        --output /tmp/prev-fingerprint.json 2>/dev/null; then
-                    PREV_HASH=$(node -pe "require('/tmp/prev-fingerprint.json').hash")
-                    echo "hash=$PREV_HASH" >> "$GITHUB_OUTPUT"
-                    echo "exists=true" >> "$GITHUB_OUTPUT"
-                    echo "Previous fingerprint hash: $PREV_HASH"
+                  if eas build:list \
+                        --platform all \
+                        --status finished \
+                        --channel development \
+                        --build-profile development \
+                        --distribution internal \
+                        --limit 20 \
+                        --json \
+                        --non-interactive > /tmp/previous-eas-builds.json; then
+                    echo "Fetched previous EAS build runtimes."
                   else
-                    echo "exists=false" >> "$GITHUB_OUTPUT"
-                    echo "No previous fingerprint asset; will build"
+                    echo "::warning::Could not fetch previous EAS build runtimes; falling back to GitHub release fingerprints."
+                    printf '[]\n' > /tmp/previous-eas-builds.json
                   fi
+
+                  if gh release download mobile-rc-latest \
+                        --pattern 'fingerprint-android.json' \
+                        --output /tmp/prev-fingerprint-android.json 2>/dev/null; then
+                    echo "Downloaded fallback Android runtime fingerprint asset."
+                  else
+                    echo "Fallback Android runtime fingerprint asset missing."
+                  fi
+
+                  if gh release download mobile-rc-latest \
+                        --pattern 'fingerprint-ios.json' \
+                        --output /tmp/prev-fingerprint-ios.json 2>/dev/null; then
+                    echo "Downloaded fallback iOS runtime fingerprint asset."
+                  else
+                    echo "Fallback iOS runtime fingerprint asset missing."
+                  fi
+
+                  EAS_BUILDS_JSON=/tmp/previous-eas-builds.json \
+                    FALLBACK_ANDROID_FINGERPRINT_JSON=/tmp/prev-fingerprint-android.json \
+                    FALLBACK_IOS_FINGERPRINT_JSON=/tmp/prev-fingerprint-ios.json \
+                    node scripts/resolve-previous-runtime-fingerprints.cjs
 
             - name: Decide path
               id: decide
@@ -175,17 +221,14 @@ jobs:
                     PATH_DECISION=build
                     echo "Force build requested via workflow_dispatch."
                   elif [ "${{ steps.prev_fp.outputs.exists }}" = "true" ] && \
-                     [ "${{ steps.fp.outputs.hash }}" = "${{ steps.prev_fp.outputs.hash }}" ]; then
+                     [ "${{ steps.fp.outputs.android_hash }}" = "${{ steps.prev_fp.outputs.android_hash }}" ] && \
+                     [ "${{ steps.fp.outputs.ios_hash }}" = "${{ steps.prev_fp.outputs.ios_hash }}" ]; then
                     PATH_DECISION=ota
                   else
                     PATH_DECISION=build
                   fi
                   echo "path=$PATH_DECISION" >> "$GITHUB_OUTPUT"
                   echo "Decision: $PATH_DECISION"
-
-            - name: Install EAS CLI (OTA path)
-              if: steps.decide.outputs.path == 'ota'
-              run: npm install -g eas-cli@latest
 
             - name: Push OTA update
               if: steps.decide.outputs.path == 'ota'
@@ -199,8 +242,14 @@ jobs:
                   EXPO_PUBLIC_VEX_BUILD_LABEL: ${{ steps.meta.outputs.display_version }}
                   EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
                   VEX_APP_ENV: development
+                  VEX_APP_DISPLAY_NAME: Vex Development
                   VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_ANDROID_RUNTIME_VERSION: ${{ steps.prev_fp.outputs.android_hash }}
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile.dev
+                  VEX_IOS_RUNTIME_VERSION: ${{ steps.prev_fp.outputs.ios_hash }}
+                  VEX_PASSKEY_RP_HOST: dev.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: |
                   eas update \
                     --channel development \
@@ -208,35 +257,54 @@ jobs:
                     --environment development \
                     --non-interactive
 
-            - name: Setup Java (Temurin 17)
-              if: steps.decide.outputs.path == 'build'
-              uses: actions/setup-java@v5
-              with:
-                  distribution: temurin
-                  java-version: "17"
+            - name: Push iOS developer-mode OTA update
+              if: steps.decide.outputs.path == 'ota'
+              working-directory: apps/mobile
+              env:
+                  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+                  EAS_BUILD_PROFILE: development
+                  EXPO_PUBLIC_ENABLE_DEV_SERVER: "1"
+                  EXPO_PUBLIC_SERVER_URL: dev.vex.wtf
+                  EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
+                  EXPO_PUBLIC_VEX_BUILD_LABEL: ${{ steps.meta.outputs.display_version }}
+                  EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
+                  VEX_APP_ENV: development
+                  VEX_APP_DISPLAY_NAME: Vex Development
+                  VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
+                  VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile.dev
+                  VEX_PASSKEY_RP_HOST: dev.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: developer
+              run: |
+                  eas update \
+                    --channel development \
+                    --platform ios \
+                    --message "development ios-dev ${GITHUB_SHA::8}" \
+                    --environment development \
+                    --non-interactive
 
-            - name: Setup Android SDK
+            - name: Prepare EAS remote build env
               if: steps.decide.outputs.path == 'build'
-              uses: android-actions/setup-android@v4
-              with:
-                  cmdline-tools-version: "13114758"
+              working-directory: apps/mobile
+              env:
+                  EAS_BUILD_PROFILE: development
+                  EXPO_PUBLIC_ENABLE_DEV_SERVER: "1"
+                  EXPO_PUBLIC_SERVER_URL: dev.vex.wtf
+                  EXPO_PUBLIC_VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
+                  EXPO_PUBLIC_VEX_BUILD_LABEL: ${{ steps.meta.outputs.display_version }}
+                  EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
+                  VEX_APP_ENV: development
+                  VEX_APP_DISPLAY_NAME: Vex Development
+                  VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
+                  VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_ANDROID_RUNTIME_VERSION: ${{ steps.fp.outputs.android_hash }}
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile.dev
+                  VEX_IOS_RUNTIME_VERSION: ${{ steps.fp.outputs.ios_hash }}
+                  VEX_PASSKEY_RP_HOST: dev.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
+              run: node scripts/prepare-eas-build-env.cjs
 
-            - name: Cache Gradle
-              if: steps.decide.outputs.path == 'build'
-              uses: actions/cache@v4
-              with:
-                  path: |
-                      ~/.gradle/caches
-                      ~/.gradle/wrapper
-                  key: ${{ runner.os }}-gradle-${{ hashFiles('pnpm-lock.yaml', 'apps/mobile/package.json', 'apps/mobile/app.json', 'apps/mobile/app.config.js', 'apps/mobile/eas.json', 'apps/mobile/plugins/**') }}
-                  restore-keys: |
-                      ${{ runner.os }}-gradle-
-
-            - name: Install EAS CLI + local build plugin
-              if: steps.decide.outputs.path == 'build'
-              run: npm install -g eas-cli@latest eas-cli-local-build-plugin@latest
-
-            - name: Build development APK (local)
+            - name: Build development native artifacts
               if: steps.decide.outputs.path == 'build'
               working-directory: apps/mobile
               env:
@@ -248,15 +316,54 @@ jobs:
                   EXPO_PUBLIC_VEX_BUILD_LABEL: ${{ steps.meta.outputs.display_version }}
                   EXPO_PUBLIC_VEX_COMMIT_SHA: ${{ github.sha }}
                   VEX_APP_ENV: development
+                  VEX_APP_DISPLAY_NAME: Vex Development
                   VEX_APP_VERSION: ${{ steps.meta.outputs.version }}
                   VEX_ENABLE_DEV_BUILD: "1"
+                  VEX_ANDROID_RUNTIME_VERSION: ${{ steps.fp.outputs.android_hash }}
+                  VEX_IOS_BUNDLE_IDENTIFIER: chat.vex.mobile.dev
+                  VEX_IOS_RUNTIME_VERSION: ${{ steps.fp.outputs.ios_hash }}
+                  VEX_PASSKEY_RP_HOST: dev.vex.wtf
+                  VEX_IOS_ASSOCIATED_DOMAIN_MODE: normal
               run: |
                   eas build \
                     --profile development \
-                    --platform android \
-                    --local \
+                    --platform all \
                     --non-interactive \
+                    --wait \
+                    --message "development ${GITHUB_SHA::8}" \
+                    --json > /tmp/native-builds.json \
+                    2> >(node scripts/redact-eas-log.cjs)
+
+                  EXPECTED_ANDROID_RUNTIME_VERSION="${{ steps.fp.outputs.android_hash }}" \
+                    EXPECTED_IOS_RUNTIME_VERSION="${{ steps.fp.outputs.ios_hash }}" \
+                    node scripts/assert-eas-runtime-versions.cjs
+
+                  node <<'NODE' > /tmp/android-artifact-url
+                  const fs = require("node:fs");
+                  const raw = fs.readFileSync("/tmp/native-builds.json", "utf8");
+                  const parsed = JSON.parse(raw);
+                  const builds = Array.isArray(parsed) ? parsed : [parsed];
+                  const build = builds.find((candidate) =>
+                    String(candidate?.platform ?? "").toLowerCase() === "android"
+                  );
+                  const artifactUrl = build?.artifacts?.applicationArchiveUrl;
+                  if (!artifactUrl) {
+                    console.error("EAS Android build output did not include an APK artifact URL.");
+                    console.error(build?.id ? `Build id: ${build.id}` : "Build id: unknown");
+                    process.exit(1);
+                  }
+                  console.log(artifactUrl);
+                  NODE
+
+                  curl --fail --location --silent --show-error \
+                    "$(cat /tmp/android-artifact-url)" \
                     --output "${{ github.workspace }}/vex-development.apk"
+                  test -s "${{ github.workspace }}/vex-development.apk"
+
+                  IOS_INSTALL_PROFILE=development \
+                    IOS_INSTALL_CHANNEL=development \
+                    IOS_BUNDLE_IDENTIFIER=chat.vex.mobile.dev \
+                    node scripts/write-ios-install-metadata.cjs
 
             - name: Build release candidate notes
               if: steps.decide.outputs.path == 'build'
@@ -278,6 +385,9 @@ jobs:
                     echo ""
                     echo "Direct latest APK:"
                     echo "https://github.com/${{ github.repository }}/releases/download/mobile-rc-latest/vex-development-latest.apk"
+                    echo ""
+                    echo "iOS install:"
+                    node -pe "require('${{ github.workspace }}/ios-install.json').installUrl"
                     echo ""
                     echo "- Package id: \`chat.vex.mobile.dev\`"
                     echo "- Branch: \`development\`"
@@ -302,11 +412,16 @@ jobs:
                   cp vex-development.apk "${{ steps.meta.outputs.asset }}"
                   sha256sum "${{ steps.meta.outputs.asset }}" > "${{ steps.meta.outputs.asset }}.sha256"
                   cp /tmp/current-fingerprint.json fingerprint.json
+                  cp /tmp/current-fingerprint-android.json fingerprint-android.json
+                  cp /tmp/current-fingerprint-ios.json fingerprint-ios.json
                   TAG="${{ steps.meta.outputs.tag }}"
                   TITLE="Vex Development ${{ steps.meta.outputs.version }} RC (${{ steps.meta.outputs.short_sha }})"
 
                   if gh release view "$TAG" >/dev/null 2>&1; then
                     gh release upload "$TAG" fingerprint.json --clobber
+                    gh release upload "$TAG" fingerprint-android.json --clobber
+                    gh release upload "$TAG" fingerprint-ios.json --clobber
+                    gh release upload "$TAG" ios-install.json --clobber
                     gh release upload "$TAG" "${{ steps.meta.outputs.asset }}" --clobber
                     gh release upload "$TAG" "${{ steps.meta.outputs.asset }}.sha256" --clobber
                     gh release edit "$TAG" \
@@ -318,6 +433,9 @@ jobs:
                     gh release create "$TAG" "${{ steps.meta.outputs.asset }}" \
                       "${{ steps.meta.outputs.asset }}.sha256" \
                       fingerprint.json \
+                      fingerprint-android.json \
+                      fingerprint-ios.json \
+                      ios-install.json \
                       --target "$GITHUB_SHA" \
                       --prerelease \
                       --title "$TITLE" \
@@ -335,7 +453,7 @@ jobs:
                   sha256sum vex-development-latest.apk > vex-development-latest.apk.sha256
                   sha256sum "${{ steps.meta.outputs.asset }}" > "${{ steps.meta.outputs.asset }}.sha256"
                   gh release delete "$TAG" --cleanup-tag --yes 2>/dev/null || true
-                  gh release create "$TAG" vex-development-latest.apk vex-development-latest.apk.sha256 "${{ steps.meta.outputs.asset }}" "${{ steps.meta.outputs.asset }}.sha256" fingerprint.json \
+                  gh release create "$TAG" vex-development-latest.apk vex-development-latest.apk.sha256 "${{ steps.meta.outputs.asset }}" "${{ steps.meta.outputs.asset }}.sha256" fingerprint.json fingerprint-android.json fingerprint-ios.json ios-install.json \
                     --target "$GITHUB_SHA" \
                     --prerelease \
                     --latest=false \

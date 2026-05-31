@@ -8,12 +8,22 @@ source "$SCRIPT_DIR/ensure-java-home.sh"
 source "$SCRIPT_DIR/ensure-android-sdk.sh"
 
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+COMMIT_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo local)"
+SHORT_SHA="${COMMIT_SHA:0:8}"
 APK_PATH="$ROOT_DIR/android/app/build/outputs/apk/release/app-release.apk"
 
 export EXPO_PUBLIC_ENABLE_DEV_SERVER=1
 export EXPO_PUBLIC_SERVER_URL=dev.vex.wtf
+export VEX_APP_ENV=development
 export VEX_ENABLE_DEV_BUILD=1
 export EAS_BUILD_PROFILE=development
+export VEX_APP_DISPLAY_NAME="${VEX_APP_DISPLAY_NAME:-Vex Development}"
+export VEX_APP_VERSION="${VEX_APP_VERSION:-$(node "$ROOT_DIR/scripts/resolve-mobile-version.cjs")}"
+export VEX_PASSKEY_RP_HOST="${VEX_PASSKEY_RP_HOST:-dev.vex.wtf}"
+export EXPO_PUBLIC_VEX_APP_VERSION="${EXPO_PUBLIC_VEX_APP_VERSION:-$VEX_APP_VERSION}"
+export EXPO_PUBLIC_VEX_BUILD_LABEL="${EXPO_PUBLIC_VEX_BUILD_LABEL:-${VEX_APP_VERSION}RC-${SHORT_SHA}}"
+export EXPO_PUBLIC_VEX_COMMIT_SHA="${EXPO_PUBLIC_VEX_COMMIT_SHA:-$COMMIT_SHA}"
 export APP_PACKAGE=chat.vex.mobile.dev
 
 EXPECTED_ANDROID_PACKAGE="chat.vex.mobile.dev"

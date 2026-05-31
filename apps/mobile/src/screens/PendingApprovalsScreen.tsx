@@ -12,12 +12,7 @@ export function PendingApprovalsScreen({
 }: AppScreenProps<"Devices">) {
     return (
         <View style={styles.container}>
-            <ChatHeader
-                onBack={() => {
-                    navigation.goBack();
-                }}
-                title="Devices"
-            />
+            <ChatHeader title="Devices" />
             <ScrollView contentContainerStyle={styles.content}>
                 <MenuSection title="Devices">
                     <MenuRow

@@ -26,10 +26,13 @@ import {
     checkForAppUpdates,
     downloadAndInstallApkUpdate,
     fetchOtaUpdate,
+    getNativeBuildInstallUrl,
+    openNativeBuildInstallPage,
     openUnknownAppSourcesSettings,
     restartForOtaUpdate,
 } from "../lib/appUpdates";
 import { buildInfo } from "../lib/buildInfo";
+import { usePendingOtaReload } from "../lib/usePendingOtaReload";
 import { colors, typography } from "../theme";
 
 type PrebootPhase =
@@ -37,6 +40,7 @@ type PrebootPhase =
     | "apk_installing"
     | "checking"
     | "error"
+    | "ios_installing"
     | "ota_downloading"
     | "ota_restarting"
     | "ready";
@@ -171,7 +175,26 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
     const [offlineContinueAllowed, setOfflineContinueAllowed] = useState(false);
     const [phase, setPhase] = useState<PrebootPhase>("checking");
     const completeRef = useRef(false);
+    const openedNativeInstallRef = useRef<string | undefined>(undefined);
     const visibleSinceRef = useRef(Date.now());
+
+    const handlePendingOtaRestarting = useCallback(() => {
+        setError("");
+        setOfflineContinueAllowed(false);
+        setPhase("ota_restarting");
+    }, []);
+    const handlePendingOtaError = useCallback((message: string) => {
+        setError(message);
+        setOfflineContinueAllowed(true);
+        setPhase("error");
+    }, []);
+    const nativeUpdateState = usePendingOtaReload({
+        onError: handlePendingOtaError,
+        onRestarting: handlePendingOtaRestarting,
+    });
+    const nativeStartupUpdateActive =
+        nativeUpdateState.isStartupProcedureRunning ||
+        nativeUpdateState.isDownloading;
 
     const complete = useCallback(() => {
         if (completeRef.current) {
@@ -185,6 +208,17 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
     }, [onComplete]);
 
     useEffect(() => {
+        if (
+            completeRef.current ||
+            !nativeUpdateState.isDownloading ||
+            nativeUpdateState.isUpdatePending
+        ) {
+            return;
+        }
+        setPhase("ota_downloading");
+    }, [nativeUpdateState.isDownloading, nativeUpdateState.isUpdatePending]);
+
+    useEffect(() => {
         let cancelled = false;
         const run = async () => {
             let blockingUpdateKnown = false;
@@ -193,11 +227,6 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
             setError("");
             setOfflineContinueAllowed(false);
             setPhase("checking");
-
-            if (Platform.OS === "ios") {
-                complete();
-                return;
-            }
 
             try {
                 const state = await withTimeout(
@@ -211,6 +240,23 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                 switch (state.status) {
                     case "apk_available":
                         blockingUpdateKnown = true;
+                        if (Platform.OS === "ios") {
+                            const installKey =
+                                state.nativeRelease?.iosInstallUrl ??
+                                state.nativeRelease?.fingerprint ??
+                                state.nativeRelease?.targetCommit ??
+                                state.nativeRelease?.htmlUrl ??
+                                state.nativeRelease?.tagName;
+                            setPhase("ios_installing");
+                            if (
+                                installKey == null ||
+                                openedNativeInstallRef.current !== installKey
+                            ) {
+                                openedNativeInstallRef.current = installKey;
+                                await openNativeBuildInstallPage();
+                            }
+                            return;
+                        }
                         setPhase("apk_downloading");
                         await downloadAndInstallApkUpdate();
                         if (cancelled) {
@@ -220,6 +266,9 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                         return;
                     case "current":
                     case "unsupported":
+                        if (nativeStartupUpdateActive) {
+                            return;
+                        }
                         complete();
                         return;
                     case "error":
@@ -229,6 +278,9 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                     case "apk_downloading":
                     case "checking":
                     case "idle":
+                        if (nativeStartupUpdateActive) {
+                            return;
+                        }
                         complete();
                         return;
                     case "ota_available": {
@@ -266,10 +318,10 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
         return () => {
             cancelled = true;
         };
-    }, [attempt, complete]);
+    }, [attempt, complete, nativeStartupUpdateActive]);
 
     useEffect(() => {
-        if (phase !== "apk_installing") {
+        if (phase !== "apk_installing" && phase !== "ios_installing") {
             return;
         }
         const subscription = AppState.addEventListener("change", (next) => {
@@ -284,9 +336,14 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
 
     const progress = progressForPhase(phase, appUpdateState);
     const copy = copyForPhase(phase, appUpdateState, error);
+    const nativeInstallUrl = getNativeBuildInstallUrl(
+        appUpdateState.nativeRelease,
+    );
     const canOpenRelease =
-        appUpdateState.nativeRelease?.htmlUrl != null &&
-        (phase === "apk_installing" || phase === "error");
+        nativeInstallUrl != null &&
+        (phase === "apk_installing" ||
+            phase === "error" ||
+            phase === "ios_installing");
 
     return (
         <PrebootSplash
@@ -320,6 +377,25 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                 </View>
             ) : null}
 
+            {phase === "ios_installing" ? (
+                <View style={styles.actions}>
+                    <PrimaryAction
+                        label="Open installer"
+                        onPress={() => {
+                            void openNativeBuildInstallPage().catch(
+                                () => undefined,
+                            );
+                        }}
+                    />
+                    <SecondaryAction
+                        label="Check again"
+                        onPress={() => {
+                            setAttempt((value) => value + 1);
+                        }}
+                    />
+                </View>
+            ) : null}
+
             {phase === "error" ? (
                 <View style={styles.actions}>
                     <PrimaryAction
@@ -330,12 +406,16 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                     />
                     {canOpenRelease ? (
                         <SecondaryAction
-                            label="Open release"
+                            label={
+                                Platform.OS === "ios"
+                                    ? "Open installer"
+                                    : "Open release"
+                            }
                             onPress={() => {
-                                const url =
-                                    appUpdateState.nativeRelease?.htmlUrl;
-                                if (url) {
-                                    void Linking.openURL(url);
+                                if (nativeInstallUrl) {
+                                    void Linking.openURL(
+                                        nativeInstallUrl,
+                                    ).catch(() => undefined);
                                 }
                             }}
                         />
@@ -401,11 +481,19 @@ function copyForPhase(
                 message: error || "Could not verify app updates.",
                 title: "Update check failed",
             };
+        case "ios_installing":
+            return {
+                detail: "Confirm the install, then open Vex again. This gate will check again before loading chats.",
+                message: "The iOS installer should be open.",
+                title: "Install update",
+            };
         case "ota_downloading":
             return {
-                detail: state.latestCommit?.shortSha
-                    ? `Preparing update ${state.latestCommit.shortSha}.`
-                    : "Preparing a compatible update.",
+                detail: state.otaUpdate?.shortCommit
+                    ? `Preparing update ${state.otaUpdate.shortCommit}.`
+                    : state.otaUpdate?.shortId
+                      ? `Preparing OTA ${state.otaUpdate.shortId}.`
+                      : "Preparing a compatible update.",
                 message: "Downloading the latest OTA bundle.",
                 title: "Updating Vex",
             };
@@ -447,6 +535,7 @@ function progressForPhase(phase: PrebootPhase, state: AppUpdateState): number {
         case "apk_downloading":
             return 0.2 + clamp01(state.apkDownloadProgress ?? 0) * 0.76;
         case "apk_installing":
+        case "ios_installing":
         case "ready":
             return 1;
         case "checking":

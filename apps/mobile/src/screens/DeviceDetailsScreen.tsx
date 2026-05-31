@@ -97,12 +97,7 @@ export function DeviceDetailsScreen({
 
     return (
         <View style={styles.container}>
-            <ChatHeader
-                onBack={() => {
-                    navigation.goBack();
-                }}
-                title={title}
-            />
+            <ChatHeader title={title} />
             <ScrollView
                 contentContainerStyle={styles.content}
                 refreshControl={

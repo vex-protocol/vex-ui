@@ -20,7 +20,6 @@ export {
     $historyRecoveryStatus,
     $hydrationStatus,
     $keyReplaced,
-    $localPasskeySetupPrompt,
     $pendingApprovalStage,
     $signedOutIntent,
     $user,
@@ -30,7 +29,6 @@ export type {
     HistoryRecoveryStatus,
     HydrationStage,
     HydrationStatus,
-    LocalPasskeySetupPrompt,
     PendingApprovalStage,
 } from "./domains/identity.ts";
 export {

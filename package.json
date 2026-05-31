@@ -25,7 +25,9 @@
         "android:reset-db": "pnpm -F mobile run android:reset-db",
         "android:staging": "pnpm run android:dev",
         "install:android": "pnpm -F mobile run android:release:install-all",
-        "install:ios": "pnpm -F mobile run ios:release:install",
+        "ios:dev:install": "pnpm -F mobile run ios:dev:install",
+        "ios:prod:install": "pnpm -F mobile run ios:prod:install",
+        "install:ios": "pnpm -F mobile run ios:prod:install",
         "website": "pnpm -F @vex-chat/website dev:all",
         "preinstall": "npx only-allow pnpm"
     },
