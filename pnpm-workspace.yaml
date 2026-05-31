@@ -10,8 +10,8 @@ catalog:
     "@notifee/react-native": ^9.1.8
     "@types/node": ^24.10.1
     "@vex-chat/crypto": 7.0.0
-    "@vex-chat/libvex": 7.1.4
-    "@vex-chat/spire": 2.3.3
+    "@vex-chat/libvex": 7.1.5
+    "@vex-chat/spire": 2.3.4
     "@vex-chat/types": 4.0.0
     dompurify: ^3.4.0
     expo-background-fetch: ~55.0.15
