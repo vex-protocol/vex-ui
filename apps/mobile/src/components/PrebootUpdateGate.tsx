@@ -6,6 +6,7 @@ import React, {
     useState,
 } from "react";
 import {
+    Alert,
     Animated,
     AppState,
     Easing,
@@ -175,7 +176,7 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
     const [offlineContinueAllowed, setOfflineContinueAllowed] = useState(false);
     const [phase, setPhase] = useState<PrebootPhase>("checking");
     const completeRef = useRef(false);
-    const openedNativeInstallRef = useRef<string | undefined>(undefined);
+    const promptedIosInstallRef = useRef<string | undefined>(undefined);
     const visibleSinceRef = useRef(Date.now());
 
     const handlePendingOtaRestarting = useCallback(() => {
@@ -206,6 +207,17 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
         const delay = Math.max(0, MIN_VISIBLE_MS - elapsed);
         setTimeout(onComplete, delay);
     }, [onComplete]);
+
+    const handleOpenIosInstaller = useCallback(() => {
+        setError("");
+        setOfflineContinueAllowed(false);
+        setPhase("ios_installing");
+        void openNativeBuildInstallPage().catch((err: unknown) => {
+            setError(errorMessage(err));
+            setOfflineContinueAllowed(false);
+            setPhase("error");
+        });
+    }, []);
 
     useEffect(() => {
         if (
@@ -241,20 +253,7 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                     case "apk_available":
                         blockingUpdateKnown = true;
                         if (Platform.OS === "ios") {
-                            const installKey =
-                                state.nativeRelease?.iosInstallUrl ??
-                                state.nativeRelease?.fingerprint ??
-                                state.nativeRelease?.targetCommit ??
-                                state.nativeRelease?.htmlUrl ??
-                                state.nativeRelease?.tagName;
                             setPhase("ios_installing");
-                            if (
-                                installKey == null ||
-                                openedNativeInstallRef.current !== installKey
-                            ) {
-                                openedNativeInstallRef.current = installKey;
-                                await openNativeBuildInstallPage();
-                            }
                             return;
                         }
                         setPhase("apk_downloading");
@@ -334,6 +333,35 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
         };
     }, [phase]);
 
+    useEffect(() => {
+        if (Platform.OS !== "ios" || phase !== "ios_installing") {
+            return;
+        }
+        const release = appUpdateState.nativeRelease;
+        const installKey =
+            release?.iosDirectInstallUrl ??
+            release?.iosInstallUrl ??
+            release?.fingerprint ??
+            release?.targetCommit ??
+            release?.htmlUrl ??
+            release?.tagName;
+        if (!installKey || promptedIosInstallRef.current === installKey) {
+            return;
+        }
+        promptedIosInstallRef.current = installKey;
+        Alert.alert(
+            "Install Required Update",
+            "iOS will ask you to install the latest Vex build. Confirm the install, leave Vex, then reopen it after the app icon finishes updating.",
+            [
+                { style: "cancel", text: "Not Now" },
+                {
+                    onPress: handleOpenIosInstaller,
+                    text: "Install Update",
+                },
+            ],
+        );
+    }, [appUpdateState.nativeRelease, handleOpenIosInstaller, phase]);
+
     const progress = progressForPhase(phase, appUpdateState);
     const copy = copyForPhase(phase, appUpdateState, error);
     const nativeInstallUrl = getNativeBuildInstallUrl(
@@ -380,12 +408,8 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
             {phase === "ios_installing" ? (
                 <View style={styles.actions}>
                     <PrimaryAction
-                        label="Open installer"
-                        onPress={() => {
-                            void openNativeBuildInstallPage().catch(
-                                () => undefined,
-                            );
-                        }}
+                        label="Install Update"
+                        onPress={handleOpenIosInstaller}
                     />
                     <SecondaryAction
                         label="Check again"
@@ -408,11 +432,13 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                         <SecondaryAction
                             label={
                                 Platform.OS === "ios"
-                                    ? "Open installer"
+                                    ? "Install Update"
                                     : "Open release"
                             }
                             onPress={() => {
-                                if (nativeInstallUrl) {
+                                if (Platform.OS === "ios") {
+                                    handleOpenIosInstaller();
+                                } else if (nativeInstallUrl) {
                                     void Linking.openURL(
                                         nativeInstallUrl,
                                     ).catch(() => undefined);
@@ -483,9 +509,9 @@ function copyForPhase(
             };
         case "ios_installing":
             return {
-                detail: "Confirm the install, then open Vex again. This gate will check again before loading chats.",
-                message: "The iOS installer should be open.",
-                title: "Install update",
+                detail: "Confirm the iOS install prompt, leave Vex, then reopen it after the app icon finishes updating.",
+                message: "A newer Vex build is required before startup.",
+                title: "Update Required",
             };
         case "ota_downloading":
             return {

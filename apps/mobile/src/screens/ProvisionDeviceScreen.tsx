@@ -14,7 +14,6 @@ import { vexService } from "@vex-chat/store";
 
 import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
-import { VexLogo } from "../components/VexLogo";
 import { getServerOptions } from "../lib/config";
 import { keychainKeyStore } from "../lib/keychain";
 import { mobileConfig } from "../lib/platform";
@@ -149,16 +148,16 @@ export function ProvisionDeviceScreen({ navigation, route }: Props) {
         <ScreenLayout style={styles.layout}>
             <View pointerEvents="none" style={styles.blackoutLayer} />
             <View style={styles.content}>
-                <Animated.View
+                <Animated.Text
                     style={[
-                        styles.logoWrap,
+                        styles.spinner,
                         {
                             transform: [{ rotate: rotation }, { scale: pulse }],
                         },
                     ]}
                 >
-                    <VexLogo size={42} />
-                </Animated.View>
+                    ◈
+                </Animated.Text>
                 <Text style={styles.eyebrow}>PASSKEY VERIFIED</Text>
                 <Text style={styles.heading}>{heading}</Text>
                 <Text style={styles.body}>{body}</Text>
@@ -227,8 +226,9 @@ const styles = StyleSheet.create({
     layout: {
         backgroundColor: "#000000",
     },
-    logoWrap: {
-        alignItems: "center",
-        justifyContent: "center",
+    spinner: {
+        color: colors.accent,
+        fontSize: 50,
+        marginBottom: 2,
     },
 });

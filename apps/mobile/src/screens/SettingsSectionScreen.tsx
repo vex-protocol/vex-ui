@@ -393,8 +393,8 @@ export function SettingsSectionScreen({
         const release = appUpdateState.nativeRelease;
         if (Platform.OS !== "android") {
             Alert.alert(
-                "Open install page?",
-                "Vex will open the iOS install page in Safari. Confirm the install there, then reopen Vex.",
+                "Install Vex update?",
+                "iOS will ask you to install the latest Vex build. Confirm the install, leave Vex, then reopen it after the app icon finishes updating.",
                 [
                     { style: "cancel", text: "Cancel" },
                     {
@@ -402,13 +402,13 @@ export function SettingsSectionScreen({
                             void openNativeBuildInstallPage().catch(
                                 (err: unknown) => {
                                     Alert.alert(
-                                        "Install page unavailable",
+                                        "Install unavailable",
                                         errorMessage(err),
                                     );
                                 },
                             );
                         },
-                        text: "Open",
+                        text: "Install Update",
                     },
                 ],
             );
