@@ -559,15 +559,17 @@ function MainApp() {
               )
             : 0;
     const hydrationStageLabel =
-        hydrationStatus.stage === "loading_channels"
-            ? "Loading channels"
-            : hydrationStatus.stage === "loading_group_history"
-              ? "Loading channel history"
-              : hydrationStatus.stage === "loading_familiars"
-                ? "Loading familiars"
-                : hydrationStatus.stage === "loading_sessions"
-                  ? "Loading message history"
-                  : "Preparing account";
+        hydrationStatus.stage === "syncing_inbox"
+            ? "Syncing inbox"
+            : hydrationStatus.stage === "loading_channels"
+              ? "Loading channels"
+              : hydrationStatus.stage === "loading_group_history"
+                ? "Loading channel history"
+                : hydrationStatus.stage === "loading_familiars"
+                  ? "Loading familiars"
+                  : hydrationStatus.stage === "loading_sessions"
+                    ? "Loading message history"
+                    : "Preparing account";
 
     useEffect(() => {
         notifiedMailIDsRef.current = new BoundedStringSet(
