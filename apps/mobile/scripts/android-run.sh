@@ -8,6 +8,7 @@ source "$SCRIPT_DIR/ensure-java-home.sh"
 source "$SCRIPT_DIR/ensure-android-sdk.sh"
 
 ANDROID_EMULATOR_AVD="${ANDROID_EMULATOR_AVD:-vex_stable}"
+LOCAL_SPIRE_PORT="${VEX_LOCAL_SPIRE_PORT:-16777}"
 
 # Only force the emulator's Qt platform on Linux. macOS Qt builds use
 # `cocoa`; pinning xcb there breaks the emulator UI / makes it hang
@@ -156,5 +157,23 @@ start_emulator_if_needed() {
 }
 
 start_emulator_if_needed
+
+should_reverse_local_spire() {
+  local server="${EXPO_PUBLIC_SERVER_URL:-}"
+  if [[ "${VEX_ANDROID_REVERSE_SPIRE:-}" == "1" ]]; then
+    return 0
+  fi
+  [[ "$server" =~ (^|//)(localhost|127\.0\.0\.1|10\.0\.2\.2)(:|/|$) ]] && return 0
+  [[ "$server" =~ ^(localhost|127\.0\.0\.1|10\.0\.2\.2)(:|/|$) ]] && return 0
+  return 1
+}
+
+if should_reverse_local_spire; then
+  while IFS= read -r serial; do
+    [[ -z "$serial" ]] && continue
+    echo "[$serial] adb reverse tcp:${LOCAL_SPIRE_PORT}"
+    adb -s "$serial" reverse "tcp:${LOCAL_SPIRE_PORT}" "tcp:${LOCAL_SPIRE_PORT}" >/dev/null 2>&1 || true
+  done < <(adb devices | awk 'NR > 1 && $2 == "device" { print $1 }')
+fi
 
 exec expo run:android "$@"

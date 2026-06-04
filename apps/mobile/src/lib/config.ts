@@ -33,10 +33,12 @@ export function getServerOptions(): ServerOptions {
     const host = getServerUrl();
     const override = readOverride();
     const unsafeByScheme = override?.trim().startsWith("http://") ?? false;
+    const isLocalDev = isLocalDevServerHost(host);
     return {
+        ...(isLocalDev && __DEV__ ? { devApiKey: "local-dev" } : {}),
         host,
         localMessageRetentionDays: $localMessageRetentionDays.get(),
-        unsafeHttp: unsafeByScheme || DEV_HOST_RE.test(host),
+        unsafeHttp: unsafeByScheme || isLocalDev,
     };
 }
 
@@ -53,6 +55,14 @@ export function getServerUrl(): string {
         );
     }
     return host;
+}
+
+export function isLocalDevServer(): boolean {
+    return __DEV__ && isLocalDevServerHost(getServerUrl());
+}
+
+function isLocalDevServerHost(host: string): boolean {
+    return DEV_HOST_RE.test(host);
 }
 
 function normalizeHost(raw: string): string {

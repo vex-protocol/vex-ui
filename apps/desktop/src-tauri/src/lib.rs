@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Manager, WebviewWindowBuilder,
 };
 
 const TRAY_ID: &str = "main";
@@ -165,6 +165,43 @@ fn show_window(app: &tauri::AppHandle) {
     }
 }
 
+fn build_main_window(app: &tauri::App) -> tauri::Result<()> {
+    let window_config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|window| window.label == "main")
+        .or_else(|| app.config().app.windows.first())
+        .ok_or(tauri::Error::WindowNotFound)?;
+
+    let mut builder = WebviewWindowBuilder::from_config(app.handle(), window_config)?;
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.with_webview_configuration(macos_voice_call_webview_configuration());
+    }
+    builder.build()?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn macos_voice_call_webview_configuration(
+) -> objc2::rc::Retained<objc2_web_kit::WKWebViewConfiguration> {
+    use objc2::MainThreadMarker;
+    use objc2_foundation::{ns_string, NSNumber, NSObjectNSKeyValueCoding};
+    use objc2_web_kit::{WKAudiovisualMediaTypes, WKWebViewConfiguration};
+
+    let mtm = MainThreadMarker::new().expect("WKWebView configuration must run on the main thread");
+    unsafe {
+        let configuration = WKWebViewConfiguration::new(mtm);
+        let preferences = configuration.preferences();
+        let enabled = NSNumber::numberWithBool(true);
+        preferences.setValue_forKey(Some(&enabled), ns_string!("mediaDevicesEnabled"));
+        configuration.setMediaTypesRequiringUserActionForPlayback(WKAudiovisualMediaTypes::None);
+        configuration
+    }
+}
+
 #[tauri::command]
 fn set_tray_unread(app: tauri::AppHandle, count: u32) -> Result<(), String> {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
@@ -262,6 +299,8 @@ pub fn run() {
             set_tray_unread
         ])
         .setup(|app| {
+            build_main_window(app)?;
+
             let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;

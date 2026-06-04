@@ -32,6 +32,7 @@ import { ChatHeader } from "../components/ChatHeader";
 import { MessageBubbleRN } from "../components/MessageBubbleRN";
 import { MessageInputBar } from "../components/MessageInputBar";
 import { pickFileAttachment, pickImageAttachment } from "../lib/attachments";
+import { voiceCallEngine } from "../lib/voiceCallEngine";
 import { colors, typography } from "../theme";
 
 const GROUP_WINDOW_MS = 10 * 60 * 1000;
@@ -280,6 +281,17 @@ export function ConversationScreen({
         ]);
     }, [handlePickAttachment, sending]);
 
+    const startVoiceCall = useCallback(() => {
+        setError("");
+        void voiceCallEngine
+            .startDmCall(userID, username)
+            .catch((err: unknown) => {
+                setError(
+                    err instanceof Error ? err.message : "Failed to start call",
+                );
+            });
+    }, [userID, username]);
+
     const deleteMessageForEveryone = useCallback(
         (message: Message) => {
             void (async () => {
@@ -404,6 +416,7 @@ export function ConversationScreen({
                 onTitlePress={() => {
                     navigation.navigate("DMList");
                 }}
+                onVoiceCall={startVoiceCall}
                 subtitle={`@${username}`}
                 title="Direct Messages"
             />

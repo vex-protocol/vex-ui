@@ -1,15 +1,27 @@
 const path = require("path");
+const fs = require("fs");
 const { getDefaultConfig } = require("expo/metro-config");
 
 const projectRoot = __dirname;
 const monorepoRoot = path.resolve(projectRoot, "../..");
+const localProtocolRoot = path.resolve(monorepoRoot, "../vex-protocol");
+const hasLocalProtocol = fs.existsSync(
+    path.join(localProtocolRoot, "packages/libvex/package.json"),
+);
+const useLocalProtocol =
+    process.env.VEX_USE_LOCAL_PROTOCOL_SYMLINK === "1" && hasLocalProtocol;
 
 const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [monorepoRoot];
+config.watchFolders = useLocalProtocol
+    ? [monorepoRoot, localProtocolRoot]
+    : [monorepoRoot];
 config.resolver.nodeModulesPaths = [
     path.resolve(projectRoot, "node_modules"),
     path.resolve(monorepoRoot, "node_modules"),
+    ...(useLocalProtocol
+        ? [path.resolve(localProtocolRoot, "node_modules")]
+        : []),
 ];
 config.resolver.unstable_enableSymlinks = true;
 
@@ -108,6 +120,28 @@ const pathStubs = [
 ];
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+    if (useLocalProtocol && moduleName === "@vex-chat/libvex") {
+        return {
+            filePath: path.join(
+                localProtocolRoot,
+                "packages/libvex/dist/index.js",
+            ),
+            type: "sourceFile",
+        };
+    }
+    if (
+        useLocalProtocol &&
+        moduleName.startsWith("@vex-chat/libvex/storage/")
+    ) {
+        const subpath = moduleName.slice("@vex-chat/libvex/storage/".length);
+        return {
+            filePath: path.join(
+                localProtocolRoot,
+                `packages/libvex/dist/storage/${subpath}.js`,
+            ),
+            type: "sourceFile",
+        };
+    }
     // Some transitive noble consumers still import the old subpath with
     // ".js". Metro can resolve it via filesystem fallback, but it warns on
     // every reload because this subpath is not exported. Normalize it to the

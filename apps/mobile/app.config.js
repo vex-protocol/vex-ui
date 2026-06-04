@@ -117,9 +117,12 @@ module.exports = ({ config }) => {
     const androidPermissions = Array.from(
         new Set([
             ...(config.android?.permissions ?? []),
+            "BLUETOOTH_CONNECT",
             "FOREGROUND_SERVICE",
             "FOREGROUND_SERVICE_DATA_SYNC",
+            "MODIFY_AUDIO_SETTINGS",
             "REQUEST_INSTALL_PACKAGES",
+            "RECORD_AUDIO",
             "WAKE_LOCK",
         ]),
     );
@@ -146,6 +149,11 @@ module.exports = ({ config }) => {
             config: {
                 ...config.ios?.config,
                 usesNonExemptEncryption: true,
+            },
+            infoPlist: {
+                ...config.ios?.infoPlist,
+                NSMicrophoneUsageDescription:
+                    "Allow $(PRODUCT_NAME) to use the microphone for voice calls and voice memos.",
             },
         },
         android: {
@@ -195,7 +203,7 @@ module.exports = ({ config }) => {
                 {
                     enableBackgroundPlayback: false,
                     microphonePermission:
-                        "Allow $(PRODUCT_NAME) to record voice memos.",
+                        "Allow $(PRODUCT_NAME) to use the microphone for voice calls and voice memos.",
                     recordAudioAndroid: true,
                 },
             ],

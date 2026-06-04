@@ -31,12 +31,13 @@ import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { VoiceCallOverlay } from "./components/VoiceCallOverlay";
 import { type AppUpdateState, checkForAppUpdates } from "./lib/appUpdates";
 import {
     BACKGROUND_NETWORK_SYNC_TASK,
     BACKGROUND_PUSH_NOTIFICATION_TASK,
 } from "./lib/backgroundTaskDefinitions";
-import { getServerOptions } from "./lib/config";
+import { getServerOptions, isLocalDevServer } from "./lib/config";
 import { hydrateDevOptionsUnlocked } from "./lib/devMode";
 import {
     $alwaysOnEnabled,
@@ -52,6 +53,10 @@ import {
     keychainKeyStore,
     setUserIDForUsername,
 } from "./lib/keychain";
+import {
+    handleLocalDevAutomationLink,
+    isLocalDevAutomationLink,
+} from "./lib/localDevAutomation";
 import {
     clearNotifiedApprovalRequestIDs,
     dismissDeviceApprovalNotification,
@@ -181,6 +186,15 @@ function MainApp() {
     const handleIncomingLink = useCallback(
         (url: null | string) => {
             if (!url) {
+                return;
+            }
+            if (isLocalDevAutomationLink(url)) {
+                void handleLocalDevAutomationLink(url).catch((err: unknown) => {
+                    console.warn(
+                        "[vex-dev] local automation failed",
+                        err instanceof Error ? err.message : String(err),
+                    );
+                });
                 return;
             }
             const link = parseVexLink(url);
@@ -934,7 +948,9 @@ function MainApp() {
         if (!userID) {
             return;
         }
-        void reconcilePushNotificationSubscription();
+        if (!isLocalDevServer()) {
+            void reconcilePushNotificationSubscription();
+        }
         flushPendingNotificationRoutes();
     }, [userID]);
 
@@ -1054,6 +1070,7 @@ function MainApp() {
             >
                 <RootNavigator />
             </NavigationContainer>
+            <VoiceCallOverlay />
             {showHydrationGate && (
                 <View style={styles.hydrationGate}>
                     <View

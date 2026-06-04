@@ -12,6 +12,12 @@ export type { VexLink } from "./deeplink.ts";
 // ── Domain atoms (readonly — apps can subscribe, not write) ─────────────────
 
 export {
+    $activeCalls,
+    $currentCallID,
+    $incomingCalls,
+    $latestCallEvent,
+} from "./domains/calls.ts";
+export {
     $authStatus,
     $avatarHash,
     $avatarVersions,
@@ -76,6 +82,8 @@ export type {
     LinkPreviewHtmlResult,
     LinkPreviewMetadata,
 } from "./link-preview.ts";
+export { MemoryStorage } from "./memory-storage.ts";
+
 export {
     applyEmoji,
     applyMessageDeleteEvent,
@@ -115,7 +123,6 @@ export {
     serializeMessageExtra,
     toggleMessageReactionExtra,
 } from "./message-utils.ts";
-
 export type {
     EncryptedFileAttachment,
     FileAttachment,
@@ -136,12 +143,12 @@ export type {
     MessageReplyReference,
     MessageUpdateEvent,
 } from "./message-utils.ts";
+
 export {
     formatDmNotificationSubtitle,
     formatGroupNotificationSubtitle,
     shouldNotify,
 } from "./notifications.ts";
-
 export type { NotificationPayload } from "./notifications.ts";
 export { vexService } from "./service.ts";
 
@@ -162,6 +169,7 @@ export type {
     SendMessageOptions,
     ServerOptions,
     SessionInfo,
+    VoiceCallResult,
 } from "./service.ts";
 export {
     decodeVexDbAtRestKey,

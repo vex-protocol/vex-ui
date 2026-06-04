@@ -6,6 +6,10 @@
     // Route: /messaging/:userID
     import MessageBox from "../lib/MessageBox.svelte";
     import { familiars, messages, vexService } from "../lib/store/index.js";
+    import {
+        voiceCallEngine,
+        $voiceCallState as voiceCallState,
+    } from "../lib/voiceCallEngine.js";
 
     let { params }: { params: Record<string, string> } = $props();
 
@@ -25,6 +29,7 @@
     let sendError = $state("");
     let composerValue = $state("");
     let editingMessage: Message | null = $state(null);
+    let calling = $state(false);
     let showFingerprint = $state(false);
     let fingerprint = $state("");
     let _theirSignKey = $state("");
@@ -148,6 +153,25 @@
         editingMessage = message;
         composerValue = message.message;
     }
+
+    function handleStartVoiceCall(): void {
+        if (calling || !targetUserID || $voiceCallState.phase !== "idle") {
+            return;
+        }
+        calling = true;
+        sendError = "";
+        void voiceCallEngine
+            .startDmCall(targetUserID, targetUsername)
+            .catch((err: unknown) => {
+                sendError =
+                    err instanceof Error
+                        ? err.message
+                        : "Failed to start voice call";
+            })
+            .finally(() => {
+                calling = false;
+            });
+    }
 </script>
 
 <div class="dm-pane">
@@ -166,6 +190,13 @@
                     🟡
                 </button>
             {/if}
+            <button
+                class="dm-pane__action dm-pane__action--text"
+                title="Start voice call"
+                aria-label="Start voice call"
+                disabled={calling || $voiceCallState.phase !== "idle"}
+                onclick={handleStartVoiceCall}>Call</button
+            >
             <button class="dm-pane__action" title="Search" aria-label="Search"
                 >🔍</button
             >
@@ -265,6 +296,11 @@
     .dm-pane__action:hover {
         background: var(--bg-hover);
         opacity: 1;
+    }
+
+    .dm-pane__action:disabled {
+        cursor: not-allowed;
+        opacity: 0.35;
     }
 
     .dm-pane__action--danger:hover {

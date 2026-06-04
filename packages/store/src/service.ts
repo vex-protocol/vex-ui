@@ -6,10 +6,14 @@
  * Components subscribe to readonly atom exports from domains/.
  */
 import type {
+    CallEvent,
+    CallSession,
+    CallSignalPayload,
     Channel,
     ClientEvents,
     ClientOptions,
     Device,
+    IceServerConfig,
     Invite,
     KeyStore,
     Message,
@@ -29,6 +33,12 @@ import { Client, msgpack } from "@vex-chat/libvex";
 
 import { validate as uuidValidate } from "uuid";
 
+import {
+    $activeCallsWritable,
+    $currentCallIDWritable,
+    $incomingCallsWritable,
+    $latestCallEventWritable,
+} from "./domains/calls.ts";
 import {
     $authStatusWritable,
     $avatarHashWritable,
@@ -162,6 +172,12 @@ export type BackgroundNetworkFetchResult = "failed" | "new_data" | "no_data";
 /** App-provided platform configuration for client bootstrap. */
 export interface BootstrapConfig {
     /**
+     * Local development escape hatch for native simulators where WebAuthn
+     * associated-domain checks cannot pass on localhost. Ignored unless the
+     * server options also mark the connection as unsafe/local HTTP.
+     */
+    allowInsecureLocalPasskeyBypass?: boolean;
+    /**
      * Open (or create) per-identity local storage. Platforms compose the
      * final file path from `username` + the configured server host so each
      * identity on each server owns an isolated encrypted DB. Switching
@@ -249,6 +265,11 @@ export interface SendMessageOptions {
 
 /** Server connection options — identical across all auth flows. */
 export interface ServerOptions {
+    /**
+     * Local/load-test API key sent as `x-dev-api-key` by libvex.
+     * Only set this for disposable development servers.
+     */
+    devApiKey?: string;
     host: string;
     inMemoryDb?: boolean;
     /**
@@ -267,8 +288,6 @@ export interface ServerOptions {
     unsafeHttp?: boolean;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
 export interface SessionInfo {
     authStatus:
         | "authenticated"
@@ -284,15 +303,44 @@ export interface SessionInfo {
     username: string;
 }
 
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
 export interface ThreadDeleteForEveryoneResult extends OperationResult {
     batchCount?: number;
     deletedCount?: number;
     localDeleted?: boolean;
 }
 
+export interface VoiceCallResult extends OperationResult {
+    event?: CallEvent;
+}
+
 interface ClientHttpLike {
     get?: (...args: unknown[]) => Promise<unknown>;
     post?: (...args: unknown[]) => Promise<unknown>;
+}
+
+interface ClientWithCallsLike {
+    calls: {
+        accept: (
+            callID: string,
+            signal?: CallSignalPayload,
+        ) => Promise<CallEvent>;
+        active: () => Promise<CallSession[]>;
+        cancel: (callID: string) => Promise<CallEvent>;
+        hangup: (callID: string) => Promise<CallEvent>;
+        ice: (callID: string, signal: CallSignalPayload) => Promise<CallEvent>;
+        iceServers: () => Promise<IceServerConfig[]>;
+        reject: (callID: string) => Promise<CallEvent>;
+        signal: (
+            callID: string,
+            signal: CallSignalPayload,
+        ) => Promise<CallEvent>;
+        startDM: (
+            recipientUserID: string,
+            signal?: CallSignalPayload,
+        ) => Promise<CallEvent>;
+    };
 }
 
 type ClientWithDeviceApprovals = Omit<Client, "devices"> & {
@@ -457,6 +505,7 @@ const LOCAL_DECRYPT_RECOVERY_ERROR =
 // detector didn't (older SDK, or some edge case where it didn't).
 const WS_WATCHDOG_CHECK_INTERVAL_MS = 30_000;
 const WS_WATCHDOG_STALE_THRESHOLD_MS = 45_000;
+const VOICE_CALL_REFRESH_TIMEOUT_MS = 8000;
 // Tighter threshold for "is the socket *currently* delivering frames?"
 // used by `refreshSessionAfterForeground` to decide whether the
 // foreground-service kept the connection healthy across the resume.
@@ -616,6 +665,15 @@ class VexService {
         this.deferredDeviceApproval = null;
     }
 
+    async acceptVoiceCall(
+        callID: string,
+        signal?: CallSignalPayload,
+    ): Promise<VoiceCallResult> {
+        return this.runVoiceCallMutation((client) =>
+            client.calls.accept(callID, signal),
+        );
+    }
+
     async approveDeviceRequest(requestID: string): Promise<OperationResult> {
         try {
             const client = this.requireClient();
@@ -734,7 +792,10 @@ class VexService {
                     return { error: errorMessage(authErr), ok: false };
                 }
 
-                if (passkeyState === "not_registered") {
+                if (
+                    passkeyState === "not_registered" &&
+                    !shouldSkipInitialPasskeySetup(config, options)
+                ) {
                     await this.registerInitialPasskeyForCurrentClient(
                         config.deviceName || "This device",
                     );
@@ -799,7 +860,10 @@ class VexService {
                             };
                         }
 
-                        if (passkeyState === "not_registered") {
+                        if (
+                            passkeyState === "not_registered" &&
+                            !shouldSkipInitialPasskeySetup(config, options)
+                        ) {
                             await this.registerInitialPasskeyForCurrentClient(
                                 config.deviceName || "This device",
                             );
@@ -1175,6 +1239,8 @@ class VexService {
         this.resetAll();
     }
 
+    // ── Server CRUD ─────────────────────────────────────────────────────
+
     async deleteLocalMessage(
         conversationKey: string,
         mailID: string,
@@ -1221,8 +1287,6 @@ class VexService {
         writable.setKey(conversationKey, nextThread);
         return true;
     }
-
-    // ── Server CRUD ─────────────────────────────────────────────────────
 
     async deleteLocalThread(
         conversationKey: string,
@@ -1511,12 +1575,12 @@ class VexService {
         }
     }
 
+    // ── Channel operations ──────────────────────────────────────────────
+
     async getChannelMembers(channelID: string): Promise<User[]> {
         const client = this.requireClient();
         return client.channels.userList(channelID);
     }
-
-    // ── Channel operations ──────────────────────────────────────────────
 
     async getDeviceRequest(
         requestID: string,
@@ -1600,11 +1664,15 @@ class VexService {
         }
     }
 
+    // ── Messaging ───────────────────────────────────────────────────────
+
+    async getVoiceIceServers(): Promise<IceServerConfig[]> {
+        return this.requireCallsClient().calls.iceServers();
+    }
+
     getWebsocketDebugEnabled(): boolean {
         return this.wsDebugEnabled;
     }
-
-    // ── Messaging ───────────────────────────────────────────────────────
 
     getWebsocketFrameDebugEnabled(): boolean {
         return this.wsDebugFrameLogsEnabled;
@@ -1612,6 +1680,12 @@ class VexService {
 
     getWebsocketStateDebugEnabled(): boolean {
         return this.wsDebugStateLogsEnabled;
+    }
+
+    async hangupVoiceCall(callID: string): Promise<VoiceCallResult> {
+        return this.runVoiceCallMutation((client) =>
+            client.calls.hangup(callID),
+        );
     }
 
     isAuthFlowInFlight(): boolean {
@@ -1746,6 +1820,8 @@ class VexService {
         }
     }
 
+    // ── User operations ─────────────────────────────────────────────────
+
     async lookupUser(query: string): Promise<null | User> {
         try {
             const client = this.requireClient();
@@ -1776,8 +1852,6 @@ class VexService {
             this.deviceRequestQueueListeners.delete(listener);
         };
     }
-
-    // ── User operations ─────────────────────────────────────────────────
 
     /** Delete a device using the passkey-only session. */
     async passkeyDeleteDevice(deviceID: string): Promise<OperationResult> {
@@ -2052,6 +2126,26 @@ class VexService {
         }
     }
 
+    async refreshVoiceCalls(): Promise<
+        OperationResult & { calls?: CallSession[] }
+    > {
+        const client = this.client;
+        if (!client || !hasCallsApi(client)) {
+            return { calls: [], ok: true };
+        }
+        try {
+            const calls = await withTimeout(
+                client.calls.active(),
+                VOICE_CALL_REFRESH_TIMEOUT_MS,
+                "Active voice calls request timed out.",
+            );
+            this.publishActiveCalls(calls);
+            return { calls, ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+    }
+
     /**
      * Register a new account → save credentials → connect.
      */
@@ -2088,6 +2182,12 @@ class VexService {
         } catch (err: unknown) {
             return { error: errorMessage(err), ok: false };
         }
+    }
+
+    async rejectVoiceCall(callID: string): Promise<VoiceCallResult> {
+        return this.runVoiceCallMutation((client) =>
+            client.calls.reject(callID),
+        );
     }
 
     async removeDevice(deviceID: string): Promise<OperationResult> {
@@ -2165,6 +2265,7 @@ class VexService {
             } else {
                 await this.populateState();
             }
+            await this.refreshVoiceCalls();
             return "new_data";
         } catch {
             return "failed";
@@ -2252,6 +2353,24 @@ class VexService {
         }
     }
 
+    async sendVoiceCallIce(
+        callID: string,
+        signal: CallSignalPayload,
+    ): Promise<VoiceCallResult> {
+        return this.runVoiceCallMutation((client) =>
+            client.calls.ice(callID, signal),
+        );
+    }
+
+    async sendVoiceCallSignal(
+        callID: string,
+        signal: CallSignalPayload,
+    ): Promise<VoiceCallResult> {
+        return this.runVoiceCallMutation((client) =>
+            client.calls.signal(callID, signal),
+        );
+    }
+
     async setAvatar(data: Uint8Array): Promise<OperationResult> {
         const bumpVersionForCurrentUser = (): void => {
             $avatarHashWritable.set(Date.now());
@@ -2332,6 +2451,15 @@ class VexService {
 
     // ── Unread management ───────────────────────────────────────────────
 
+    async startVoiceCall(
+        recipientUserID: string,
+        signal?: CallSignalPayload,
+    ): Promise<VoiceCallResult> {
+        return this.runVoiceCallMutation((client) =>
+            client.calls.startDM(recipientUserID, signal),
+        );
+    }
+
     async subscribePushNotifications(
         input: PushNotificationSubscriptionInput,
     ): Promise<NotificationSubscriptionLike> {
@@ -2387,6 +2515,8 @@ class VexService {
         );
     }
 
+    // ── Notifications ───────────────────────────────────────────────────
+
     async unsubscribePushNotifications(subscriptionID: string): Promise<void> {
         const client = this.requireClient();
         const legacyClient =
@@ -2415,8 +2545,6 @@ class VexService {
                 subscriptionID,
         );
     }
-
-    // ── Notifications ───────────────────────────────────────────────────
 
     async uploadFileAttachment(input: {
         contentType: string;
@@ -2750,8 +2878,6 @@ class VexService {
         }
     }
 
-    // ── Private ─────────────────────────────────────────────────────────
-
     private async authenticateAccountWithPasskeyInternal(
         username: string,
         config: BootstrapConfig,
@@ -2919,6 +3045,22 @@ class VexService {
             client = this.requireClient();
         } catch (err: unknown) {
             return { error: errorMessage(err), ok: false };
+        }
+
+        if (config.allowInsecureLocalPasskeyBypass) {
+            try {
+                await withTimeout(
+                    client.connect(),
+                    REGISTER_STEP_TIMEOUT_MS,
+                    "Signup stalled while opening realtime connection.",
+                );
+                $userWritable.set(client.me.user());
+                this.setAuthStatus("authenticated");
+                this.kickPopulateState();
+                return { ok: true };
+            } catch (err: unknown) {
+                return { error: errorMessage(err), ok: false };
+            }
         }
 
         try {
@@ -3131,6 +3273,8 @@ class VexService {
         }
         return null;
     }
+
+    // ── Private ─────────────────────────────────────────────────────────
 
     private async fetchInvitePreview(
         inviteID: string,
@@ -3378,6 +3522,39 @@ class VexService {
         return { ok: true };
     }
 
+    private handleCallEvent(event: CallEvent): void {
+        $latestCallEventWritable.set(event);
+        const callID = event.call.callID;
+        if (isTerminalCallEvent(event)) {
+            this.removeCallState(callID);
+            return;
+        }
+
+        $activeCallsWritable.setKey(callID, event.call);
+        const me = $userWritable.get()?.userID;
+        const isRemoteRingingCall =
+            event.fromUserID !== me && event.call.status === "ringing";
+        if (event.action === "invite" && isRemoteRingingCall) {
+            $incomingCallsWritable.setKey(callID, event);
+            return;
+        }
+        if (
+            isRemoteRingingCall &&
+            $incomingCallsWritable.get()[callID] !== undefined
+        ) {
+            return;
+        }
+
+        this.removeIncomingCall(callID);
+        if (
+            event.action === "accept" ||
+            event.fromUserID === me ||
+            $currentCallIDWritable.get() === null
+        ) {
+            $currentCallIDWritable.set(callID);
+        }
+    }
+
     private handleDirectMessage(msg: Message): void {
         const me = $userWritable.get();
         const isOwnMessage = Boolean(me && msg.authorID === me.userID);
@@ -3585,7 +3762,10 @@ class VexService {
                 /* non-fatal token update */
             }
 
-            if (passkeyState === "not_registered") {
+            if (
+                passkeyState === "not_registered" &&
+                !shouldSkipInitialPasskeySetup(config, options)
+            ) {
                 await this.registerInitialPasskeyForCurrentClient(
                     config.deviceName || "This device",
                 );
@@ -3917,6 +4097,31 @@ class VexService {
         }
     }
 
+    private publishActiveCalls(calls: CallSession[]): void {
+        const next: Record<string, CallSession> = {};
+        for (const call of calls) {
+            if (call.status !== "ended") {
+                next[call.callID] = call;
+            }
+        }
+        $activeCallsWritable.set(next);
+
+        const activeIDs = new Set(Object.keys(next));
+        const incoming = $incomingCallsWritable.get();
+        const nextIncoming: Record<string, CallEvent> = {};
+        for (const [callID, event] of Object.entries(incoming)) {
+            if (activeIDs.has(callID)) {
+                nextIncoming[callID] = event;
+            }
+        }
+        $incomingCallsWritable.set(nextIncoming);
+
+        const currentID = $currentCallIDWritable.get();
+        if (currentID && !activeIDs.has(currentID)) {
+            $currentCallIDWritable.set(null);
+        }
+    }
+
     private queuePendingMessageEventMessage(
         conversationKey: string,
         msg: Message,
@@ -4191,24 +4396,26 @@ class VexService {
                 username: client.me.user().username,
             });
 
-            try {
-                await withTimeout(
-                    this.registerInitialPasskeyForCurrentClient(
-                        config.deviceName || "This device",
-                    ),
-                    PASSKEY_SETUP_TIMEOUT_MS,
-                    "Signup stalled while adding a passkey.",
-                );
-            } catch (passkeyErr: unknown) {
-                debugAuth("register:passkeySetup:failed", {
-                    message: errorMessage(passkeyErr),
-                });
-                this.setAuthStatus("unauthorized");
-                return {
-                    error: initialPasskeySetupErrorMessage(passkeyErr),
-                    ok: false,
-                    passkeySetupRequired: true,
-                };
+            if (!shouldSkipInitialPasskeySetup(config, options)) {
+                try {
+                    await withTimeout(
+                        this.registerInitialPasskeyForCurrentClient(
+                            config.deviceName || "This device",
+                        ),
+                        PASSKEY_SETUP_TIMEOUT_MS,
+                        "Signup stalled while adding a passkey.",
+                    );
+                } catch (passkeyErr: unknown) {
+                    debugAuth("register:passkeySetup:failed", {
+                        message: errorMessage(passkeyErr),
+                    });
+                    this.setAuthStatus("unauthorized");
+                    return {
+                        error: initialPasskeySetupErrorMessage(passkeyErr),
+                        ok: false,
+                        passkeySetupRequired: true,
+                    };
+                }
             }
 
             await withTimeout(
@@ -4246,6 +4453,36 @@ class VexService {
 
     private rememberProcessedReactionMailID(mailID: string): void {
         rememberProcessedReactionMailID(this.processedReactionMailIDs, mailID);
+    }
+
+    private removeActiveCall(callID: string): void {
+        const current = $activeCallsWritable.get();
+        if (!(callID in current)) {
+            return;
+        }
+        const next = Object.fromEntries(
+            Object.entries(current).filter(([id]) => id !== callID),
+        );
+        $activeCallsWritable.set(next);
+    }
+
+    private removeCallState(callID: string): void {
+        this.removeActiveCall(callID);
+        this.removeIncomingCall(callID);
+        if ($currentCallIDWritable.get() === callID) {
+            $currentCallIDWritable.set(null);
+        }
+    }
+
+    private removeIncomingCall(callID: string): void {
+        const current = $incomingCallsWritable.get();
+        if (!(callID in current)) {
+            return;
+        }
+        const next = Object.fromEntries(
+            Object.entries(current).filter(([id]) => id !== callID),
+        );
+        $incomingCallsWritable.set(next);
     }
 
     private removeServerFromLocalState(serverID: string): void {
@@ -4431,6 +4668,14 @@ class VexService {
         }
     }
 
+    private requireCallsClient(): ClientWithCallsLike {
+        const client = this.requireClient();
+        if (!hasCallsApi(client)) {
+            throw new Error("Voice calls are not supported by this libvex.");
+        }
+        return client;
+    }
+
     private requireClient(): Client {
         if (!this.client) throw new Error("Not authenticated");
         return this.client;
@@ -4469,6 +4714,10 @@ class VexService {
         $groupMessagesWritable.set({});
         $dmUnreadCountsWritable.set({});
         $channelUnreadCountsWritable.set({});
+        $activeCallsWritable.set({});
+        $incomingCallsWritable.set({});
+        $currentCallIDWritable.set(null);
+        $latestCallEventWritable.set(null);
         $serversWritable.set({});
         $channelsWritable.set({});
         $permissionsWritable.set({});
@@ -4485,6 +4734,22 @@ class VexService {
 
         const shouldStop = (): boolean =>
             this.populateStateAbort || this.client !== owner;
+        if (hasCallsApi(owner)) {
+            try {
+                const calls = await withTimeout(
+                    owner.calls.active(),
+                    VOICE_CALL_REFRESH_TIMEOUT_MS,
+                    "Active voice calls request timed out.",
+                );
+                if (!shouldStop()) {
+                    this.publishActiveCalls(calls);
+                }
+            } catch (err: unknown) {
+                debugAuth("populateState:calls:failed", {
+                    message: errorMessage(err),
+                });
+            }
+        }
         const shouldPublishHydrationProgress =
             !$hydrationStatusWritable.get().ready;
         let hydrationCompletedSteps = 0;
@@ -5031,6 +5296,18 @@ class VexService {
         });
     }
 
+    private async runVoiceCallMutation(
+        run: (client: ClientWithCallsLike) => Promise<CallEvent>,
+    ): Promise<VoiceCallResult> {
+        try {
+            const event = await run(this.requireCallsClient());
+            this.handleCallEvent(event);
+            return { event, ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+    }
+
     private async satisfyPasskeyForCurrentClient(
         username: string,
     ): Promise<PasskeySessionState> {
@@ -5413,6 +5690,9 @@ class VexService {
                 this.handleDirectMessage(msg);
             }
         });
+        this.subscribe("call", (event) => {
+            this.handleCallEvent(event);
+        });
         this.subscribeToDeviceRequestQueueChanges();
         // Initial bind for the socket the freshly-connected client
         // already owns (in case `connected` fired before this method
@@ -5716,6 +5996,21 @@ function getHttpResponseData(response: unknown): unknown {
     return response["data"];
 }
 
+function hasCallsApi(client: Client): client is Client & ClientWithCallsLike {
+    const calls = (client as unknown as Partial<ClientWithCallsLike>).calls;
+    return (
+        typeof calls?.accept === "function" &&
+        typeof calls.active === "function" &&
+        typeof calls.cancel === "function" &&
+        typeof calls.hangup === "function" &&
+        typeof calls.ice === "function" &&
+        typeof calls.iceServers === "function" &&
+        typeof calls.reject === "function" &&
+        typeof calls.signal === "function" &&
+        typeof calls.startDM === "function"
+    );
+}
+
 function hasHttpStatus(err: unknown): err is HttpErrorLike {
     if (!(err instanceof Error) || !("response" in err)) return false;
     const res = (err as { response: unknown }).response;
@@ -5872,6 +6167,17 @@ function isStaleCredentialError(err: unknown): boolean {
     return isUnauthorizedError(err) || isNotFoundError(err);
 }
 
+function isTerminalCallEvent(event: CallEvent): boolean {
+    return (
+        event.call.status === "ended" ||
+        event.action === "cancel" ||
+        event.action === "end" ||
+        event.action === "hangup" ||
+        event.action === "reject" ||
+        event.action === "timeout"
+    );
+}
+
 function isUnauthorizedError(err: unknown): boolean {
     if (hasHttpStatus(err)) {
         return err.response.status === 401;
@@ -6016,6 +6322,16 @@ function shouldDebugAuth(): boolean {
         process?: { env?: Record<string, string | undefined> };
     };
     return p.process?.env?.["VEX_DEBUG_AUTH"] === "1";
+}
+
+function shouldSkipInitialPasskeySetup(
+    config: BootstrapConfig,
+    options: ServerOptions,
+): boolean {
+    return (
+        config.allowInsecureLocalPasskeyBypass === true &&
+        options.unsafeHttp === true
+    );
 }
 
 function shouldTryDeviceApprovalAfterPasskeyFailure(err: unknown): boolean {
