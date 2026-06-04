@@ -288,8 +288,8 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
     },
     errorCard: {
-        backgroundColor: "rgba(229, 57, 53, 0.14)",
-        borderColor: "rgba(229, 57, 53, 0.5)",
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
         borderRadius: 10,
         borderWidth: 1,
         paddingHorizontal: 12,

@@ -65,10 +65,10 @@ interface MenuSectionProps {
 
 const TONE = {
     danger: {
-        icon: "#F9B4B2",
-        iconBg: "rgba(229,57,53,0.18)",
-        iconBorder: "rgba(229,57,53,0.45)",
-        label: "#F9B4B2",
+        icon: colors.dangerText,
+        iconBg: colors.dangerBg,
+        iconBorder: colors.dangerBorder,
+        label: colors.dangerText,
     },
     default: {
         icon: colors.textSecondary,
@@ -77,9 +77,9 @@ const TONE = {
         label: colors.textSecondary,
     },
     success: {
-        icon: "#8DF5B0",
-        iconBg: "rgba(74,222,128,0.16)",
-        iconBorder: "rgba(74,222,128,0.4)",
+        icon: colors.successText,
+        iconBg: colors.successBg,
+        iconBorder: colors.successBorder,
         label: colors.textSecondary,
     },
 } as const;
