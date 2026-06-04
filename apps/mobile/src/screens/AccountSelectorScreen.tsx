@@ -355,8 +355,8 @@ const styles = StyleSheet.create({
     },
     empty: { flex: 1 },
     errorGlass: {
-        backgroundColor: "rgba(229, 57, 53, 0.18)",
-        borderColor: "rgba(229, 57, 53, 0.55)",
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
         borderRadius: 14,
         borderWidth: StyleSheet.hairlineWidth,
         marginBottom: 12,

@@ -511,8 +511,8 @@ const styles = StyleSheet.create({
         color: colors.text,
     },
     errorBar: {
-        backgroundColor: "rgba(229, 57, 53, 0.15)",
-        borderTopColor: "rgba(229, 57, 53, 0.28)",
+        backgroundColor: colors.dangerBg,
+        borderTopColor: colors.dangerBorder,
         borderTopWidth: 1,
         paddingHorizontal: 14,
         paddingVertical: 8,

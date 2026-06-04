@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
         justifyContent: "center",
     },
     errorBox: {
-        backgroundColor: "rgba(229, 57, 53, 0.15)",
+        backgroundColor: colors.dangerBg,
         borderColor: colors.error,
         borderWidth: 1,
         padding: 10,

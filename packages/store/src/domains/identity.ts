@@ -16,7 +16,8 @@ export type HydrationStage =
     | "loading_familiars"
     | "loading_group_history"
     | "loading_sessions"
-    | "ready";
+    | "ready"
+    | "syncing_inbox";
 
 export interface HydrationStatus {
     completedSteps: number;
