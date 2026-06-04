@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
         marginTop: -2,
     },
     authDotAuthenticated: {
-        backgroundColor: "#30D158",
+        backgroundColor: colors.online,
     },
     authDotChecking: {
         backgroundColor: "#FFD60A",

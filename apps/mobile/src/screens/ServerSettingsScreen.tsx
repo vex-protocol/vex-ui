@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
     },
     buttonDanger: {
-        borderColor: "rgba(229,57,53,0.48)",
+        borderColor: colors.dangerBorder,
     },
     buttonDangerText: {
         ...typography.button,

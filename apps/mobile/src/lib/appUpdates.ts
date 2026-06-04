@@ -523,7 +523,11 @@ async function fetchNativeRelease(
         : undefined;
     const iosManifestUrl =
         iosInstallInfo?.manifestUrl ??
-        normalizeHttpUrl(stringField(iosManifestAsset, "browser_download_url"));
+        (iosManifestAsset
+            ? normalizeHttpUrl(
+                  stringField(iosManifestAsset, "browser_download_url"),
+              )
+            : undefined);
     const iosDirectInstallUrl =
         buildItmsServicesInstallUrl(iosManifestUrl) ??
         iosInstallInfo?.directInstallUrl;

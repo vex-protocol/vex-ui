@@ -30,8 +30,8 @@ import { colors, typography } from "../theme";
 type Props = AuthScreenProps<"Authenticate">;
 
 const EXPIRY_SECONDS = 5 * 60;
-const APPROVE_GLOW = "rgba(74, 222, 128, 0.45)";
-const SIGNING_BLUE = "#5DADE2";
+const APPROVE_GLOW = "rgba(0, 184, 135, 0.45)";
+const SIGNING_BLUE = colors.info;
 
 type DisplayPhase =
     | "expired"
@@ -444,8 +444,8 @@ export function AuthenticateScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
     cell: {
         alignItems: "center",
-        backgroundColor: "rgba(229, 57, 53, 0.08)",
-        borderColor: "rgba(229, 57, 53, 0.4)",
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
         borderWidth: 1,
         height: 64,
         justifyContent: "center",
@@ -480,8 +480,8 @@ const styles = StyleSheet.create({
     },
     expiredCard: {
         alignItems: "center",
-        backgroundColor: "rgba(229, 57, 53, 0.10)",
-        borderColor: "rgba(229, 57, 53, 0.4)",
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
         borderWidth: 1,
         gap: 6,
         paddingHorizontal: 16,
@@ -585,8 +585,8 @@ const styles = StyleSheet.create({
     },
     restoreError: {
         ...typography.body,
-        backgroundColor: "rgba(229, 57, 53, 0.10)",
-        borderColor: "rgba(229, 57, 53, 0.4)",
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
         borderWidth: 1,
         color: colors.error,
         paddingHorizontal: 12,
@@ -603,8 +603,8 @@ const styles = StyleSheet.create({
         paddingVertical: 14,
     },
     statusCardActive: {
-        backgroundColor: "rgba(93, 173, 226, 0.10)",
-        borderColor: "rgba(93, 173, 226, 0.45)",
+        backgroundColor: colors.infoBg,
+        borderColor: colors.infoBorder,
     },
     statusText: {
         ...typography.body,
@@ -613,7 +613,7 @@ const styles = StyleSheet.create({
     },
     statusTextActive: {
         ...typography.body,
-        color: "#D4ECFB",
+        color: colors.infoText,
         flex: 1,
         fontWeight: "600",
     },

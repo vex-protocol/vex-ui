@@ -1492,7 +1492,7 @@ function MessageEmbedCard({
                                 {action.label}
                             </Text>
                             <Ionicons
-                                color="#8AB4FF"
+                                color={colors.info}
                                 name="open-outline"
                                 size={14}
                             />
@@ -2052,8 +2052,8 @@ const styles = StyleSheet.create({
     },
     decryptFailureBlock: {
         alignItems: "flex-start",
-        backgroundColor: "rgba(229,57,53,0.12)",
-        borderColor: "rgba(255,107,107,0.45)",
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
         borderLeftColor: colors.error,
         borderLeftWidth: 3,
         borderRadius: 8,
@@ -2071,7 +2071,7 @@ const styles = StyleSheet.create({
     },
     decryptFailureIcon: {
         alignItems: "center",
-        backgroundColor: "rgba(229,57,53,0.16)",
+        backgroundColor: colors.dangerBg,
         borderRadius: 7,
         height: 30,
         justifyContent: "center",
@@ -2092,15 +2092,15 @@ const styles = StyleSheet.create({
     },
     decryptFailureTitle: {
         ...typography.body,
-        color: "#FF9B9B",
+        color: colors.dangerText,
         fontSize: 13,
         fontWeight: "700",
     },
     embedAction: {
         alignItems: "center",
         alignSelf: "flex-start",
-        backgroundColor: "rgba(138,180,255,0.11)",
-        borderColor: "rgba(138,180,255,0.28)",
+        backgroundColor: colors.infoBg,
+        borderColor: colors.infoBorder,
         borderRadius: 8,
         borderWidth: 1,
         flexDirection: "row",
@@ -2116,7 +2116,7 @@ const styles = StyleSheet.create({
     },
     embedActionText: {
         ...typography.body,
-        color: "#8AB4FF",
+        color: colors.info,
         fontSize: 12,
         fontWeight: "700",
     },
@@ -2126,8 +2126,8 @@ const styles = StyleSheet.create({
     },
     embedCard: {
         backgroundColor: "rgba(255,255,255,0.04)",
-        borderColor: "rgba(138,180,255,0.22)",
-        borderLeftColor: "#8AB4FF",
+        borderColor: colors.infoBorder,
+        borderLeftColor: colors.info,
         borderLeftWidth: 3,
         borderRadius: 8,
         borderWidth: 1,
@@ -2286,7 +2286,7 @@ const styles = StyleSheet.create({
         fontStyle: "italic",
     },
     inlineLink: {
-        color: "#8AB4FF",
+        color: colors.info,
         textDecorationLine: "underline",
     },
     inlineStrong: {

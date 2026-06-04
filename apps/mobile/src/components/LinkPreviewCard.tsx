@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     },
     url: {
         ...typography.body,
-        color: "#8AB4FF",
+        color: colors.info,
         fontSize: 11,
     },
 });
