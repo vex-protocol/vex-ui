@@ -51,6 +51,7 @@ import {
     $pendingApprovalStageWritable,
     $signedOutIntentWritable,
     $userWritable,
+    type HydrationStage,
 } from "./domains/identity.ts";
 import {
     $channelUnreadCountsWritable,
@@ -400,7 +401,7 @@ interface ClientWithSocketLike {
 }
 
 interface ClientWithSyncInboxLike {
-    syncInboxNow?: unknown;
+    syncInboxNow?: () => Promise<void>;
 }
 
 interface ClientWithUserDeviceListLike {
@@ -4753,13 +4754,9 @@ class VexService {
         const shouldPublishHydrationProgress =
             !$hydrationStatusWritable.get().ready;
         let hydrationCompletedSteps = 0;
-        let hydrationTotalSteps = 0;
+        let hydrationTotalSteps = 1;
         const publishHydrationProgress = (
-            stage:
-                | "loading_channels"
-                | "loading_familiars"
-                | "loading_group_history"
-                | "loading_sessions",
+            stage: Exclude<HydrationStage, "idle" | "ready">,
         ): void => {
             if (!shouldPublishHydrationProgress) {
                 return;
@@ -4775,8 +4772,8 @@ class VexService {
             $hydrationStatusWritable.set({
                 completedSteps: 0,
                 ready: false,
-                stage: "loading_channels",
-                totalSteps: 1,
+                stage: "syncing_inbox",
+                totalSteps: hydrationTotalSteps,
             });
         }
         const publishedChannelCount = (): number =>
@@ -4809,6 +4806,37 @@ class VexService {
                 mergedDm[userID] = mergeHydratedThread(userID, hydratedMsgs);
             }
             return mergedDm;
+        };
+        const mergeHydratedGroupThread = (
+            channelID: string,
+            hydratedMsgs: Message[],
+        ): Message[] => {
+            const existing = $groupMessagesWritable.get()[channelID] ?? [];
+            return deduplicateMessages(
+                [...hydratedMsgs, ...existing],
+                this.processedReactionMailIDs,
+                this.processedMessageEventMailIDs,
+            );
+        };
+        const mergeHydratedGroupsIntoStore = (): Record<string, Message[]> => {
+            const prevGroups = $groupMessagesWritable.get();
+            const visibleChannelIDs = new Set(
+                Object.values(channelsAcc)
+                    .flatMap((list) => list)
+                    .map((channel) => channel.channelID),
+            );
+            const mergedGroups: Record<string, Message[]> = {};
+            for (const channelID of visibleChannelIDs) {
+                const hydratedMsgs = groupMessagesAcc[channelID] ?? [];
+                const existing = prevGroups[channelID] ?? [];
+                if (hydratedMsgs.length > 0 || existing.length > 0) {
+                    mergedGroups[channelID] = mergeHydratedGroupThread(
+                        channelID,
+                        hydratedMsgs,
+                    );
+                }
+            }
+            return mergedGroups;
         };
         const publishFamiliarsAndMessagesProgress = (
             stage: string,
@@ -4851,6 +4879,26 @@ class VexService {
         };
 
         let bootstrapChannelsByServer: null | Record<string, Channel[]> = null;
+
+        if (hasSyncInboxNow(owner)) {
+            try {
+                await withTimeout(
+                    owner.syncInboxNow(),
+                    12_000,
+                    "populateState: inbox sync timeout",
+                );
+            } catch (err: unknown) {
+                debugAuth("populateState:inbox-sync:failed", {
+                    message: errorMessage(err),
+                });
+            }
+        }
+        if (shouldStop()) {
+            return;
+        }
+        hydrationCompletedSteps = 1;
+        hydrationTotalSteps = 2;
+        publishHydrationProgress("loading_channels");
 
         const loadServer = async (server: Server): Promise<void> => {
             if (shouldStop()) {
@@ -5019,10 +5067,13 @@ class VexService {
             0,
         );
         hydrationTotalSteps = Math.max(
-            1,
-            1 + visibleServers.length + bootstrapChannelEstimate,
+            hydrationCompletedSteps + 1,
+            hydrationCompletedSteps +
+                1 +
+                visibleServers.length +
+                bootstrapChannelEstimate,
         );
-        hydrationCompletedSteps = 1;
+        hydrationCompletedSteps += 1;
         publishHydrationProgress("loading_channels");
         for (const server of visibleServers) {
             serversAcc[server.serverID] = server;
@@ -5252,8 +5303,9 @@ class VexService {
 
         $serversWritable.set(serversAcc);
         $channelsWritable.set(channelsAcc);
-        $groupMessagesWritable.set(groupMessagesAcc);
-        for (const channelID of Object.keys(groupMessagesAcc)) {
+        const mergedGroupMessages = mergeHydratedGroupsIntoStore();
+        $groupMessagesWritable.set(mergedGroupMessages);
+        for (const channelID of Object.keys(mergedGroupMessages)) {
             this.applyPendingMessageEventMessages(
                 $groupMessagesWritable,
                 channelID,

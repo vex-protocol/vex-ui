@@ -518,10 +518,10 @@ const styles = StyleSheet.create({
         width: 10,
     },
     friendPresenceDotOffline: {
-        backgroundColor: "rgba(132,138,152,0.85)",
+        backgroundColor: colors.offline,
     },
     friendPresenceDotOnline: {
-        backgroundColor: "#30D158",
+        backgroundColor: colors.online,
     },
     friendsBackdrop: {
         ...StyleSheet.absoluteFill,

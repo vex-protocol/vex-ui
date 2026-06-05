@@ -573,15 +573,17 @@ function MainApp() {
               )
             : 0;
     const hydrationStageLabel =
-        hydrationStatus.stage === "loading_channels"
-            ? "Loading channels"
-            : hydrationStatus.stage === "loading_group_history"
-              ? "Loading channel history"
-              : hydrationStatus.stage === "loading_familiars"
-                ? "Loading familiars"
-                : hydrationStatus.stage === "loading_sessions"
-                  ? "Loading message history"
-                  : "Preparing account";
+        hydrationStatus.stage === "syncing_inbox"
+            ? "Syncing inbox"
+            : hydrationStatus.stage === "loading_channels"
+              ? "Loading channels"
+              : hydrationStatus.stage === "loading_group_history"
+                ? "Loading channel history"
+                : hydrationStatus.stage === "loading_familiars"
+                  ? "Loading familiars"
+                  : hydrationStatus.stage === "loading_sessions"
+                    ? "Loading message history"
+                    : "Preparing account";
 
     useEffect(() => {
         notifiedMailIDsRef.current = new BoundedStringSet(
@@ -1015,7 +1017,7 @@ function MainApp() {
                     >
                         <View style={styles.updateNoticeIcon}>
                             <Ionicons
-                                color="#8DF5B0"
+                                color={colors.successText}
                                 name="sparkles-outline"
                                 size={18}
                             />
@@ -1110,7 +1112,7 @@ function MainApp() {
 const styles = StyleSheet.create({
     approvalNoticeCard: {
         backgroundColor: "rgba(26, 42, 33, 0.97)",
-        borderColor: "rgba(74, 222, 128, 0.4)",
+        borderColor: colors.successBorder,
         borderRadius: 10,
         borderWidth: 1,
         maxWidth: 420,
@@ -1123,7 +1125,7 @@ const styles = StyleSheet.create({
         marginTop: 2,
     },
     approvalNoticeTitle: {
-        color: "#B5F5CD",
+        color: colors.successText,
         fontSize: 13,
         fontWeight: "700",
     },
@@ -1270,7 +1272,7 @@ const styles = StyleSheet.create({
     updateNoticeCard: {
         alignItems: "center",
         backgroundColor: "rgba(18, 34, 26, 0.97)",
-        borderColor: "rgba(74, 222, 128, 0.42)",
+        borderColor: colors.successBorder,
         borderRadius: 12,
         borderWidth: 1,
         flexDirection: "row",
@@ -1278,7 +1280,7 @@ const styles = StyleSheet.create({
         maxWidth: 440,
         paddingHorizontal: 14,
         paddingVertical: 11,
-        shadowColor: "#4ADE80",
+        shadowColor: colors.success,
         shadowOffset: { height: 0, width: 0 },
         shadowOpacity: 0.18,
         shadowRadius: 18,
@@ -1290,8 +1292,8 @@ const styles = StyleSheet.create({
     },
     updateNoticeIcon: {
         alignItems: "center",
-        backgroundColor: "rgba(74, 222, 128, 0.14)",
-        borderColor: "rgba(74, 222, 128, 0.46)",
+        backgroundColor: colors.successBg,
+        borderColor: colors.successBorder,
         borderRadius: 999,
         borderWidth: 1,
         height: 34,
@@ -1303,7 +1305,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
     },
     updateNoticeTitle: {
-        color: "#B5F5CD",
+        color: colors.successText,
         fontSize: 13,
         fontWeight: "700",
     },

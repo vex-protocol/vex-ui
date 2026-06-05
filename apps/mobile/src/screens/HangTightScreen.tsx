@@ -870,8 +870,8 @@ const styles = StyleSheet.create({
     },
     errorBox: {
         alignSelf: "stretch",
-        backgroundColor: "rgba(229, 57, 53, 0.12)",
-        borderColor: "rgba(229, 57, 53, 0.55)",
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
         borderWidth: 1,
         marginTop: 14,
         paddingHorizontal: 12,

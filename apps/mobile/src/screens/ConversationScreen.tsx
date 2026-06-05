@@ -511,7 +511,7 @@ const styles = StyleSheet.create({
         fontStyle: "italic",
     },
     errorBar: {
-        backgroundColor: "rgba(229, 57, 53, 0.15)",
+        backgroundColor: colors.dangerBg,
         paddingHorizontal: 12,
         paddingVertical: 6,
     },

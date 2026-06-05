@@ -1,26 +1,24 @@
-import { Platform, type TextStyle } from "react-native";
+import { type TextStyle } from "react-native";
 
 export const fontFamilies = {
-    body: Platform.select({ android: "sans-serif", ios: "System" }) ?? "System",
-    heading:
-        Platform.select({ android: "sans-serif", ios: "System" }) ?? "System",
-    mono:
-        Platform.select({ android: "monospace", ios: "Menlo" }) ?? "monospace",
+    body: "Inter",
+    heading: "SpaceGrotesk",
+    mono: "ChivoMono",
 } as const;
 
 export const typography = {
     body: {
         fontFamily: fontFamilies.body,
-        fontSize: 12,
+        fontSize: 14,
         fontWeight: "400",
-        lineHeight: 18,
+        lineHeight: 20,
     } satisfies TextStyle,
 
     bodyLarge: {
         fontFamily: fontFamilies.body,
-        fontSize: 14,
+        fontSize: 16,
         fontWeight: "400",
-        lineHeight: 20,
+        lineHeight: 22,
     } satisfies TextStyle,
 
     button: {
@@ -32,16 +30,18 @@ export const typography = {
 
     heading: {
         fontFamily: fontFamilies.heading,
-        fontSize: 40,
+        fontSize: 38,
         fontWeight: "700",
-        lineHeight: 48,
+        letterSpacing: 0,
+        lineHeight: 44,
     } satisfies TextStyle,
 
     headingSmall: {
         fontFamily: fontFamilies.heading,
-        fontSize: 28,
+        fontSize: 27,
         fontWeight: "700",
-        lineHeight: 34,
+        letterSpacing: 0,
+        lineHeight: 32,
     } satisfies TextStyle,
 
     label: {

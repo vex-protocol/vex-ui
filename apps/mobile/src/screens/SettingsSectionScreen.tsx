@@ -1286,7 +1286,11 @@ function InlineActionButton({
 function VerifiedCheck() {
     return (
         <View style={styles.verifiedCheck}>
-            <Ionicons color="#8DF5B0" name="checkmark-circle" size={18} />
+            <Ionicons
+                color={colors.successText}
+                name="checkmark-circle"
+                size={18}
+            />
         </View>
     );
 }
@@ -1308,8 +1312,8 @@ const styles = StyleSheet.create({
         fontSize: 12,
     },
     inlineActionButton: {
-        backgroundColor: "rgba(74, 222, 128, 0.14)",
-        borderColor: "rgba(74, 222, 128, 0.45)",
+        backgroundColor: colors.successBg,
+        borderColor: colors.successBorder,
         borderRadius: 6,
         borderWidth: 1,
         minWidth: 128,
@@ -1320,18 +1324,18 @@ const styles = StyleSheet.create({
         opacity: 0.45,
     },
     inlineActionButtonPressed: {
-        backgroundColor: "rgba(74, 222, 128, 0.22)",
-        borderColor: "rgba(74, 222, 128, 0.62)",
+        backgroundColor: "rgba(0, 184, 135, 0.22)",
+        borderColor: "rgba(0, 184, 135, 0.62)",
     },
     inlineActionText: {
         ...typography.button,
-        color: "#B5F5CD",
+        color: colors.successText,
         fontSize: 12,
         textAlign: "center",
     },
     statusCardError: {
-        backgroundColor: "rgba(229, 57, 53, 0.12)",
-        borderColor: "rgba(229, 57, 53, 0.48)",
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
         borderRadius: 10,
         borderWidth: 1,
         gap: 4,
@@ -1339,8 +1343,8 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
     },
     statusCardOk: {
-        backgroundColor: "rgba(74, 222, 128, 0.12)",
-        borderColor: "rgba(74, 222, 128, 0.4)",
+        backgroundColor: colors.successBg,
+        borderColor: colors.successBorder,
         borderRadius: 10,
         borderWidth: 1,
         gap: 4,
@@ -1359,20 +1363,20 @@ const styles = StyleSheet.create({
     },
     statusTitle: {
         ...typography.button,
-        color: "#FFD0CF",
+        color: colors.dangerText,
         fontSize: 13,
         fontWeight: "700",
     },
     statusTitleOk: {
         ...typography.button,
-        color: "#A7F3BD",
+        color: colors.successText,
         fontSize: 13,
         fontWeight: "700",
     },
     verifiedCheck: {
         alignItems: "center",
-        backgroundColor: "rgba(74,222,128,0.14)",
-        borderColor: "rgba(74,222,128,0.45)",
+        backgroundColor: colors.successBg,
+        borderColor: colors.successBorder,
         borderRadius: 999,
         borderWidth: 1,
         height: 30,

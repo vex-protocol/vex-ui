@@ -791,12 +791,12 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     recordingActiveBtn: {
-        borderColor: "rgba(229, 57, 53, 0.55)",
+        borderColor: colors.dangerBorder,
     },
     recordingBar: {
         alignItems: "center",
-        backgroundColor: "rgba(229, 57, 53, 0.08)",
-        borderColor: "rgba(229, 57, 53, 0.22)",
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
         borderWidth: 1,
         flexDirection: "row",
         gap: 10,
@@ -827,7 +827,7 @@ const styles = StyleSheet.create({
     },
     recordingStopButton: {
         backgroundColor: colors.error,
-        borderColor: "rgba(229, 57, 53, 0.72)",
+        borderColor: colors.dangerBorder,
     },
     removeAttachmentBtn: {
         alignItems: "center",
@@ -864,7 +864,7 @@ const styles = StyleSheet.create({
     },
     replyRail: {
         alignSelf: "stretch",
-        backgroundColor: "rgba(138,180,255,0.58)",
+        backgroundColor: colors.info,
         width: 2,
     },
     replyText: {

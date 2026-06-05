@@ -195,8 +195,8 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
     },
     currentBadge: {
-        backgroundColor: "rgba(74, 222, 128, 0.14)",
-        borderColor: "rgba(74, 222, 128, 0.4)",
+        backgroundColor: colors.successBg,
+        borderColor: colors.successBorder,
         borderRadius: 10,
         borderWidth: 1,
         paddingHorizontal: 10,
@@ -204,13 +204,13 @@ const styles = StyleSheet.create({
     },
     currentBadgeText: {
         ...typography.button,
-        color: "#8DF5B0",
+        color: colors.successText,
         fontSize: 12,
         fontWeight: "600",
     },
     errorCard: {
-        backgroundColor: "rgba(229, 57, 53, 0.14)",
-        borderColor: "rgba(229, 57, 53, 0.5)",
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
         borderRadius: 10,
         borderWidth: 1,
         paddingHorizontal: 12,

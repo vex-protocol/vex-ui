@@ -867,7 +867,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     errorBar: {
-        backgroundColor: "rgba(229, 57, 53, 0.15)",
+        backgroundColor: colors.dangerBg,
         paddingHorizontal: 12,
         paddingVertical: 6,
     },
@@ -928,10 +928,10 @@ const styles = StyleSheet.create({
         width: 10,
     },
     memberPresenceDotOffline: {
-        backgroundColor: "rgba(132,138,152,0.85)",
+        backgroundColor: colors.offline,
     },
     memberPresenceDotOnline: {
-        backgroundColor: "#30D158",
+        backgroundColor: colors.online,
     },
     memberRow: {
         alignItems: "center",

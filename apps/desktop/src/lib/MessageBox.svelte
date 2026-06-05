@@ -151,14 +151,35 @@
                             {/if}
                         </div>
                     {/if}
-                    {#if embed}
-                        <MessageEmbedCard message={msg} />
-                    {/if}
-                    {#if !embed || (embed.display !== "replace" && !embedConsumesMessage(embed))}
-                        <MessageContent content={msg.message} />
-                    {/if}
-                    {#if !embed?.suppressLinkPreview}
-                        <LinkPreviewCard content={msg.message} />
+                    {#if !msg.decrypted}
+                        <div class="message__decrypt-failure" role="alert">
+                            <span
+                                class="message__decrypt-failure-icon"
+                                aria-hidden="true">!</span
+                            >
+                            <span class="message__decrypt-failure-body">
+                                <span class="message__decrypt-failure-title">
+                                    Message could not be decrypted
+                                </span>
+                                <span class="message__decrypt-failure-text">
+                                    This device received the notification, but
+                                    could not open the encrypted payload.
+                                </span>
+                                <span class="message__decrypt-failure-meta">
+                                    Mail {msg.mailID.slice(0, 8)}
+                                </span>
+                            </span>
+                        </div>
+                    {:else}
+                        {#if embed}
+                            <MessageEmbedCard message={msg} />
+                        {/if}
+                        {#if !embed || (embed.display !== "replace" && !embedConsumesMessage(embed))}
+                            <MessageContent content={msg.message} />
+                        {/if}
+                        {#if !embed?.suppressLinkPreview}
+                            <LinkPreviewCard content={msg.message} />
+                        {/if}
                     {/if}
                 </div>
             {/each}
@@ -274,6 +295,62 @@
 
     .message__action--danger:hover {
         color: #ff7a7a;
+    }
+
+    .message__decrypt-failure {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        max-width: 420px;
+        margin: 4px 0;
+        padding: 10px 12px;
+        border: 1px solid rgba(255, 107, 107, 0.42);
+        border-left: 3px solid #e53935;
+        border-radius: 8px;
+        background: rgba(229, 57, 53, 0.12);
+    }
+
+    .message__decrypt-failure-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        width: 24px;
+        height: 24px;
+        border-radius: 7px;
+        background: rgba(229, 57, 53, 0.16);
+        color: #ff9b9b;
+        font-size: 14px;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .message__decrypt-failure-body {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .message__decrypt-failure-title {
+        color: #ff9b9b;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.35;
+    }
+
+    .message__decrypt-failure-text {
+        color: var(--text-secondary);
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    .message__decrypt-failure-meta {
+        margin-top: 2px;
+        color: var(--text-muted);
+        font-family: "SF Mono", "Fira Code", monospace;
+        font-size: 11px;
+        line-height: 1.3;
     }
 
     /* ── File attachment styles ── */

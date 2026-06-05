@@ -200,15 +200,19 @@ export function MessageBubbleRN({
     const [menuY, setMenuY] = React.useState(0);
     const [reactionPickerOpen, setReactionPickerOpen] = React.useState(false);
     const [customReactionValue, setCustomReactionValue] = React.useState("");
+    const isDecryptFailure = !message.decrypted;
     const inviteID = React.useMemo(
-        () => extractInviteID(message.message),
-        [message.message],
+        () => (isDecryptFailure ? null : extractInviteID(message.message)),
+        [isDecryptFailure, message.message],
     );
     const markdownNodes = React.useMemo(
-        () => parseMessageMarkdown(message.message),
-        [message.message],
+        () => (isDecryptFailure ? [] : parseMessageMarkdown(message.message)),
+        [isDecryptFailure, message.message],
     );
-    const embed = React.useMemo(() => messageEmbed(message), [message]);
+    const embed = React.useMemo(
+        () => (isDecryptFailure ? null : messageEmbed(message)),
+        [isDecryptFailure, message],
+    );
     const embedConsumesMessage = React.useMemo(
         () => Boolean(embed?.blocks?.some(usesMessageMarkdownSource)),
         [embed],
@@ -231,7 +235,7 @@ export function MessageBubbleRN({
 
     const menuActions = React.useMemo(
         () => [
-            ...(onReplyMessage
+            ...(!isDecryptFailure && onReplyMessage
                 ? [
                       {
                           id: "reply",
@@ -243,16 +247,20 @@ export function MessageBubbleRN({
                       },
                   ]
                 : []),
-            {
-                id: "copy",
-                label: "Copy text",
-                onPress: () => {
-                    // eslint-disable-next-line @typescript-eslint/no-deprecated -- RN Clipboard is the supported API on bare app
-                    Clipboard.setString(message.message);
-                },
-                tone: "default" as const,
-            },
-            ...(isOwn && onEditMessage
+            ...(!isDecryptFailure
+                ? [
+                      {
+                          id: "copy",
+                          label: "Copy text",
+                          onPress: () => {
+                              // eslint-disable-next-line @typescript-eslint/no-deprecated -- RN Clipboard is the supported API on bare app
+                              Clipboard.setString(message.message);
+                          },
+                          tone: "default" as const,
+                      },
+                  ]
+                : []),
+            ...(isOwn && onEditMessage && !isDecryptFailure
                 ? [
                       {
                           id: "edit",
@@ -290,6 +298,7 @@ export function MessageBubbleRN({
                 : []),
         ],
         [
+            isDecryptFailure,
             isOwn,
             message,
             onDeleteMessageForEveryone,
@@ -617,28 +626,37 @@ export function MessageBubbleRN({
                                     </Text>
                                 </View>
                             )}
-                            {embed ? (
-                                <MessageEmbedCard
-                                    embed={embed}
-                                    messageText={message.message}
-                                />
-                            ) : null}
-                            {shouldRenderMessage ? (
-                                <MarkdownMessage
-                                    grouped={!showIdentity}
-                                    nodes={markdownNodes}
-                                />
-                            ) : null}
-                            {inviteID ? (
-                                <InvitePreviewCard
-                                    inviteID={inviteID}
-                                    isOwn={isOwn}
-                                />
-                            ) : null}
-                            {!inviteID && !embed?.suppressLinkPreview ? (
-                                <LinkPreviewCard content={message.message} />
-                            ) : null}
-                            {reactions.length > 0 ? (
+                            {isDecryptFailure ? (
+                                <DecryptFailureBlock mailID={message.mailID} />
+                            ) : (
+                                <>
+                                    {embed ? (
+                                        <MessageEmbedCard
+                                            embed={embed}
+                                            messageText={message.message}
+                                        />
+                                    ) : null}
+                                    {shouldRenderMessage ? (
+                                        <MarkdownMessage
+                                            grouped={!showIdentity}
+                                            nodes={markdownNodes}
+                                        />
+                                    ) : null}
+                                    {inviteID ? (
+                                        <InvitePreviewCard
+                                            inviteID={inviteID}
+                                            isOwn={isOwn}
+                                        />
+                                    ) : null}
+                                    {!inviteID &&
+                                    !embed?.suppressLinkPreview ? (
+                                        <LinkPreviewCard
+                                            content={message.message}
+                                        />
+                                    ) : null}
+                                </>
+                            )}
+                            {!isDecryptFailure && reactions.length > 0 ? (
                                 <ReactionRow
                                     currentUserID={currentUserID}
                                     onToggle={
@@ -1114,6 +1132,32 @@ function codeHighlightStyle(
     }
 }
 
+function DecryptFailureBlock({ mailID }: { mailID: string }) {
+    return (
+        <View accessibilityRole="alert" style={styles.decryptFailureBlock}>
+            <View style={styles.decryptFailureIcon}>
+                <Ionicons
+                    color={colors.error}
+                    name="alert-circle-outline"
+                    size={18}
+                />
+            </View>
+            <View style={styles.decryptFailureBody}>
+                <Text style={styles.decryptFailureTitle}>
+                    Message could not be decrypted
+                </Text>
+                <Text style={styles.decryptFailureText}>
+                    This device received the notification, but could not open
+                    the encrypted payload.
+                </Text>
+                <Text style={styles.decryptFailureMeta}>
+                    Mail {mailID.slice(0, 8)}
+                </Text>
+            </View>
+        </View>
+    );
+}
+
 function embedBlockKey(block: MessageEmbedBlock, index: number): string {
     if ("attachment" in block) {
         return `${block.type}:${block.attachment.fileID}:${String(index)}`;
@@ -1448,7 +1492,7 @@ function MessageEmbedCard({
                                 {action.label}
                             </Text>
                             <Ionicons
-                                color="#8AB4FF"
+                                color={colors.info}
                                 name="open-outline"
                                 size={14}
                             />
@@ -2006,11 +2050,57 @@ const styles = StyleSheet.create({
     content: {
         flex: 1,
     },
+    decryptFailureBlock: {
+        alignItems: "flex-start",
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
+        borderLeftColor: colors.error,
+        borderLeftWidth: 3,
+        borderRadius: 8,
+        borderWidth: 1,
+        flexDirection: "row",
+        gap: 9,
+        marginTop: 4,
+        maxWidth: 390,
+        padding: 10,
+    },
+    decryptFailureBody: {
+        flex: 1,
+        gap: 2,
+        minWidth: 0,
+    },
+    decryptFailureIcon: {
+        alignItems: "center",
+        backgroundColor: colors.dangerBg,
+        borderRadius: 7,
+        height: 30,
+        justifyContent: "center",
+        width: 30,
+    },
+    decryptFailureMeta: {
+        ...typography.body,
+        color: colors.muted,
+        fontFamily: fontFamilies.mono,
+        fontSize: 11,
+        marginTop: 2,
+    },
+    decryptFailureText: {
+        ...typography.body,
+        color: colors.textSecondary,
+        fontSize: 12,
+        lineHeight: 17,
+    },
+    decryptFailureTitle: {
+        ...typography.body,
+        color: colors.dangerText,
+        fontSize: 13,
+        fontWeight: "700",
+    },
     embedAction: {
         alignItems: "center",
         alignSelf: "flex-start",
-        backgroundColor: "rgba(138,180,255,0.11)",
-        borderColor: "rgba(138,180,255,0.28)",
+        backgroundColor: colors.infoBg,
+        borderColor: colors.infoBorder,
         borderRadius: 8,
         borderWidth: 1,
         flexDirection: "row",
@@ -2026,7 +2116,7 @@ const styles = StyleSheet.create({
     },
     embedActionText: {
         ...typography.body,
-        color: "#8AB4FF",
+        color: colors.info,
         fontSize: 12,
         fontWeight: "700",
     },
@@ -2036,8 +2126,8 @@ const styles = StyleSheet.create({
     },
     embedCard: {
         backgroundColor: "rgba(255,255,255,0.04)",
-        borderColor: "rgba(138,180,255,0.22)",
-        borderLeftColor: "#8AB4FF",
+        borderColor: colors.infoBorder,
+        borderLeftColor: colors.info,
         borderLeftWidth: 3,
         borderRadius: 8,
         borderWidth: 1,
@@ -2196,7 +2286,7 @@ const styles = StyleSheet.create({
         fontStyle: "italic",
     },
     inlineLink: {
-        color: "#8AB4FF",
+        color: colors.info,
         textDecorationLine: "underline",
     },
     inlineStrong: {

@@ -313,7 +313,7 @@ const styles = StyleSheet.create({
     },
     errorBox: {
         alignItems: "center",
-        backgroundColor: "rgba(229, 57, 53, 0.15)",
+        backgroundColor: colors.dangerBg,
         borderColor: colors.error,
         borderWidth: 1,
         flexDirection: "row",

@@ -234,7 +234,7 @@ export function DeviceRequestsScreen() {
 const styles = StyleSheet.create({
     approveBtn: {
         alignItems: "center",
-        borderColor: "rgba(74, 222, 128, 0.45)",
+        borderColor: colors.successBorder,
         borderRadius: 10,
         borderWidth: 1,
         minWidth: 74,
@@ -243,13 +243,13 @@ const styles = StyleSheet.create({
     },
     approveBtnText: {
         ...typography.button,
-        color: "#4ADE80",
+        color: colors.successText,
         fontWeight: "600",
     },
     cell: {
         alignItems: "center",
-        backgroundColor: "rgba(229, 57, 53, 0.08)",
-        borderColor: "rgba(229, 57, 53, 0.4)",
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
         borderWidth: 1,
         height: 52,
         justifyContent: "center",
@@ -283,8 +283,8 @@ const styles = StyleSheet.create({
         fontSize: 12,
     },
     errorCard: {
-        backgroundColor: "rgba(229, 57, 53, 0.14)",
-        borderColor: "rgba(229, 57, 53, 0.5)",
+        backgroundColor: colors.dangerBg,
+        borderColor: colors.dangerBorder,
         borderRadius: 10,
         borderWidth: 1,
         paddingHorizontal: 12,
