@@ -2,12 +2,13 @@
 # Installs @vex-chat packages from local Verdaccio into a target project.
 #
 # Usage:
-#   pnpm install:local spire              # install types + crypto into spire
-#   pnpm install:local libvex             # install types + crypto into libvex-js
-#   pnpm install:local crypto             # install types into crypto-js
-#   pnpm install:local store              # install libvex into packages/store
-#   pnpm install:local desktop            # install libvex into apps/desktop
-#   pnpm install:local mobile             # install libvex into apps/mobile
+#   pnpm install:local ui                 # install catalog versions into this monorepo
+#   pnpm install:local store              # install catalog versions into this monorepo
+#   pnpm install:local desktop            # install catalog versions into this monorepo
+#   pnpm install:local mobile             # install catalog versions into this monorepo
+#   pnpm install:local spire              # install types + crypto into legacy sibling spire
+#   pnpm install:local libvex             # install types + crypto into legacy sibling libvex-js
+#   pnpm install:local crypto             # install types into legacy sibling crypto-js
 #   pnpm install:local spire types        # install only types into spire
 #   pnpm install:local libvex crypto      # install only crypto into libvex-js
 
@@ -29,17 +30,31 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+PROTOCOL_DIR="${VEX_PROTOCOL_DIR:-$ROOT_DIR/../vex-protocol}"
+
+ensure_npmrc() {
+  local dir="$1"
+  local rc="$dir/.npmrc"
+  local line="@vex-chat:registry=$REGISTRY"
+  if [ ! -f "$rc" ] || ! grep -qF "$line" "$rc"; then
+    echo "$line" >> "$rc"
+  fi
+}
 
 # ── Resolve target directory ──
 TARGET="$1"; shift
 case "$TARGET" in
-  spire)    DIR="$ROOT_DIR/../spire" ;;
-  libvex)   DIR="$ROOT_DIR/../libvex-js" ;;
-  crypto)   DIR="$ROOT_DIR/../crypto-js" ;;
-  store)    DIR="$ROOT_DIR/packages/store" ;;
-  desktop)  DIR="$ROOT_DIR/apps/desktop" ;;
-  mobile)   DIR="$ROOT_DIR/apps/mobile" ;;
-  website)  DIR="$ROOT_DIR/apps/website" ;;
+  ui|store|desktop|mobile|website)
+    ensure_npmrc "$ROOT_DIR"
+    echo "Installing @vex-chat catalog versions from $REGISTRY into vex-ui..."
+    echo "Run this after updating pnpm-workspace.yaml to the local package versions."
+    cd "$ROOT_DIR"
+    pnpm install --registry "$REGISTRY"
+    exit 0
+    ;;
+  spire)    DIR="$PROTOCOL_DIR/apps/spire" ;;
+  libvex)   DIR="$PROTOCOL_DIR/packages/libvex" ;;
+  crypto)   DIR="$PROTOCOL_DIR/packages/crypto" ;;
   *)        echo "Unknown target: $TARGET"; exit 1 ;;
 esac
 
@@ -84,16 +99,11 @@ if [ ${#PKGS[@]} -eq 0 ]; then
   exit 0
 fi
 
-# ── Ensure .npmrc ──
-NPMRC_LINE="@vex-chat:registry=$REGISTRY"
-rc="$DIR/.npmrc"
-if [ ! -f "$rc" ] || ! grep -qF "$NPMRC_LINE" "$rc"; then
-  echo "$NPMRC_LINE" >> "$rc"
-fi
+ensure_npmrc "$DIR"
 
 echo "Installing into $TARGET ($DIR):"
 echo "  ${PKGS[*]}"
 echo ""
 
 cd "$DIR"
-npm install "${PKGS[@]}"
+pnpm add "${PKGS[@]}" --registry "$REGISTRY"

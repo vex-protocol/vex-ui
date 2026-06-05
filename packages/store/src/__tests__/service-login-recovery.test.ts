@@ -244,7 +244,7 @@ describe("vexService.login decrypt-mismatch recovery", () => {
         const authenticate = vi.fn(async () => ({ id: "assertion" }));
         const register = vi.fn();
         client.loginWithDeviceKey
-            .mockImplementationOnce(async () => {
+            .mockImplementationOnce(() => {
                 vexService.setPasskeyCeremonyDriver({
                     authenticate,
                     register,

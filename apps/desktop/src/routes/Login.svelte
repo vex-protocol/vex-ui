@@ -13,7 +13,6 @@
     } from "../lib/store/index.js";
 
     let username = $state("");
-    let password = $state("");
     let error = $state("");
     let loading = $state(false);
 
@@ -24,7 +23,7 @@
 
         const result = await vexService.login(
             username,
-            password,
+            "",
             desktopConfig(),
             getServerOptions(),
             keyStore,
@@ -64,7 +63,7 @@
 <div class="auth-page">
     <div class="auth-card">
         <h1 class="auth-card__title">Welcome back</h1>
-        <p class="auth-card__subtitle">Sign in to Vex Chat</p>
+        <p class="auth-card__subtitle">Use this device's saved Vex key</p>
 
         {#if error}
             <p class="auth-card__error">{error}</p>
@@ -79,19 +78,6 @@
                     autocomplete="username"
                     placeholder="your username"
                     bind:value={username}
-                    disabled={loading}
-                    required
-                />
-            </div>
-
-            <div class="auth-form__field">
-                <label for="password">Password</label>
-                <input
-                    id="password"
-                    type="password"
-                    autocomplete="current-password"
-                    placeholder="••••••••"
-                    bind:value={password}
                     disabled={loading}
                     required
                 />

@@ -8,12 +8,11 @@
     import { user as userAtom, vexService } from "../lib/store/index.js";
 
     let username = $state("");
-    let password = $state("");
-    let confirm = $state("");
     let errors: Record<string, string> = $state({});
     let loading = $state(false);
+    let needsPasskeyRetry = $state(false);
 
-    const USERNAME_RE = /^\w+$/;
+    const USERNAME_RE = /^[a-z0-9_-]+$/i;
     const LEADING_TRAILING_RE = /^[-_]|[-_]$/;
 
     function validateUsername(value: string): null | string {
@@ -28,6 +27,7 @@
     async function handleRegister(e: SubmitEvent) {
         e.preventDefault();
         errors = {};
+        needsPasskeyRetry = false;
 
         // Usernames are case-insensitive at the protocol level —
         // the server canonicalizes to lowercase, so do the same here
@@ -39,20 +39,12 @@
             errors = { username: usernameError };
             return;
         }
-        if (password.length < 6) {
-            errors = { password: "Password must be at least 6 characters" };
-            return;
-        }
-        if (password !== confirm) {
-            errors = { confirm: "Passwords do not match" };
-            return;
-        }
 
         loading = true;
 
         const result = await vexService.register(
             normalizedUsername,
-            password,
+            "",
             desktopConfig(),
             getServerOptions(),
             keyStore,
@@ -84,6 +76,17 @@
                 loading = false;
                 return;
             }
+            if (result.passkeySetupRequired) {
+                errors = {
+                    form:
+                        result.error ??
+                        "Passkey setup did not finish. Retry to complete account setup.",
+                };
+                needsPasskeyRetry = true;
+                playError();
+                loading = false;
+                return;
+            }
             errors = { form: result.error ?? "Registration failed" };
             playError();
             loading = false;
@@ -100,6 +103,26 @@
             playError();
             loading = false;
         }
+    }
+
+    async function handlePasskeyRetry(): Promise<void> {
+        errors = {};
+        loading = true;
+        const result =
+            await vexService.completeInitialPasskeySetup(desktopConfig());
+        if (result.ok && userAtom.get()) {
+            playUnlock();
+            void push("/home");
+            return;
+        }
+        errors = {
+            form:
+                result.error ??
+                "Passkey setup did not finish. Retry to complete account setup.",
+        };
+        needsPasskeyRetry = result.passkeySetupRequired === true;
+        playError();
+        loading = false;
     }
 </script>
 
@@ -129,41 +152,19 @@
                     >{/if}
             </div>
 
-            <div class="auth-form__field">
-                <label for="password">Password</label>
-                <input
-                    id="password"
-                    type="password"
-                    autocomplete="new-password"
-                    placeholder="••••••••"
-                    bind:value={password}
-                    disabled={loading}
-                    required
-                />
-                {#if errors.password}<span class="field-error"
-                        >{errors.password}</span
-                    >{/if}
-            </div>
-
-            <div class="auth-form__field">
-                <label for="confirm">Confirm Password</label>
-                <input
-                    id="confirm"
-                    type="password"
-                    autocomplete="new-password"
-                    placeholder="••••••••"
-                    bind:value={confirm}
-                    disabled={loading}
-                    required
-                />
-                {#if errors.confirm}<span class="field-error"
-                        >{errors.confirm}</span
-                    >{/if}
-            </div>
-
             <button class="auth-form__submit" type="submit" disabled={loading}>
                 {loading ? "Creating account..." : "Create account"}
             </button>
+            {#if needsPasskeyRetry}
+                <button
+                    class="auth-form__secondary"
+                    type="button"
+                    disabled={loading}
+                    onclick={() => void handlePasskeyRetry()}
+                >
+                    Finish passkey setup
+                </button>
+            {/if}
         </form>
 
         <p class="auth-card__footer">
@@ -242,6 +243,22 @@
         opacity: 0.9;
     }
     .auth-form__submit:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .auth-form__secondary {
+        border: 1px solid var(--border);
+        background: var(--bg-surface);
+        color: var(--text-primary);
+        padding: 10px;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 600;
+    }
+    .auth-form__secondary:hover:not(:disabled) {
+        background: var(--bg-hover);
+    }
+    .auth-form__secondary:disabled {
         opacity: 0.5;
         cursor: not-allowed;
     }

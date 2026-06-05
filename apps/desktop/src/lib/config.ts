@@ -9,21 +9,35 @@ const SERVER_URL_KEY = "vex-server-url";
 // .env at runtime. A missing or empty VITE_SERVER_URL can only resolve to
 // prod, making it impossible to ship a dev URL by forgetting to set something.
 const PROD_SERVER_URL = "api.vex.wtf";
+const DEV_SERVER_URL = "dev.vex.wtf";
+const VITE_DEV_SERVER_URL = "localhost:5180";
 
 // Any host that looks like a local/LAN dev target. Used for the release-build
 // fail-safe and for deciding when http:// is acceptable.
 const DEV_HOST_RE = /^(localhost|127\.0\.0\.1|10\.0\.2\.2|192\.168\.|100\.)/i;
 
-const envOverride =
+const envServerUrl =
     typeof import.meta.env.VITE_SERVER_URL === "string"
         ? import.meta.env.VITE_SERVER_URL.trim()
         : "";
+const envProxyTarget =
+    typeof import.meta.env.VITE_PROXY_TARGET === "string"
+        ? import.meta.env.VITE_PROXY_TARGET.trim()
+        : "";
 const DEFAULT_SERVER_URL: string =
-    envOverride.length > 0 ? envOverride : PROD_SERVER_URL;
+    envServerUrl.length > 0
+        ? normalizeHost(envServerUrl)
+        : import.meta.env.DEV
+          ? VITE_DEV_SERVER_URL
+          : PROD_SERVER_URL;
 
 // Fail-safe: a release build must never ship with a dev host compiled in as
 // the default. Users can still override via the Settings UI (localStorage).
-if (!import.meta.env.DEV && DEV_HOST_RE.test(DEFAULT_SERVER_URL)) {
+if (
+    !import.meta.env.DEV &&
+    (isNonProductionHost(DEFAULT_SERVER_URL) ||
+        (envProxyTarget.length > 0 && isNonProductionHost(envProxyTarget)))
+) {
     throw new Error(
         `[vex] Refusing to start: production build resolved default server URL to "${DEFAULT_SERVER_URL}". ` +
             `VITE_SERVER_URL must not point at a dev address in release builds.`,
@@ -42,10 +56,7 @@ export function clearSession(): void {
  * when set so each upstream gets its own keychain slot and db file.
  */
 export function getServerIdentity(): string {
-    const proxyTarget =
-        typeof import.meta.env.VITE_PROXY_TARGET === "string"
-            ? import.meta.env.VITE_PROXY_TARGET.trim()
-            : "";
+    const proxyTarget = getEffectiveProxyTarget();
     if (proxyTarget.length > 0) return proxyTarget;
     return getServerUrl();
 }
@@ -53,16 +64,76 @@ export function getServerIdentity(): string {
 /** Server options derived from the current URL — use everywhere. */
 export function getServerOptions(): ServerOptions {
     const host = getServerUrl();
+    const upstream = getServerIdentity();
+    const isLocalUpstream = isLocalDevHost(upstream);
+    const isLocalClientHost = isLocalDevHost(host);
     return {
+        ...(isLocalUpstream && import.meta.env.DEV
+            ? { devApiKey: "local-dev" }
+            : {}),
         host,
-        unsafeHttp: host.startsWith("http://") || DEV_HOST_RE.test(host),
+        unsafeHttp: host.startsWith("http://") || isLocalClientHost,
     };
 }
 
 export function getServerUrl(): string {
-    return localStorage.getItem(SERVER_URL_KEY) ?? DEFAULT_SERVER_URL;
+    return normalizeHost(
+        localStorage.getItem(SERVER_URL_KEY) ?? DEFAULT_SERVER_URL,
+    );
+}
+
+export function isLocalDevServer(): boolean {
+    return import.meta.env.DEV && isLocalDevHost(getServerIdentity());
 }
 
 export function setServerUrl(url: string): void {
-    localStorage.setItem(SERVER_URL_KEY, url.replace(/\/$/, ""));
+    localStorage.setItem(SERVER_URL_KEY, normalizeHost(url));
+}
+
+function getEffectiveProxyTarget(): string {
+    if (!isViteProxyHost(getServerUrl())) {
+        return "";
+    }
+    if (envProxyTarget.length > 0) {
+        return envProxyTarget;
+    }
+    if (import.meta.env.DEV) {
+        return DEV_SERVER_URL;
+    }
+    return "";
+}
+
+function hostOnly(raw: string): string {
+    const trimmed = raw.trim().replace(/\/+$/, "");
+    if (/^https?:\/\//i.test(trimmed)) {
+        try {
+            return new URL(trimmed).host;
+        } catch {
+            return (
+                trimmed
+                    .replace(/^https?:\/\//i, "")
+                    .split("/")[0]
+                    ?.replace(/\/+$/, "") ?? PROD_SERVER_URL
+            );
+        }
+    }
+    return trimmed.split("/")[0] ?? trimmed;
+}
+
+function isLocalDevHost(value: string): boolean {
+    return DEV_HOST_RE.test(hostOnly(value));
+}
+
+function isNonProductionHost(value: string): boolean {
+    const host = hostOnly(value);
+    return host === DEV_SERVER_URL || DEV_HOST_RE.test(host);
+}
+
+function isViteProxyHost(value: string): boolean {
+    const host = hostOnly(value);
+    return host === VITE_DEV_SERVER_URL || host === "127.0.0.1:5180";
+}
+
+function normalizeHost(raw: string): string {
+    return hostOnly(raw.replace(/\/+$/, ""));
 }

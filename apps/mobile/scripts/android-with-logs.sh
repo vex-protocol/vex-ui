@@ -25,6 +25,7 @@ export APP_PACKAGE
 APK_PATH="./android/app/build/outputs/apk/debug/app-debug.apk"
 START_METRO="${START_METRO:-1}"
 METRO_FORCE_RESTART="${METRO_FORCE_RESTART:-1}"
+LOCAL_SPIRE_PORT="${VEX_LOCAL_SPIRE_PORT:-16777}"
 GRACEFUL_STOP=0
 
 # Only force the emulator's Qt platform on Linux; macOS Qt builds use
@@ -260,6 +261,22 @@ if [ "${#DEVICES[@]}" -eq 0 ]; then
     exit 1
 fi
 
+should_reverse_local_spire() {
+    local server="${EXPO_PUBLIC_SERVER_URL:-}"
+    if [[ "${VEX_ANDROID_REVERSE_SPIRE:-}" == "1" ]]; then
+        return 0
+    fi
+    [[ "$server" =~ (^|//)(localhost|127\.0\.0\.1|10\.0\.2\.2)(:|/|$) ]] && return 0
+    [[ "$server" =~ ^(localhost|127\.0\.0\.1|10\.0\.2\.2)(:|/|$) ]] && return 0
+    return 1
+}
+
+REVERSE_LOCAL_SPIRE=0
+if should_reverse_local_spire; then
+    REVERSE_LOCAL_SPIRE=1
+    echo "Local Spire routing enabled; adb reverse tcp:${LOCAL_SPIRE_PORT} will be applied per device."
+fi
+
 if [ "$START_METRO" = "1" ]; then
     if [ "$METRO_FORCE_RESTART" = "1" ]; then
         OLD_METRO_PIDS="$(lsof -ti tcp:8081 -sTCP:LISTEN || true)"
@@ -292,6 +309,10 @@ echo "Installing and launching on ${#DEVICES[@]} device(s)..."
 for serial in "${DEVICES[@]}"; do
     echo "[$serial] adb reverse tcp:8081"
     adb -s "$serial" reverse tcp:8081 tcp:8081 >/dev/null 2>&1 || true
+    if [ "$REVERSE_LOCAL_SPIRE" = "1" ]; then
+        echo "[$serial] adb reverse tcp:${LOCAL_SPIRE_PORT}"
+        adb -s "$serial" reverse "tcp:${LOCAL_SPIRE_PORT}" "tcp:${LOCAL_SPIRE_PORT}" >/dev/null 2>&1 || true
+    fi
     echo "[$serial] install"
     adb -s "$serial" install -r -d "$APK_PATH" >/dev/null
     echo "[$serial] launch"

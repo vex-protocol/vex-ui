@@ -8,15 +8,17 @@ catalog:
     "@expo/vector-icons": ^15.1.1
     "@nanostores/react": ^1.1.0
     "@notifee/react-native": ^9.1.8
+    "@tauri-apps/api": ^2.11.0
+    "@tauri-apps/cli": ^2.11.0
     "@types/node": ^24.10.1
-    "@vex-chat/crypto": 7.0.0
-    "@vex-chat/libvex": 7.1.6
+    "@vex-chat/crypto": 8.0.0
+    "@vex-chat/libvex": 7.2.0
     "@vex-chat/spire": 2.3.4
-    "@vex-chat/types": 4.0.0
+    "@vex-chat/types": 4.1.0
     dompurify: ^3.4.0
+    expo-audio: ~55.0.14
     expo-background-fetch: ~55.0.15
     expo-background-task: ~55.0.17
-    expo-audio: ~55.0.14
     expo-clipboard: ~55.0.13
     expo-constants: ~55.0.13
     expo-crypto: ~55.0.14
@@ -39,7 +41,7 @@ catalog:
     svelte: ^5.55.7
     typescript: ~5.9.3
     uuid: ^14.0.0
-    vitest: 3.2.4
+    vitest: 4.1.0
     zod: ^4.1.12
 
 catalogMode: strict

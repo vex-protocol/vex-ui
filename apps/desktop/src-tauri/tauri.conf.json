@@ -12,6 +12,7 @@
     "app": {
         "windows": [
             {
+                "create": false,
                 "title": "Vex Chat",
                 "width": 1100,
                 "height": 700,
@@ -35,7 +36,10 @@
             "icons/128x128@2x.png",
             "icons/icon.icns",
             "icons/icon.ico"
-        ]
+        ],
+        "macOS": {
+            "infoPlist": "Info.plist"
+        }
     },
     "plugins": {
         "deep-link": {

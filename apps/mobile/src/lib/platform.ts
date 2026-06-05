@@ -72,6 +72,8 @@ export async function clearLocalDatabaseKeyMaterial(
 
 export function mobileConfig(): BootstrapConfig {
     return {
+        allowInsecureLocalPasskeyBypass:
+            __DEV__ && isLocalDevHost(getServerUrl()),
         async createStorage(
             privateKey: string,
             username: string,
@@ -298,6 +300,10 @@ function isDbBackupFile(value: unknown): value is DbBackupFile {
         typeof candidate.existed === "boolean" &&
         typeof candidate.sourceUri === "string"
     );
+}
+
+function isLocalDevHost(host: string): boolean {
+    return /^(localhost|127\.0\.0\.1|10\.0\.2\.2|192\.168\.|100\.)/i.test(host);
 }
 
 function joinUriPath(dir: string, fileName: string): string {

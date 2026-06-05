@@ -15,6 +15,13 @@ import { mount } from "svelte";
 
 import "./app.css";
 import App from "./App.svelte";
+import { authenticatePasskey, registerPasskey } from "./lib/passkey.js";
+import { vexService } from "./lib/store/index.js";
+
+vexService.setPasskeyCeremonyDriver({
+    authenticate: authenticatePasskey,
+    register: registerPasskey,
+});
 
 // Apply saved theme before mount to prevent flash of wrong theme
 const savedTheme = localStorage.getItem("vex-theme") ?? "dark";

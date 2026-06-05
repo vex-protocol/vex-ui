@@ -23,6 +23,7 @@
         "@vex-chat/crypto": "catalog:",
         "@vex-chat/libvex": "catalog:",
         "@vex-chat/types": "catalog:",
+        "eventemitter3": "5.0.4",
         "kysely": "catalog:",
         "nanostores": "catalog:",
         "uuid": "catalog:"

@@ -8,14 +8,24 @@
 import type { Storage } from "@vex-chat/libvex";
 import type { BootstrapConfig } from "@vex-chat/store";
 
-import { getServerIdentity } from "./config.js";
+import { MemoryStorage } from "@vex-chat/store";
+
+import { getServerIdentity, isLocalDevServer } from "./config.js";
 
 export function desktopConfig(): BootstrapConfig {
     return {
+        allowInsecureLocalPasskeyBypass: isLocalDevServer(),
         async createStorage(
             privateKey: string,
             username: string,
         ): Promise<Storage> {
+            const atRestAes = deriveAtRestAesKey(privateKey);
+            if (!isTauriRuntime()) {
+                const storage = new MemoryStorage(atRestAes);
+                await storage.init();
+                return storage;
+            }
+
             const { Kysely } = await import("kysely");
             const { TauriSqliteDialect } = await import("kysely-dialect-tauri");
             const { default: Database } =
@@ -33,7 +43,6 @@ export function desktopConfig(): BootstrapConfig {
             // module and isn't re-exported from the sqlite subpath; cast
             // via `never` to satisfy the Kysely<ClientDatabase> parameter
             // without pulling in an internal import.
-            const atRestAes = deriveAtRestAesKey(privateKey);
             const storage = new SqliteStorage(db as never, atRestAes);
             await storage.init();
             return storage;
@@ -72,6 +81,10 @@ function deriveAtRestAesKey(privateKeyHex: string): Uint8Array {
     const out = new Uint8Array(32);
     out.set(raw);
     return out;
+}
+
+function isTauriRuntime(): boolean {
+    return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 function sanitize(s: string): string {

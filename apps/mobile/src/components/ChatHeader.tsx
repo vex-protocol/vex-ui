@@ -13,6 +13,7 @@ interface ChatHeaderProps {
     onOverflow?: () => void;
     onTitlePress?: () => void;
     onUsers?: () => void;
+    onVoiceCall?: () => void;
     overflowIcon?: "dots" | "users";
     subtitle?: string;
     title: string;
@@ -23,6 +24,7 @@ export function ChatHeader({
     onOverflow,
     onTitlePress,
     onUsers,
+    onVoiceCall,
     overflowIcon = "dots",
     subtitle,
     title,
@@ -71,6 +73,21 @@ export function ChatHeader({
                 )}
             </View>
             <View style={styles.actions}>
+                {onVoiceCall && (
+                    <TouchableOpacity
+                        accessibilityLabel="Start voice call"
+                        accessibilityRole="button"
+                        hitSlop={8}
+                        onPress={onVoiceCall}
+                        style={styles.actionBtn}
+                    >
+                        <Ionicons
+                            color={colors.text}
+                            name="call-outline"
+                            size={20}
+                        />
+                    </TouchableOpacity>
+                )}
                 {onOverflow && (
                     <TouchableOpacity
                         accessibilityLabel="Channel menu"

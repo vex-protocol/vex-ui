@@ -15,6 +15,7 @@
         user,
     } from "./lib/store/index.js";
     import UserMenu from "./lib/UserMenu.svelte";
+    import VoiceCallOverlay from "./lib/VoiceCallOverlay.svelte";
     import Home from "./routes/Home.svelte";
     import Launch from "./routes/Launch.svelte";
     import Login from "./routes/Login.svelte";
@@ -155,6 +156,7 @@
             username={$user?.username ?? ""}
             userID={$user?.userID ?? ""}
         />
+        <VoiceCallOverlay />
     {/if}
 </div>
 
