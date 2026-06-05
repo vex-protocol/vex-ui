@@ -25,14 +25,14 @@ catalogs:
       specifier: ^24.10.1
       version: 24.12.2
     '@vex-chat/crypto':
-      specifier: 9.0.0
-      version: 9.0.0
+      specifier: 8.0.0
+      version: 8.0.0
     '@vex-chat/libvex':
-      specifier: 7.3.0
-      version: 7.3.0
+      specifier: 7.2.0
+      version: 7.2.0
     '@vex-chat/types':
-      specifier: 4.2.0
-      version: 4.2.0
+      specifier: 4.1.0
+      version: 4.1.0
     dompurify:
       specifier: ^3.4.0
       version: 3.4.3
@@ -233,7 +233,7 @@ importers:
         version: link:../../packages/eslint-config
       '@vex-chat/libvex':
         specifier: 'catalog:'
-        version: 7.3.0(better-sqlite3@11.10.0)(typescript@5.9.3)
+        version: 7.2.0(better-sqlite3@11.10.0)(typescript@5.9.3)
       eslint-plugin-svelte:
         specifier: ^3.17.0
         version: 3.17.0(eslint@10.2.0(jiti@2.6.1))(svelte@5.55.7)
@@ -396,7 +396,7 @@ importers:
         version: link:../../packages/eslint-config
       '@vex-chat/libvex':
         specifier: 'catalog:'
-        version: 7.3.0(better-sqlite3@11.10.0)(typescript@5.9.3)
+        version: 7.2.0(better-sqlite3@11.10.0)(typescript@5.9.3)
       babel-preset-expo:
         specifier: ^55.0.15
         version: 55.0.15(@babel/core@7.29.0)(@babel/runtime@7.29.2)(expo@55.0.13)(react-refresh@0.14.2)
@@ -472,13 +472,13 @@ importers:
         version: 1.1.0(nanostores@1.2.0)(react@19.2.0)
       '@vex-chat/crypto':
         specifier: 'catalog:'
-        version: 9.0.0(@vex-chat/types@4.2.0)(typescript@5.9.3)
+        version: 8.0.0(@vex-chat/types@4.1.0)(typescript@5.9.3)
       '@vex-chat/libvex':
         specifier: 'catalog:'
-        version: 7.3.0(better-sqlite3@11.10.0)(typescript@5.9.3)
+        version: 7.2.0(better-sqlite3@11.10.0)(typescript@5.9.3)
       '@vex-chat/types':
         specifier: 'catalog:'
-        version: 4.2.0
+        version: 4.1.0
       eventemitter3:
         specifier: 5.0.4
         version: 5.0.4
@@ -2549,18 +2549,18 @@ packages:
     resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
     deprecated: Potential CWE-502 - Update to 1.3.1 or higher
 
-  '@vex-chat/crypto@9.0.0':
-    resolution: {integrity: sha512-ctf75+4gX66bkG+FOF0gHARXzJ+P937ZK5xmv/fbHv0j+7te/Z8gwTwy9x8P2nwwmjXFDnB/EbYboDdR1W83kg==}
+  '@vex-chat/crypto@8.0.0':
+    resolution: {integrity: sha512-NNuXbZlKZ2npb+5sn7JCSrSIeDyT5Z3qwKAQGTS5UbcGPzVlDTDPScWproQy999sYf+Cn22ccIEcYB2b7sLusg==}
     engines: {node: '>=24.0.0'}
     peerDependencies:
-      '@vex-chat/types': ^4.2.0
+      '@vex-chat/types': ^4.1.0
       typescript: ~5.9.3
     peerDependenciesMeta:
       typescript:
         optional: true
 
-  '@vex-chat/libvex@7.3.0':
-    resolution: {integrity: sha512-ZkKc4/1Oq/QvBLOqV80PBvtxD+krJ+JFD5gQI0wGNAzCYkMjE0G6cpxkE6ciLwnJbS+8xr+H++FXOs6r3YGL+Q==}
+  '@vex-chat/libvex@7.2.0':
+    resolution: {integrity: sha512-XRRS2TDZGhJwAe+aJblQ0KTM+itho/VZruVP2DjkHlJc7lsYcd4J33QzoGLJWt5g75kaV8K/t6hZyc0fvkp/og==}
     engines: {node: '>=24.0.0'}
     peerDependencies:
       better-sqlite3: '>=11.0.0'
@@ -2568,8 +2568,8 @@ packages:
       better-sqlite3:
         optional: true
 
-  '@vex-chat/types@4.2.0':
-    resolution: {integrity: sha512-0Mx0qS/rS6nD74mLMq7fSb4anO20M8X4otUxJoz2x3r5Co8Q+CjVkKgByVn4MxNV1+JvvccpiDZv31XUAmTWUQ==}
+  '@vex-chat/types@4.1.0':
+    resolution: {integrity: sha512-+s0VoTbvLttSIZ7kiQ71w/yoHGZ2UYXo1sMGj8Axn1d3ujGOThimAEuoMLVQcoECISy5wqlMU3PzUs8MwzoKQQ==}
     engines: {node: '>=18.0.0'}
 
   '@vitest/expect@4.1.0':
@@ -9324,13 +9324,13 @@ snapshots:
 
   '@ungap/structured-clone@1.3.0': {}
 
-  '@vex-chat/crypto@9.0.0(@vex-chat/types@4.2.0)(typescript@5.9.3)':
+  '@vex-chat/crypto@8.0.0(@vex-chat/types@4.1.0)(typescript@5.9.3)':
     dependencies:
       '@noble/curves': 1.4.0
       '@noble/hashes': 2.2.0
       '@stablelib/base64': 2.0.1
       '@stablelib/utf8': 2.1.0
-      '@vex-chat/types': 4.2.0
+      '@vex-chat/types': 4.1.0
       bip39: 3.1.0
       ed2curve: 0.3.0
       msgpackr: 1.11.10
@@ -9339,10 +9339,10 @@ snapshots:
     optionalDependencies:
       typescript: 5.9.3
 
-  '@vex-chat/libvex@7.3.0(better-sqlite3@11.10.0)(typescript@5.9.3)':
+  '@vex-chat/libvex@7.2.0(better-sqlite3@11.10.0)(typescript@5.9.3)':
     dependencies:
-      '@vex-chat/crypto': 9.0.0(@vex-chat/types@4.2.0)(typescript@5.9.3)
-      '@vex-chat/types': 4.2.0
+      '@vex-chat/crypto': 8.0.0(@vex-chat/types@4.1.0)(typescript@5.9.3)
+      '@vex-chat/types': 4.1.0
       eventemitter3: 5.0.4
       kysely: 0.28.17
       msgpackr: 1.11.10
@@ -9353,7 +9353,7 @@ snapshots:
     transitivePeerDependencies:
       - typescript
 
-  '@vex-chat/types@4.2.0':
+  '@vex-chat/types@4.1.0':
     dependencies:
       zod: 4.3.6
 
