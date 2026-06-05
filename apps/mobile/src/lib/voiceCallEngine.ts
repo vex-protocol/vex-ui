@@ -19,6 +19,8 @@ const CALL_RECONCILE_TIMEOUT_MS = 70_000;
 const MEDIA_CONNECT_TIMEOUT_MS = 30_000;
 const MAX_PENDING_INCOMING_ICE_CANDIDATES = 64;
 const LOCAL_DEV_SIGNALING_ONLY_MARKER = "a=x-vex-local-dev-signaling-only";
+const SDP_SESSION_ID_HIGH_MASK = 0x001f_ffff;
+const SDP_SESSION_ID_LOW_RANGE = 0x1_0000_0000;
 
 export type VoiceCallMediaState =
     | "connected"
@@ -802,12 +804,9 @@ function createLocalDevSessionDescription(type: "answer" | "offer"): {
     sdp: string;
     type: "answer" | "offer";
 } {
-    const sessionID =
-        String(Date.now()) + String(Math.floor(Math.random() * 1e6));
-    const iceUfrag = Math.random().toString(36).slice(2, 10);
-    const icePwd = `${Math.random().toString(36).slice(2)}${Math.random()
-        .toString(36)
-        .slice(2)}`.padEnd(24, "0");
+    const sessionID = createSecureSdpSessionId();
+    const iceUfrag = secureRandomHex(8);
+    const icePwd = secureRandomHex(24);
     const setup = type === "offer" ? "actpass" : "active";
     return {
         sdp: [
@@ -845,8 +844,30 @@ function createLocalDevSessionDescription(type: "answer" | "offer"): {
     };
 }
 
+function createSecureSdpSessionId(): string {
+    const words = new Uint32Array(2);
+    fillSecureRandomValues(words);
+
+    const high = (words[0] ?? 0) & SDP_SESSION_ID_HIGH_MASK;
+    const low = words[1] ?? 0;
+    const sessionID = high * SDP_SESSION_ID_LOW_RANGE + low;
+
+    return String(sessionID === 0 ? 1 : sessionID);
+}
+
 function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
+}
+
+function fillSecureRandomValues<T extends Uint8Array | Uint32Array>(
+    values: T,
+): T {
+    const crypto = globalThis.crypto;
+    if (typeof crypto?.getRandomValues !== "function") {
+        throw new Error("Secure random generator unavailable.");
+    }
+    crypto.getRandomValues(values);
+    return values;
 }
 
 function hasRemoteDescription(pc: PeerConnectionLike): boolean {
@@ -887,6 +908,14 @@ function isWebRTCModule(value: unknown): value is WebRTCModuleLike {
         typeof candidate.RTCSessionDescription === "function" &&
         typeof candidate.RTCIceCandidate === "function" &&
         typeof candidate.mediaDevices?.getUserMedia === "function"
+    );
+}
+
+function secureRandomHex(byteLength: number): string {
+    const bytes = new Uint8Array(byteLength);
+    fillSecureRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+        "",
     );
 }
 
