@@ -434,6 +434,11 @@ function installCallKeepListeners(RNCallKeep: RNCallKeepModule): void {
 }
 
 async function loadCallKeep(): Promise<null | RNCallKeepModule> {
+    if (Platform.OS === "android") {
+        // react-native-callkeep 4.3.x exports overloaded Android methods that
+        // TurboModules reject; use the Notifee call notification fallback.
+        return null;
+    }
     if (!callKeepLoad) {
         callKeepLoad = import("react-native-callkeep")
             .then((mod) => mod.default)
