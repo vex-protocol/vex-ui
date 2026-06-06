@@ -9,7 +9,6 @@ import notifee, {
     AndroidDefaults,
     AndroidImportance,
     AndroidVisibility,
-    EventType,
 } from "@notifee/react-native";
 import { validate as isUuid, v5 as uuidv5 } from "uuid";
 
@@ -36,6 +35,10 @@ interface NativeCallHandlers {
     onWakeFromNativePush?(): Promise<void> | void;
 }
 
+interface NativeCallNotificationActionOptions {
+    dispatchImmediately?: boolean;
+}
+
 type RNCallKeepModule = typeof RNCallKeepDefault;
 type RNVoipPushNotificationModule = typeof RNVoipPushNotificationDefault;
 
@@ -52,6 +55,7 @@ const uuidByCallID = new Map<string, string>();
 const callKeepShownCallIDs = new Set<string>();
 const fallbackNotificationCallIDs = new Set<string>();
 const suppressedNativeEndUUIDs = new Set<string>();
+const recentNativeActionAt = new Map<string, number>();
 
 export async function drainQueuedNativeCallActions(): Promise<void> {
     const actions = await drainNativeCallActions();
@@ -95,15 +99,22 @@ export async function endNativeCall(
 export async function handleNativeCallBackgroundNotification(
     data: Record<string, unknown> | undefined,
     actionID: string | undefined,
+    options: NativeCallNotificationActionOptions = {},
 ): Promise<boolean> {
     const action = parseNativeCallNotificationAction(data, actionID);
     if (!action) {
         return false;
     }
-    await enqueueNativeCallAction(action);
-    if (action.kind === "end") {
-        await cancelFallbackCallNotification(action.callID);
+    if (isDuplicateNativeAction(action.kind, action.callID)) {
+        return true;
     }
+    await cancelFallbackCallNotification(action.callID);
+    fallbackNotificationCallIDs.delete(action.callID);
+    if (options.dispatchImmediately) {
+        await dispatchNativeCallAction(action.kind, action.callID);
+        return true;
+    }
+    await enqueueNativeCallAction(action);
     return true;
 }
 
@@ -420,23 +431,25 @@ function installCallKeepListeners(RNCallKeep: RNCallKeepModule): void {
             }
         }
     });
-    if (Platform.OS === "android") {
-        notifee.onForegroundEvent(({ detail, type }) => {
-            if (type !== EventType.ACTION_PRESS) {
-                return;
-            }
-            const data = detail.notification?.data as
-                | Record<string, unknown>
-                | undefined;
-            const action = parseNativeCallNotificationAction(
-                data,
-                detail.pressAction?.id,
-            );
-            if (action) {
-                void dispatchNativeCallAction(action.kind, action.callID);
-            }
-        });
+}
+
+function isDuplicateNativeAction(
+    kind: NativeCallActionKind,
+    callID: string,
+): boolean {
+    const now = Date.now();
+    for (const [key, handledAt] of recentNativeActionAt) {
+        if (now - handledAt > 10_000) {
+            recentNativeActionAt.delete(key);
+        }
     }
+    const key = `${kind}:${callID}`;
+    const handledAt = recentNativeActionAt.get(key);
+    if (handledAt && now - handledAt < 10_000) {
+        return true;
+    }
+    recentNativeActionAt.set(key, now);
+    return false;
 }
 
 async function loadCallKeep(): Promise<null | RNCallKeepModule> {
@@ -658,7 +671,10 @@ async function showFallbackCallNotification(
                     title: "Answer",
                 },
                 {
-                    pressAction: { id: "vex-call-decline" },
+                    pressAction: {
+                        id: "vex-call-decline",
+                        launchActivity: "default",
+                    },
                     title: "Decline",
                 },
             ],

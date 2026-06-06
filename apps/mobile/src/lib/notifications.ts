@@ -24,6 +24,7 @@ import {
     navigationRef,
 } from "../navigation/navigationRef";
 
+import { handleNativeCallBackgroundNotification } from "./nativeCallUi";
 import {
     dequeuePendingNotificationRoute,
     enqueuePendingNotificationRoute,
@@ -264,6 +265,17 @@ export function setupNotificationHandlers(): () => void {
     let unsubNotifee: (() => void) | undefined;
     if (Platform.OS === "android") {
         unsubNotifee = notifee.onForegroundEvent(({ detail, type }) => {
+            const data = detail.notification?.data as
+                | Record<string, unknown>
+                | undefined;
+            if (type === EventType.ACTION_PRESS) {
+                void handleNativeCallBackgroundNotification(
+                    data,
+                    detail.pressAction?.id,
+                    { dispatchImmediately: true },
+                );
+                return;
+            }
             if (
                 type === EventType.DISMISSED &&
                 detail.notification?.id === MESSAGE_NOTIFICATION_ID
@@ -274,7 +286,6 @@ export function setupNotificationHandlers(): () => void {
             if (type !== EventType.PRESS) {
                 return;
             }
-            const data = detail.notification?.data;
             if (!data || (data["kind"] !== "dm" && data["kind"] !== "group")) {
                 return;
             }
@@ -288,11 +299,21 @@ export function setupNotificationHandlers(): () => void {
             });
         });
 
-        void notifee.getInitialNotification().then((initial) => {
+        void notifee.getInitialNotification().then(async (initial) => {
             if (!initial) {
                 return;
             }
-            const data = initial.notification.data;
+            const data = initial.notification.data as
+                | Record<string, unknown>
+                | undefined;
+            const handledCallAction =
+                await handleNativeCallBackgroundNotification(
+                    data,
+                    initial.pressAction?.id,
+                );
+            if (handledCallAction) {
+                return;
+            }
             if (!data || (data["kind"] !== "dm" && data["kind"] !== "group")) {
                 return;
             }
