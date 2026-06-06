@@ -132,6 +132,8 @@ function MainApp() {
     const lastHandledShareIDRef = useRef<null | string>(null);
     const seenPendingRequestIDsRef = useRef<Set<string>>(new Set());
     const userID = user?.userID;
+    const nativeCallUiReady =
+        Platform.OS !== "android" || hydrationStatus.ready;
 
     const handlePendingOtaReloadError = useCallback((message: string) => {
         console.warn("[vex-update] failed to reload pending OTA", message);
@@ -319,7 +321,7 @@ function MainApp() {
     }, []);
 
     useEffect(() => {
-        if (!userID) {
+        if (!userID || !nativeCallUiReady) {
             return;
         }
         const unsubscribe = setupNativeCallUi({
@@ -339,7 +341,7 @@ function MainApp() {
         });
         void drainQueuedNativeCallActions();
         return unsubscribe;
-    }, [answerNativeVoiceCall, endNativeVoiceCall, userID]);
+    }, [answerNativeVoiceCall, endNativeVoiceCall, nativeCallUiReady, userID]);
 
     // Mirror the active user's userID into SecureStore so the offline
     // account picker can render real avatars (the libvex StoredCredentials
