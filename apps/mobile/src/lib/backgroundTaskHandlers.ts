@@ -12,7 +12,10 @@ import {
     vexService,
 } from "@vex-chat/store";
 
-import { showIncomingNativeCall } from "./nativeCallUi";
+import {
+    showGenericNativeIncomingCallFromWake,
+    showIncomingNativeCall,
+} from "./nativeCallUi";
 import { showMessageNotification } from "./notifications";
 import { runtimeNotifiedMailIDs } from "./runtimeNotificationDedupe";
 
@@ -43,6 +46,30 @@ export async function runBackgroundSyncFromTask(
         );
         return "failed";
     }
+}
+
+export async function showNativeCallFromBackgroundPush(
+    payload: Notifications.NotificationTaskPayload,
+): Promise<boolean> {
+    if (isNotificationResponsePayload(payload)) {
+        return false;
+    }
+
+    const rawData = payload.data;
+    const parsedDataString = parseDataString(rawData["dataString"]);
+    const event =
+        readString(rawData["event"]) ?? readString(parsedDataString?.["event"]);
+    const kind =
+        readString(rawData["kind"]) ?? readString(parsedDataString?.["kind"]);
+    const callID =
+        readString(rawData["callID"]) ??
+        readString(parsedDataString?.["callID"]);
+    if ((event !== "callWake" && kind !== "voiceCall") || !callID) {
+        return false;
+    }
+
+    await showGenericNativeIncomingCallFromWake(callID);
+    return true;
 }
 
 export function summarizeBackgroundNotificationTaskPayload(
@@ -181,4 +208,10 @@ function parseDataString(value: unknown): Record<string, unknown> | undefined {
         return undefined;
     }
     return undefined;
+}
+
+function readString(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim().length > 0
+        ? value.trim()
+        : undefined;
 }

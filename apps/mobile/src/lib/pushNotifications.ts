@@ -19,10 +19,13 @@ const ENABLED_STORE_KEY = "vex.pushNotifications.enabled.v1";
 const SUBSCRIPTION_KEY_PREFIX = "vex.pushNotifications.subscription.v1";
 const CLEANUP_KEY_PREFIX = "vex.pushNotifications.cleanup.v1";
 const PUSH_CHANNEL_ID = "vex-push-messages-v2";
-const EXPO_EVENTS: PushNotificationEvent[] = [
+const EXPO_GENERAL_EVENTS: PushNotificationEvent[] = [
     "mail",
     "deviceRequest",
     "deviceListChanged",
+];
+const EXPO_FALLBACK_EVENTS: PushNotificationEvent[] = [
+    ...EXPO_GENERAL_EVENTS,
     "callWake",
 ];
 const CALL_WAKE_EVENTS: PushNotificationEvent[] = ["callWake"];
@@ -247,6 +250,7 @@ async function collectDesiredSubscriptions(): Promise<DesiredSubscription[]> {
     const platform = pushPlatform();
     const desired: DesiredSubscription[] = [];
 
+    const nativeCallToken = await getNativeCallPushTokenIfAllowed();
     const expoToken = await getExpoPushTokenIfAllowed().catch(
         (err: unknown) => {
             console.warn(
@@ -259,7 +263,9 @@ async function collectDesiredSubscriptions(): Promise<DesiredSubscription[]> {
     if (expoToken) {
         desired.push({
             channel: "expo",
-            events: EXPO_EVENTS,
+            events: nativeCallToken
+                ? EXPO_GENERAL_EVENTS
+                : EXPO_FALLBACK_EVENTS,
             platform,
             token: expoToken,
         });
@@ -268,7 +274,6 @@ async function collectDesiredSubscriptions(): Promise<DesiredSubscription[]> {
         });
     }
 
-    const nativeCallToken = await getNativeCallPushTokenIfAllowed();
     if (nativeCallToken) {
         desired.push({
             channel: nativeCallToken.channel,
@@ -441,7 +446,7 @@ function parseStoredSubscription(value: unknown): null | StoredSubscription {
     const events: PushNotificationEvent[] = Array.isArray(obj["events"])
         ? obj["events"].filter(isPushNotificationEvent)
         : channel === "expo"
-          ? ["mail", "deviceRequest", "deviceListChanged"]
+          ? EXPO_FALLBACK_EVENTS
           : ["callWake"];
     return {
         channel,
