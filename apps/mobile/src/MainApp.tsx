@@ -14,8 +14,10 @@ import {
 } from "react-native";
 
 import {
+    $familiars,
     $groupMessages,
     $hydrationStatus,
+    $incomingCalls,
     $keyReplaced,
     $messages,
     $user,
@@ -57,6 +59,12 @@ import {
     handleLocalDevAutomationLink,
     isLocalDevAutomationLink,
 } from "./lib/localDevAutomation";
+import { hydrateNativeCallPushToken } from "./lib/nativeCallPushTokens";
+import {
+    drainQueuedNativeCallActions,
+    endNativeCall,
+    setupNativeCallUi,
+} from "./lib/nativeCallUi";
 import {
     clearNotifiedApprovalRequestIDs,
     dismissDeviceApprovalNotification,
@@ -80,6 +88,7 @@ import {
 } from "./lib/runtimeNotificationDedupe";
 import { getIncomingShareIntent, type IncomingShare } from "./lib/shareIntent";
 import { usePendingOtaReload } from "./lib/usePendingOtaReload";
+import { voiceCallEngine } from "./lib/voiceCallEngine";
 import {
     navigateToAboutSettings,
     navigateToDeviceRequests,
@@ -282,10 +291,55 @@ function MainApp() {
             void hydrateAlwaysOnPreference();
         }
         void hydratePushNotificationPreference();
+        void hydrateNativeCallPushToken();
         return () => {
             unsubNotif();
         };
     }, []);
+
+    const answerNativeVoiceCall = useCallback(async (callID: string) => {
+        await vexService.runBackgroundNetworkFetch();
+        const event = $incomingCalls.get()[callID];
+        if (!event) {
+            await endNativeCall(callID, "missed");
+            return;
+        }
+        const username = $familiars.get()[event.fromUserID]?.username;
+        await voiceCallEngine.acceptIncomingCall(event, username);
+    }, []);
+
+    const endNativeVoiceCall = useCallback(async (callID: string) => {
+        await vexService.runBackgroundNetworkFetch();
+        const event = $incomingCalls.get()[callID];
+        if (event) {
+            await voiceCallEngine.rejectIncomingCall(event);
+            return;
+        }
+        await voiceCallEngine.hangup();
+    }, []);
+
+    useEffect(() => {
+        if (!userID) {
+            return;
+        }
+        const unsubscribe = setupNativeCallUi({
+            onAnswer: answerNativeVoiceCall,
+            onEnd: endNativeVoiceCall,
+            onMute: (_callID, muted) => {
+                voiceCallEngine.setMuted(muted);
+            },
+            onNativeCallPushTokenChanged: () => {
+                if (!isLocalDevServer()) {
+                    void reconcilePushNotificationSubscription();
+                }
+            },
+            onWakeFromNativePush: async () => {
+                await vexService.runBackgroundNetworkFetch();
+            },
+        });
+        void drainQueuedNativeCallActions();
+        return unsubscribe;
+    }, [answerNativeVoiceCall, endNativeVoiceCall, userID]);
 
     // Mirror the active user's userID into SecureStore so the offline
     // account picker can render real avatars (the libvex StoredCredentials

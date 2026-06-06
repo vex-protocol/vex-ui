@@ -165,6 +165,8 @@ export type {
     PasskeyCeremonyDriver,
     PasskeyDeviceRestoreResult,
     PasskeySignInBegin,
+    PushNotificationChannel,
+    PushNotificationEvent,
     ResumeNetworkStatus,
     SendMessageOptions,
     ServerOptions,

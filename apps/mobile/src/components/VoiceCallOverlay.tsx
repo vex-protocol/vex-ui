@@ -16,6 +16,11 @@ import { useStore } from "@nanostores/react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+    endNativeCall,
+    showIncomingNativeCall,
+    updateNativeCallDisplay,
+} from "../lib/nativeCallUi";
+import {
     $voiceCallState,
     voiceCallEngine,
     type VoiceCallMediaState,
@@ -44,6 +49,16 @@ export function VoiceCallOverlay() {
             return;
         }
         handledEventRef.current = latestCallEvent;
+        if (isTerminalCallEvent(latestCallEvent)) {
+            void endNativeCall(
+                latestCallEvent.call.callID,
+                latestCallEvent.action === "reject"
+                    ? "declined"
+                    : latestCallEvent.action === "timeout"
+                      ? "missed"
+                      : "remoteEnded",
+            );
+        }
         void voiceCallEngine
             .handleCallEvent(latestCallEvent)
             .catch((err: unknown) => {
@@ -66,6 +81,27 @@ export function VoiceCallOverlay() {
     const displayedError = error ?? callState.mediaError;
     const incomingVisible =
         incomingEvent !== null && (callState.phase === "idle" || !callVisible);
+
+    useEffect(() => {
+        if (!incomingEvent) {
+            return;
+        }
+        void showIncomingNativeCall(
+            incomingEvent,
+            familiars[incomingEvent.fromUserID]?.username ?? undefined,
+        );
+    }, [familiars, incomingEvent]);
+
+    useEffect(() => {
+        if (!callState.callID || !activePeerName) {
+            return;
+        }
+        void updateNativeCallDisplay(
+            callState.callID,
+            activePeerName,
+            callState.peerUserID ?? undefined,
+        );
+    }, [activePeerName, callState.callID, callState.peerUserID]);
 
     const acceptIncoming = (event: CallEvent) => {
         setBusyCallID(event.call.callID);
@@ -233,6 +269,17 @@ function CallButton({
                 />
             )}
         </TouchableOpacity>
+    );
+}
+
+function isTerminalCallEvent(event: CallEvent): boolean {
+    return (
+        event.action === "cancel" ||
+        event.action === "end" ||
+        event.action === "hangup" ||
+        event.action === "reject" ||
+        event.action === "timeout" ||
+        event.call.status === "ended"
     );
 }
 

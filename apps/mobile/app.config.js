@@ -118,11 +118,17 @@ module.exports = ({ config }) => {
         new Set([
             ...(config.android?.permissions ?? []),
             "BLUETOOTH_CONNECT",
+            "CALL_PHONE",
             "FOREGROUND_SERVICE",
             "FOREGROUND_SERVICE_DATA_SYNC",
+            "FOREGROUND_SERVICE_MICROPHONE",
+            "MANAGE_OWN_CALLS",
             "MODIFY_AUDIO_SETTINGS",
             "REQUEST_INSTALL_PACKAGES",
             "RECORD_AUDIO",
+            "READ_PHONE_NUMBERS",
+            "READ_PHONE_STATE",
+            "USE_FULL_SCREEN_INTENT",
             "WAKE_LOCK",
         ]),
     );
@@ -216,6 +222,7 @@ module.exports = ({ config }) => {
             ],
             "expo-background-task",
             "./plugins/withForegroundService",
+            "./plugins/withNativeCalls",
             "./plugins/withAndroidShareIntent",
             // Safety net for Notifee FGS small-icon resolution.
             // expo-notifications' density-specific

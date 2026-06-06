@@ -115,6 +115,7 @@ function summarizePushData(
         return {};
     }
     return {
+        callID: data["callID"],
         event: data["event"],
         keys: Object.keys(data).sort(),
         kind: data["kind"],
@@ -565,6 +566,7 @@ async function handleRemotePushWake(
     const kind = data?.["kind"];
     if (
         event !== "mail" &&
+        event !== "callWake" &&
         event !== "deviceRequest" &&
         event !== "deviceListChanged" &&
         kind !== "dm" &&
