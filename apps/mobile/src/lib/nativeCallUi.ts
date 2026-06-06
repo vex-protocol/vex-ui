@@ -197,6 +197,7 @@ export async function showOutgoingNativeCall(input: {
             "generic",
             false,
         );
+        reportNativeOutgoingCallConnecting(RNCallKeep, uuid);
         callKeepShownCallIDs.add(input.callID);
     } catch (err: unknown) {
         console.warn(
@@ -332,6 +333,12 @@ async function handleVoipNotification(notification: object): Promise<void> {
 }
 
 function installCallKeepListeners(RNCallKeep: RNCallKeepModule): void {
+    RNCallKeep.addEventListener("didReceiveStartCallAction", ({ callUUID }) => {
+        if (!callUUID) {
+            return;
+        }
+        reportNativeOutgoingCallConnecting(RNCallKeep, callUUID);
+    });
     RNCallKeep.addEventListener("answerCall", ({ callUUID }) => {
         const callID = callIDByUUID.get(callUUID);
         if (callID) {
@@ -398,6 +405,9 @@ function installCallKeepListeners(RNCallKeep: RNCallKeepModule): void {
                 if (callID) {
                     void dispatchNativeCallAction("end", callID);
                 }
+            }
+            if (event.name === "RNCallKeepDidReceiveStartCallAction") {
+                reportNativeOutgoingCallConnecting(RNCallKeep, callUUID);
             }
         }
     });
@@ -493,6 +503,17 @@ function rememberCallUUID(callID: string): string {
     return uuid;
 }
 
+function reportNativeOutgoingCallConnecting(
+    RNCallKeep: RNCallKeepModule,
+    uuid: string,
+): void {
+    try {
+        RNCallKeep.reportConnectingOutgoingCallWithUUID(uuid);
+    } catch {
+        // iOS-only and advisory; media state still drives the in-app UI.
+    }
+}
+
 async function setNativeCallAvailability(available: boolean): Promise<void> {
     const RNCallKeep = await loadCallKeep();
     if (!RNCallKeep || Platform.OS !== "android") {
@@ -536,6 +557,9 @@ async function setupCallKeep(): Promise<void> {
             },
             ios: {
                 appName: "Vex",
+                audioSession: {
+                    mode: "AVAudioSessionModeVoiceChat",
+                },
                 includesCallsInRecents: false,
                 maximumCallGroups: "1",
                 maximumCallsPerCallGroup: "1",
