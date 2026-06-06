@@ -8,6 +8,8 @@ catalog:
     "@expo/vector-icons": ^15.1.1
     "@nanostores/react": ^1.1.0
     "@notifee/react-native": ^9.1.8
+    "@react-native-firebase/app": 24.0.0
+    "@react-native-firebase/messaging": 24.0.0
     "@tauri-apps/api": ^2.11.0
     "@tauri-apps/cli": ^2.11.0
     "@types/node": ^24.10.1
@@ -37,8 +39,8 @@ catalog:
     nanostores: ^1.2.0
     react: 19.2.0
     react-dom: 19.2.0
-    react-native-passkey: 3.3.3
     react-native-callkeep: ^4.3.16
+    react-native-passkey: 3.3.3
     react-native-voip-push-notification: ^3.3.3
     svelte: ^5.55.7
     typescript: ~5.9.3
