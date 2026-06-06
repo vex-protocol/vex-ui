@@ -6,7 +6,9 @@ import { PermissionsAndroid, Platform } from "react-native";
 
 import notifee, {
     AndroidCategory,
+    AndroidDefaults,
     AndroidImportance,
+    AndroidVisibility,
     EventType,
 } from "@notifee/react-native";
 import { validate as isUuid, v5 as uuidv5 } from "uuid";
@@ -20,10 +22,11 @@ import {
 import { storeNativeCallPushToken } from "./nativeCallPushTokens";
 
 const CALL_UUID_NAMESPACE = "7f4047dd-5f65-4c1c-9a2b-75de28475c9f";
-const CALL_CHANNEL_ID = "vex-native-calls";
+const CALL_CHANNEL_ID = "vex-native-calls-ringing-v2";
 const CALLKEEP_FOREGROUND_CHANNEL_ID = "vex-call-media";
 const GENERIC_CALLER_NAME = "Vex call";
 const INCOMING_CALL_TITLE = "Incoming voice call";
+const CALL_VIBRATION_PATTERN = [300, 600, 300, 600];
 
 interface NativeCallHandlers {
     onAnswer(callID: string): Promise<void> | void;
@@ -297,7 +300,10 @@ async function ensureCallChannel(): Promise<void> {
         id: CALL_CHANNEL_ID,
         importance: AndroidImportance.HIGH,
         name: "Calls",
+        sound: "default",
         vibration: true,
+        vibrationPattern: CALL_VIBRATION_PATTERN,
+        visibility: AndroidVisibility.PUBLIC,
     });
     callChannelReady = true;
 }
@@ -659,17 +665,22 @@ async function showFallbackCallNotification(
             autoCancel: false,
             category: AndroidCategory.CALL,
             channelId: CALL_CHANNEL_ID,
+            defaults: [AndroidDefaults.SOUND, AndroidDefaults.VIBRATE],
             fullScreenAction: {
                 id: "default",
                 launchActivity: "default",
             },
             importance: AndroidImportance.HIGH,
+            loopSound: true,
             ongoing: true,
             pressAction: {
                 id: "default",
                 launchActivity: "default",
             },
             smallIcon: "notification_icon",
+            sound: "default",
+            vibrationPattern: CALL_VIBRATION_PATTERN,
+            visibility: AndroidVisibility.PUBLIC,
         },
         body: displayName,
         data: {

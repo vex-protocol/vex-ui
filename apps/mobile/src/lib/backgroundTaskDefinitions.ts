@@ -39,12 +39,22 @@ if (!TaskManager.isTaskDefined(BACKGROUND_PUSH_NOTIFICATION_TASK)) {
             try {
                 const {
                     runBackgroundSyncFromTask,
+                    showNativeCallFromBackgroundPush,
                     summarizeBackgroundNotificationTaskPayload,
                 } = await import("./backgroundTaskHandlers");
 
                 console.info("[vex-push] background push task received", {
                     ...summarizeBackgroundNotificationTaskPayload(data),
                 });
+
+                await showNativeCallFromBackgroundPush(data).catch(
+                    (err: unknown) => {
+                        console.warn(
+                            "[vex-push] background native call notification failed",
+                            err instanceof Error ? err.message : String(err),
+                        );
+                    },
+                );
 
                 const result =
                     await runBackgroundSyncFromTask("background-push");
