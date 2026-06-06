@@ -559,34 +559,48 @@ async function setupVoipPushTokenRegistration(): Promise<void> {
     if (!VoipPushNotification) {
         return;
     }
-    VoipPushNotification.addEventListener("register", (token) => {
-        void storeNativeCallPushToken({
-            channel: "apnsVoip",
-            token,
-        }).then(() => nativeHandlers?.onNativeCallPushTokenChanged?.());
-    });
-    VoipPushNotification.addEventListener("notification", (notification) => {
-        void handleVoipNotification(notification);
-    });
-    VoipPushNotification.addEventListener("didLoadWithEvents", (events) => {
-        for (const event of events) {
-            if (event.name === "RNVoipPushRemoteNotificationsRegisteredEvent") {
-                const token = event.data;
-                if (typeof token === "string") {
-                    void storeNativeCallPushToken({
-                        channel: "apnsVoip",
-                        token,
-                    }).then(() =>
-                        nativeHandlers?.onNativeCallPushTokenChanged?.(),
-                    );
+    try {
+        VoipPushNotification.addEventListener("register", (token) => {
+            void storeNativeCallPushToken({
+                channel: "apnsVoip",
+                token,
+            }).then(() => nativeHandlers?.onNativeCallPushTokenChanged?.());
+        });
+        VoipPushNotification.addEventListener(
+            "notification",
+            (notification) => {
+                void handleVoipNotification(notification);
+            },
+        );
+        VoipPushNotification.addEventListener("didLoadWithEvents", (events) => {
+            for (const event of events) {
+                if (
+                    event.name ===
+                    "RNVoipPushRemoteNotificationsRegisteredEvent"
+                ) {
+                    const token = event.data;
+                    if (typeof token === "string") {
+                        void storeNativeCallPushToken({
+                            channel: "apnsVoip",
+                            token,
+                        }).then(() =>
+                            nativeHandlers?.onNativeCallPushTokenChanged?.(),
+                        );
+                    }
+                }
+                if (
+                    event.name === "RNVoipPushRemoteNotificationReceivedEvent"
+                ) {
+                    void handleVoipNotification(event.data);
                 }
             }
-            if (event.name === "RNVoipPushRemoteNotificationReceivedEvent") {
-                void handleVoipNotification(event.data);
-            }
-        }
-    });
-    VoipPushNotification.registerVoipToken();
+        });
+    } catch (err: unknown) {
+        console.warn(
+            "[vex-call] VoIP push listener setup failed",
+            err instanceof Error ? err.message : String(err),
+        );
+    }
 }
 
 async function showFallbackCallNotification(
