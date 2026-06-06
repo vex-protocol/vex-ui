@@ -272,6 +272,7 @@ export function setupNotificationHandlers(): () => void {
                 void handleNativeCallBackgroundNotification(
                     data,
                     detail.pressAction?.id,
+                    { dispatchImmediately: true },
                 );
                 return;
             }

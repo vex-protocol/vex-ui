@@ -35,6 +35,10 @@ interface NativeCallHandlers {
     onWakeFromNativePush?(): Promise<void> | void;
 }
 
+interface NativeCallNotificationActionOptions {
+    dispatchImmediately?: boolean;
+}
+
 type RNCallKeepModule = typeof RNCallKeepDefault;
 type RNVoipPushNotificationModule = typeof RNVoipPushNotificationDefault;
 
@@ -95,6 +99,7 @@ export async function endNativeCall(
 export async function handleNativeCallBackgroundNotification(
     data: Record<string, unknown> | undefined,
     actionID: string | undefined,
+    options: NativeCallNotificationActionOptions = {},
 ): Promise<boolean> {
     const action = parseNativeCallNotificationAction(data, actionID);
     if (!action) {
@@ -105,7 +110,11 @@ export async function handleNativeCallBackgroundNotification(
     }
     await cancelFallbackCallNotification(action.callID);
     fallbackNotificationCallIDs.delete(action.callID);
-    await dispatchNativeCallAction(action.kind, action.callID);
+    if (options.dispatchImmediately) {
+        await dispatchNativeCallAction(action.kind, action.callID);
+        return true;
+    }
+    await enqueueNativeCallAction(action);
     return true;
 }
 
