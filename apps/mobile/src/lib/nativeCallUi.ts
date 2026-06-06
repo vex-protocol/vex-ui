@@ -182,6 +182,9 @@ export async function showOutgoingNativeCall(input: {
     displayName?: string;
     peerUserID: string;
 }): Promise<void> {
+    if (Platform.OS === "android") {
+        return;
+    }
     const uuid = rememberCallUUID(input.callID);
     const RNCallKeep = await loadCallKeep();
     if (!RNCallKeep) {
