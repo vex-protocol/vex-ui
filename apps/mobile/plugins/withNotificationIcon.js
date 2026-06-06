@@ -53,6 +53,53 @@ const path = require("path");
 const DRAWABLE_NAME = "notification_icon";
 const NOTIFICATION_ICON_META =
     "expo.modules.notifications.default_notification_icon";
+const FCM_DEFAULT_CHANNEL_META =
+    "com.google.firebase.messaging.default_notification_channel_id";
+const FCM_DEFAULT_COLOR_META =
+    "com.google.firebase.messaging.default_notification_color";
+
+function addToolsReplace(node, value) {
+    const attrs = node.$ ?? {};
+    const existing = attrs["tools:replace"];
+    const values =
+        typeof existing === "string" && existing.length > 0
+            ? existing.split(",").map((item) => item.trim())
+            : [];
+    if (!values.includes(value)) {
+        values.push(value);
+    }
+    node.$ = {
+        ...attrs,
+        "tools:replace": values.join(","),
+    };
+}
+
+function findMetaData(application, name) {
+    return application["meta-data"]?.find(
+        (md) => md?.$?.["android:name"] === name,
+    );
+}
+
+function findOrCreateMetaData(application, name, attrs) {
+    const existing = findMetaData(application, name);
+    if (existing) {
+        return existing;
+    }
+    const node = {
+        $: {
+            "android:name": name,
+            ...attrs,
+        },
+    };
+    application["meta-data"].push(node);
+    return node;
+}
+
+function ensureToolsNamespace(manifest) {
+    manifest.$ = manifest.$ ?? {};
+    manifest.$["xmlns:tools"] =
+        manifest.$["xmlns:tools"] ?? "http://schemas.android.com/tools";
+}
 
 // 24dp viewport is the Android-recommended canvas for status-bar
 // drawables. The path is a stylized "V" stroke from upper-left
@@ -97,14 +144,13 @@ function withNotificationIconDrawable(config) {
 
 function withNotificationIconManifest(config) {
     return withAndroidManifest(config, (cfg) => {
+        ensureToolsNamespace(cfg.modResults.manifest);
         const application = cfg.modResults.manifest.application?.[0];
         if (!application) {
             return cfg;
         }
         application["meta-data"] = application["meta-data"] ?? [];
-        const already = application["meta-data"].some(
-            (md) => md?.$?.["android:name"] === NOTIFICATION_ICON_META,
-        );
+        const already = findMetaData(application, NOTIFICATION_ICON_META);
         if (!already) {
             application["meta-data"].push({
                 $: {
@@ -113,6 +159,18 @@ function withNotificationIconManifest(config) {
                 },
             });
         }
+        const fcmDefaultChannel = findOrCreateMetaData(
+            application,
+            FCM_DEFAULT_CHANNEL_META,
+            { "android:value": "vex-push" },
+        );
+        addToolsReplace(fcmDefaultChannel, "android:value");
+        const fcmDefaultColor = findOrCreateMetaData(
+            application,
+            FCM_DEFAULT_COLOR_META,
+            { "android:resource": "@color/notification_icon_color" },
+        );
+        addToolsReplace(fcmDefaultColor, "android:resource");
         return cfg;
     });
 }
