@@ -11,6 +11,12 @@ import { $user, vexService } from "@vex-chat/store";
 import { atom } from "nanostores";
 
 import { isLocalDevServer } from "./config";
+import {
+    endNativeCall,
+    markNativeCallActive,
+    setNativeCallMuted,
+    showOutgoingNativeCall,
+} from "./nativeCallUi";
 
 const SKIP_LOCAL_AUDIO_CAPTURE_FLAG =
     "EXPO_PUBLIC_VEX_SKIP_LOCAL_AUDIO_CAPTURE";
@@ -227,6 +233,10 @@ class VoiceCallEngine {
 
         if (isTerminalAction(event.action) || event.call.status === "ended") {
             this.pendingIncomingIce.delete(event.call.callID);
+            void endNativeCall(
+                event.call.callID,
+                nativeEndReason(event.action),
+            );
             if (!this.callID || event.call.callID !== this.callID) {
                 return;
             }
@@ -299,6 +309,22 @@ class VoiceCallEngine {
     async rejectIncomingCall(event: CallEvent): Promise<void> {
         this.pendingIncomingIce.delete(event.call.callID);
         await vexService.rejectVoiceCall(event.call.callID);
+        await endNativeCall(event.call.callID, "declined");
+    }
+
+    setMuted(muted: boolean): boolean {
+        const tracks =
+            this.localStream?.getAudioTracks?.() ??
+            this.localStream?.getTracks() ??
+            [];
+        for (const track of tracks) {
+            track.enabled = !muted;
+        }
+        this.updateState({ muted });
+        if (this.callID) {
+            void setNativeCallMuted(this.callID, muted);
+        }
+        return muted;
     }
 
     async startDmCall(
@@ -333,6 +359,16 @@ class VoiceCallEngine {
                     callID: result.event.call.callID,
                     phase: "ringing",
                 });
+                const nativeCallInput: Parameters<
+                    typeof showOutgoingNativeCall
+                >[0] = {
+                    callID: result.event.call.callID,
+                    peerUserID: recipientUserID,
+                };
+                if (peerUsername) {
+                    nativeCallInput.displayName = peerUsername;
+                }
+                void showOutgoingNativeCall(nativeCallInput);
                 this.startCallReconciliation(result.event.call.callID);
                 return;
             }
@@ -353,6 +389,16 @@ class VoiceCallEngine {
                 callID: result.event.call.callID,
                 phase: "ringing",
             });
+            const nativeCallInput: Parameters<
+                typeof showOutgoingNativeCall
+            >[0] = {
+                callID: result.event.call.callID,
+                peerUserID: recipientUserID,
+            };
+            if (peerUsername) {
+                nativeCallInput.displayName = peerUsername;
+            }
+            void showOutgoingNativeCall(nativeCallInput);
             this.startCallReconciliation(result.event.call.callID);
             await this.flushPendingLocalIce();
         } catch (err: unknown) {
@@ -367,15 +413,7 @@ class VoiceCallEngine {
 
     toggleMute(): boolean {
         const nextMuted = !$voiceCallState.get().muted;
-        const tracks =
-            this.localStream?.getAudioTracks?.() ??
-            this.localStream?.getTracks() ??
-            [];
-        for (const track of tracks) {
-            track.enabled = !nextMuted;
-        }
-        this.updateState({ muted: nextMuted });
-        return nextMuted;
+        return this.setMuted(nextMuted);
     }
 
     private async addRemoteIce(candidate: unknown): Promise<void> {
@@ -460,6 +498,7 @@ class VoiceCallEngine {
     }
 
     private async closeLocal(resetState: boolean): Promise<void> {
+        const closingCallID = this.callID;
         this.stopCallReconciliation();
         this.stopMediaConnectTimer();
         this.peerConnection?.close();
@@ -473,6 +512,9 @@ class VoiceCallEngine {
             track.stop?.();
         }
         this.localStream = null;
+        if (closingCallID) {
+            void endNativeCall(closingCallID);
+        }
         if (resetState) {
             $voiceCallState.set(idleState);
             return;
@@ -661,6 +703,9 @@ class VoiceCallEngine {
 
     private markSessionActive(): void {
         this.updateState({ phase: "active" });
+        if (this.callID) {
+            void markNativeCallActive(this.callID);
+        }
         const state = $voiceCallState.get();
         if (state.mediaState === "idle") {
             this.updateState({ mediaError: null, mediaState: "connecting" });
@@ -685,6 +730,9 @@ class VoiceCallEngine {
             mediaState: "signaling-only",
             phase: "active",
         });
+        if (this.callID) {
+            void markNativeCallActive(this.callID);
+        }
     }
 
     private queuePendingIncomingIce(event: CallEvent): void {
@@ -909,6 +957,18 @@ function isWebRTCModule(value: unknown): value is WebRTCModuleLike {
         typeof candidate.RTCIceCandidate === "function" &&
         typeof candidate.mediaDevices?.getUserMedia === "function"
     );
+}
+
+function nativeEndReason(
+    action: CallEvent["action"],
+): "declined" | "missed" | "remoteEnded" {
+    if (action === "reject") {
+        return "declined";
+    }
+    if (action === "timeout") {
+        return "missed";
+    }
+    return "remoteEnded";
 }
 
 function secureRandomHex(byteLength: number): string {

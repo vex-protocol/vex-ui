@@ -1,3 +1,8 @@
+import type {
+    PushNotificationChannel,
+    PushNotificationEvent,
+} from "@vex-chat/store";
+
 import { Platform } from "react-native";
 
 import { $user, vexService } from "@vex-chat/store";
@@ -8,10 +13,19 @@ import { AndroidImportance, IosAuthorizationStatus } from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import { atom } from "nanostores";
 
+import { $nativeCallPushToken } from "./nativeCallPushTokens";
+
 const ENABLED_STORE_KEY = "vex.pushNotifications.enabled.v1";
 const SUBSCRIPTION_KEY_PREFIX = "vex.pushNotifications.subscription.v1";
 const CLEANUP_KEY_PREFIX = "vex.pushNotifications.cleanup.v1";
 const PUSH_CHANNEL_ID = "vex-push-messages-v2";
+const EXPO_EVENTS: PushNotificationEvent[] = [
+    "mail",
+    "deviceRequest",
+    "deviceListChanged",
+    "callWake",
+];
+const CALL_WAKE_EVENTS: PushNotificationEvent[] = ["callWake"];
 
 export type PushNotificationStatus =
     | "denied"
@@ -22,6 +36,13 @@ export type PushNotificationStatus =
     | "subscribed"
     | "subscribing";
 
+interface DesiredSubscription {
+    channel: PushNotificationChannel;
+    events: PushNotificationEvent[];
+    platform: "android" | "ios" | "web";
+    token: string;
+}
+
 interface ExpoConfigWithProjectID {
     extra?: {
         eas?: {
@@ -31,6 +52,9 @@ interface ExpoConfigWithProjectID {
 }
 
 interface StoredSubscription {
+    channel: PushNotificationChannel;
+    events: PushNotificationEvent[];
+    platform: "android" | "ios" | "web";
     subscriptionID: string;
     token: string;
 }
@@ -65,48 +89,72 @@ export async function reconcilePushNotificationSubscription(): Promise<void> {
         logPush("reconciling subscription", {
             platform: Platform.OS,
         });
-        const token = await getExpoPushTokenIfAllowed();
-        if (!token) {
-            logPush("subscription skipped; no push token available");
+        const desired = await collectDesiredSubscriptions();
+        if (desired.length === 0) {
+            logPush("subscription skipped; no push tokens available");
             return;
         }
-        logPush("expo push token ready", {
-            token: redactToken(token),
+
+        const previous = await readStoredSubscriptions();
+        logPush("desired push subscriptions resolved", {
+            channels: desired.map(subscriptionKey).sort(),
+            previous: previous.map(subscriptionKey).sort(),
         });
 
-        const previous = await readStoredSubscription();
-        if (previous) {
-            logPush("found stored subscription", {
-                subscriptionID: previous.subscriptionID,
-                tokenMatches: previous.token === token,
-            });
-        }
-        const subscription = await vexService.subscribePushNotifications({
-            channel: "expo",
-            events: ["mail", "deviceRequest", "deviceListChanged"],
-            platform:
-                Platform.OS === "android" || Platform.OS === "ios"
-                    ? Platform.OS
-                    : "web",
-            token,
-        });
+        const next: StoredSubscription[] = [];
+        const desiredByKey = new Map(
+            desired.map((subscription) => [
+                subscriptionKey(subscription),
+                subscription,
+            ]),
+        );
+        const previousByKey = new Map(
+            previous.map((subscription) => [
+                subscriptionKey(subscription),
+                subscription,
+            ]),
+        );
 
-        if (
-            previous &&
-            previous.subscriptionID !== subscription.subscriptionID
-        ) {
+        for (const stored of previous) {
+            const matching = desiredByKey.get(subscriptionKey(stored));
+            if (matching && storedSubscriptionMatches(stored, matching)) {
+                next.push(stored);
+                continue;
+            }
             await queuePushNotificationSubscriptionCleanup(
-                previous.subscriptionID,
+                stored.subscriptionID,
             );
         }
 
-        await writeStoredSubscription({
-            subscriptionID: subscription.subscriptionID,
-            token,
-        });
-        logPush("server subscription stored", {
-            subscriptionID: subscription.subscriptionID,
-        });
+        for (const subscription of desired) {
+            const previousMatch = previousByKey.get(
+                subscriptionKey(subscription),
+            );
+            if (
+                previousMatch &&
+                storedSubscriptionMatches(previousMatch, subscription)
+            ) {
+                continue;
+            }
+            const response = await vexService.subscribePushNotifications({
+                channel: subscription.channel,
+                events: subscription.events,
+                platform: subscription.platform,
+                token: subscription.token,
+            });
+            next.push({
+                ...subscription,
+                subscriptionID: response.subscriptionID,
+            });
+            logPush("server subscription stored", {
+                channel: subscription.channel,
+                platform: subscription.platform,
+                subscriptionID: response.subscriptionID,
+                token: redactToken(subscription.token),
+            });
+        }
+
+        await writeStoredSubscriptions(next);
 
         await cleanupQueuedPushNotificationSubscriptions();
 
@@ -176,14 +224,14 @@ async function cleanupQueuedPushNotificationSubscriptions(
 async function cleanupStoredPushNotificationSubscription(
     userID?: string,
 ): Promise<boolean> {
-    const previous = await readStoredSubscription(userID);
-    if (previous) {
+    const previous = await readStoredSubscriptions(userID);
+    for (const subscription of previous) {
         await queuePushNotificationSubscriptionCleanup(
-            previous.subscriptionID,
+            subscription.subscriptionID,
             userID,
         );
-        await clearStoredSubscription(userID);
     }
+    await clearStoredSubscriptions(userID);
     return cleanupQueuedPushNotificationSubscriptions(userID);
 }
 
@@ -191,8 +239,50 @@ function cleanupStoreKey(userID = $user.get()?.userID): string {
     return `${CLEANUP_KEY_PREFIX}.${userID ?? "anonymous"}`;
 }
 
-async function clearStoredSubscription(userID?: string): Promise<void> {
+async function clearStoredSubscriptions(userID?: string): Promise<void> {
     await SecureStore.deleteItemAsync(subscriptionStoreKey(userID));
+}
+
+async function collectDesiredSubscriptions(): Promise<DesiredSubscription[]> {
+    const platform = pushPlatform();
+    const desired: DesiredSubscription[] = [];
+
+    const expoToken = await getExpoPushTokenIfAllowed().catch(
+        (err: unknown) => {
+            console.warn(
+                "[vex-push] expo token unavailable",
+                err instanceof Error ? err.message : String(err),
+            );
+            return null;
+        },
+    );
+    if (expoToken) {
+        desired.push({
+            channel: "expo",
+            events: EXPO_EVENTS,
+            platform,
+            token: expoToken,
+        });
+        logPush("expo push token ready", {
+            token: redactToken(expoToken),
+        });
+    }
+
+    const nativeCallToken = await getNativeCallPushTokenIfAllowed();
+    if (nativeCallToken) {
+        desired.push({
+            channel: nativeCallToken.channel,
+            events: CALL_WAKE_EVENTS,
+            platform,
+            token: nativeCallToken.token,
+        });
+        logPush("native call push token ready", {
+            channel: nativeCallToken.channel,
+            token: redactToken(nativeCallToken.token),
+        });
+    }
+
+    return desired;
 }
 
 async function ensureAndroidPushChannel(): Promise<void> {
@@ -211,6 +301,10 @@ async function ensureAndroidPushChannel(): Promise<void> {
         // default behavior.
         vibrationPattern: [0, 250],
     });
+}
+
+function eventsKey(events: PushNotificationEvent[]): string {
+    return uniqueEvents(events).sort().join(",");
 }
 
 async function getExpoPushToken(): Promise<string> {
@@ -260,6 +354,39 @@ async function getExpoPushTokenIfAllowed(): Promise<null | string> {
     return getExpoPushToken();
 }
 
+async function getNativeCallPushTokenIfAllowed(): Promise<null | {
+    channel: Extract<PushNotificationChannel, "apnsVoip" | "fcmCall">;
+    token: string;
+}> {
+    if (Platform.OS === "ios") {
+        return $nativeCallPushToken.get();
+    }
+    if (Platform.OS !== "android") {
+        return null;
+    }
+    await ensureAndroidPushChannel();
+    const settings = await Notifications.getPermissionsAsync();
+    if (!isNotificationPermissionGranted(settings)) {
+        return null;
+    }
+    try {
+        const token: unknown = await Notifications.getDevicePushTokenAsync();
+        const data =
+            typeof token === "object" && token !== null && "data" in token
+                ? (token as { data?: unknown }).data
+                : null;
+        if (typeof data === "string" && data.trim().length > 0) {
+            return { channel: "fcmCall", token: data.trim() };
+        }
+    } catch (err: unknown) {
+        console.warn(
+            "[vex-push] native android push token unavailable",
+            err instanceof Error ? err.message : String(err),
+        );
+    }
+    return null;
+}
+
 function isNotificationPermissionGranted(
     settings: Notifications.NotificationPermissionsStatus,
 ): boolean {
@@ -269,12 +396,67 @@ function isNotificationPermissionGranted(
     );
 }
 
+function isPushNotificationEvent(
+    value: unknown,
+): value is PushNotificationEvent {
+    return (
+        value === "callWake" ||
+        value === "deviceListChanged" ||
+        value === "deviceRequest" ||
+        value === "mail"
+    );
+}
+
 function logPush(message: string, details?: Record<string, unknown>): void {
     if (details) {
         console.info(`[vex-push] ${message}`, details);
         return;
     }
     console.info(`[vex-push] ${message}`);
+}
+
+function parseStoredSubscription(value: unknown): null | StoredSubscription {
+    if (typeof value !== "object" || value === null) {
+        return null;
+    }
+    const obj = value as Record<string, unknown>;
+    if (
+        typeof obj["subscriptionID"] !== "string" ||
+        typeof obj["token"] !== "string"
+    ) {
+        return null;
+    }
+    const channel =
+        obj["channel"] === "apnsVoip" ||
+        obj["channel"] === "expo" ||
+        obj["channel"] === "fcmCall"
+            ? obj["channel"]
+            : "expo";
+    const platform =
+        obj["platform"] === "android" ||
+        obj["platform"] === "ios" ||
+        obj["platform"] === "web"
+            ? obj["platform"]
+            : pushPlatform();
+    const events: PushNotificationEvent[] = Array.isArray(obj["events"])
+        ? obj["events"].filter(isPushNotificationEvent)
+        : channel === "expo"
+          ? ["mail", "deviceRequest", "deviceListChanged"]
+          : ["callWake"];
+    return {
+        channel,
+        events: uniqueEvents(events),
+        platform,
+        subscriptionID: obj["subscriptionID"],
+        token: obj["token"],
+    };
+}
+
+function pushPlatform(): "android" | "ios" | "web" {
+    if (Platform.OS === "android" || Platform.OS === "ios") {
+        return Platform.OS;
+    }
+    return "web";
 }
 
 async function queuePushNotificationSubscriptionCleanup(
@@ -322,32 +504,31 @@ async function readPushNotificationPreference(): Promise<void> {
     }
 }
 
-async function readStoredSubscription(
+async function readStoredSubscriptions(
     userID?: string,
-): Promise<null | StoredSubscription> {
+): Promise<StoredSubscription[]> {
     try {
         const raw = await SecureStore.getItemAsync(
             subscriptionStoreKey(userID),
         );
         if (!raw) {
-            return null;
+            return [];
         }
         const parsed: unknown = JSON.parse(raw);
-        if (
-            typeof parsed === "object" &&
-            parsed !== null &&
-            "subscriptionID" in parsed &&
-            "token" in parsed &&
-            typeof (parsed as { subscriptionID: unknown }).subscriptionID ===
-                "string" &&
-            typeof (parsed as { token: unknown }).token === "string"
-        ) {
-            return parsed as StoredSubscription;
+        if (Array.isArray(parsed)) {
+            return parsed.flatMap((value) => {
+                const subscription = parseStoredSubscription(value);
+                return subscription ? [subscription] : [];
+            });
+        }
+        const legacy = parseStoredSubscription(parsed);
+        if (legacy) {
+            return [legacy];
         }
     } catch {
         // Treat corrupt storage as no subscription.
     }
-    return null;
+    return [];
 }
 
 function redactToken(token: string): string {
@@ -357,8 +538,32 @@ function redactToken(token: string): string {
     return `${token.slice(0, 10)}...${token.slice(-6)}`;
 }
 
+function storedSubscriptionMatches(
+    stored: StoredSubscription,
+    desired: DesiredSubscription,
+): boolean {
+    return (
+        stored.channel === desired.channel &&
+        stored.platform === desired.platform &&
+        stored.token === desired.token &&
+        eventsKey(stored.events) === eventsKey(desired.events)
+    );
+}
+
+function subscriptionKey(
+    subscription: Pick<StoredSubscription, "channel" | "platform">,
+): string {
+    return `${subscription.platform}:${subscription.channel}`;
+}
+
 function subscriptionStoreKey(userID = $user.get()?.userID): string {
     return `${SUBSCRIPTION_KEY_PREFIX}.${userID ?? "anonymous"}`;
+}
+
+function uniqueEvents(
+    events: PushNotificationEvent[],
+): PushNotificationEvent[] {
+    return [...new Set(events)];
 }
 
 function uniqueSubscriptionIDs(subscriptionIDs: string[]): string[] {
@@ -380,11 +585,20 @@ async function writePendingCleanupSubscriptionIDs(
     );
 }
 
-async function writeStoredSubscription(
-    subscription: StoredSubscription,
+async function writeStoredSubscriptions(
+    subscriptions: StoredSubscription[],
 ): Promise<void> {
+    if (subscriptions.length === 0) {
+        await clearStoredSubscriptions();
+        return;
+    }
     await SecureStore.setItemAsync(
         subscriptionStoreKey(),
-        JSON.stringify(subscription),
+        JSON.stringify(
+            subscriptions.map((subscription) => ({
+                ...subscription,
+                events: uniqueEvents(subscription.events),
+            })),
+        ),
     );
 }

@@ -251,9 +251,17 @@ export interface PasskeySignInBegin {
     requestID: string;
 }
 
+export type PushNotificationChannel = "apnsVoip" | "expo" | "fcmCall";
+
+export type PushNotificationEvent =
+    | "callWake"
+    | "deviceListChanged"
+    | "deviceRequest"
+    | "mail";
+
 export interface PushNotificationSubscriptionInput {
-    channel: "expo";
-    events?: string[];
+    channel: PushNotificationChannel;
+    events?: PushNotificationEvent[];
     platform?: "android" | "ios" | "web";
     token: string;
 }
@@ -3556,6 +3564,10 @@ class VexService {
         }
     }
 
+    private handleCallWake(): void {
+        void this.runBackgroundNetworkFetch();
+    }
+
     private handleDirectMessage(msg: Message): void {
         const me = $userWritable.get();
         const isOwnMessage = Boolean(me && msg.authorID === me.userID);
@@ -5744,6 +5756,9 @@ class VexService {
         });
         this.subscribe("call", (event) => {
             this.handleCallEvent(event);
+        });
+        this.subscribe("callWake", () => {
+            this.handleCallWake();
         });
         this.subscribeToDeviceRequestQueueChanges();
         // Initial bind for the socket the freshly-connected client

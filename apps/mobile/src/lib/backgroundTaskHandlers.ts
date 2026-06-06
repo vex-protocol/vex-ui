@@ -4,8 +4,15 @@ import type * as Notifications from "expo-notifications";
 
 import { AppState } from "react-native";
 
-import { $groupMessages, $messages, vexService } from "@vex-chat/store";
+import {
+    $familiars,
+    $groupMessages,
+    $incomingCalls,
+    $messages,
+    vexService,
+} from "@vex-chat/store";
 
+import { showIncomingNativeCall } from "./nativeCallUi";
 import { showMessageNotification } from "./notifications";
 import { runtimeNotifiedMailIDs } from "./runtimeNotificationDedupe";
 
@@ -16,12 +23,16 @@ export async function runBackgroundSyncFromTask(
 ): Promise<BackgroundNetworkFetchResult> {
     try {
         const knownMailIDsBeforeSync = collectKnownMailIDs();
+        const knownIncomingCallIDsBeforeSync = collectKnownIncomingCallIDs();
         const result = await vexService.runBackgroundNetworkFetch();
         console.info("[vex-push] background sync result", {
             result,
             source,
         });
         if (result === "new_data" && AppState.currentState !== "active") {
+            await notifyIncomingCallsDownloadedInBackground(
+                knownIncomingCallIDsBeforeSync,
+            );
             await notifyMessagesDownloadedInBackground(knownMailIDsBeforeSync);
         }
         return result;
@@ -44,6 +55,7 @@ export function summarizeBackgroundNotificationTaskPayload(
         >;
         return {
             actionIdentifier: payload.actionIdentifier,
+            callID: data["callID"],
             event: data["event"],
             keys: Object.keys(data).sort(),
             kind: data["kind"],
@@ -55,6 +67,7 @@ export function summarizeBackgroundNotificationTaskPayload(
     const rawData = payload.data;
     const parsedDataString = parseDataString(rawData["dataString"]);
     return {
+        callID: rawData["callID"] ?? parsedDataString?.["callID"],
         event: rawData["event"] ?? parsedDataString?.["event"],
         keys: Object.keys(rawData).sort(),
         kind: rawData["kind"] ?? parsedDataString?.["kind"],
@@ -64,6 +77,10 @@ export function summarizeBackgroundNotificationTaskPayload(
             : [],
         payloadType: "delivery",
     };
+}
+
+function collectKnownIncomingCallIDs(): Set<string> {
+    return new Set(Object.keys($incomingCalls.get()));
 }
 
 function collectKnownMailIDs(): Set<string> {
@@ -111,6 +128,21 @@ function isNotificationResponsePayload(
     payload: Notifications.NotificationTaskPayload,
 ): payload is Notifications.NotificationResponse {
     return "actionIdentifier" in payload;
+}
+
+async function notifyIncomingCallsDownloadedInBackground(
+    knownBeforeSync: Set<string>,
+): Promise<void> {
+    const familiars = $familiars.get();
+    for (const event of Object.values($incomingCalls.get())) {
+        if (knownBeforeSync.has(event.call.callID)) {
+            continue;
+        }
+        await showIncomingNativeCall(
+            event,
+            familiars[event.fromUserID]?.username ?? undefined,
+        );
+    }
 }
 
 async function notifyMessagesDownloadedInBackground(

@@ -8,6 +8,7 @@ import { registerRootComponent } from "expo";
 
 import "./src/lib/backgroundTaskDefinitions";
 import App from "./App";
+import { handleNativeCallBackgroundNotification } from "./src/lib/nativeCallUi";
 import { enqueueNotificationRouteFromAndroidBackground } from "./src/lib/notificationRouteQueue";
 
 if (__DEV__) {
@@ -16,7 +17,7 @@ if (__DEV__) {
     ]);
 }
 
-notifee.onBackgroundEvent(({ detail, type }) => {
+notifee.onBackgroundEvent(async ({ detail, type }) => {
     const data = detail.notification?.data;
     console.info("[vex-push] notifee background event", {
         hasData: Boolean(data),
@@ -24,14 +25,23 @@ notifee.onBackgroundEvent(({ detail, type }) => {
         type,
     });
 
+    if (type === EventType.ACTION_PRESS) {
+        const handled = await handleNativeCallBackgroundNotification(
+            data,
+            detail.pressAction?.id,
+        );
+        if (handled) {
+            return;
+        }
+    }
+
     if (type !== EventType.PRESS || !data) {
-        return Promise.resolve();
+        return;
     }
     if (data["kind"] !== "dm" && data["kind"] !== "group") {
-        return Promise.resolve();
+        return;
     }
     enqueueNotificationRouteFromAndroidBackground(data);
-    return Promise.resolve();
 });
 
 registerRootComponent(App);
