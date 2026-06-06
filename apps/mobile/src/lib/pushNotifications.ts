@@ -359,6 +359,27 @@ async function getExpoPushTokenIfAllowed(): Promise<null | string> {
     return getExpoPushToken();
 }
 
+async function getFirebaseMessagingToken(): Promise<null | string> {
+    if (Platform.OS !== "android") {
+        return null;
+    }
+    try {
+        const mod = await import("@react-native-firebase/messaging");
+        const messaging = mod.default();
+        await messaging.registerDeviceForRemoteMessages?.();
+        const token = await messaging.getToken();
+        return typeof token === "string" && token.trim().length > 0
+            ? token.trim()
+            : null;
+    } catch (err: unknown) {
+        console.warn(
+            "[vex-push] firebase messaging token unavailable",
+            err instanceof Error ? err.message : String(err),
+        );
+        return null;
+    }
+}
+
 async function getNativeCallPushTokenIfAllowed(): Promise<null | {
     channel: Extract<PushNotificationChannel, "apnsVoip" | "fcmCall">;
     token: string;
@@ -373,6 +394,10 @@ async function getNativeCallPushTokenIfAllowed(): Promise<null | {
     const settings = await Notifications.getPermissionsAsync();
     if (!isNotificationPermissionGranted(settings)) {
         return null;
+    }
+    const firebaseToken = await getFirebaseMessagingToken();
+    if (firebaseToken) {
+        return { channel: "fcmCall", token: firebaseToken };
     }
     try {
         const token: unknown = await Notifications.getDevicePushTokenAsync();
