@@ -488,6 +488,10 @@ class VoiceCallEngine {
         });
         this.localStream = stream;
         const tracks = stream.getTracks();
+        const muted = $voiceCallState.get().muted;
+        for (const track of tracks) {
+            track.enabled = !muted;
+        }
         if (pc.addTrack) {
             for (const track of tracks) {
                 pc.addTrack(track, stream);

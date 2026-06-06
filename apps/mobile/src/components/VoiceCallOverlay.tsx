@@ -29,7 +29,12 @@ import {
     showIncomingNativeCall,
     updateNativeCallDisplay,
 } from "../lib/nativeCallUi";
-import { $voiceCallState, voiceCallEngine } from "../lib/voiceCallEngine";
+import {
+    $voiceCallState,
+    voiceCallEngine,
+    type VoiceCallMediaState,
+    type VoiceCallPhase,
+} from "../lib/voiceCallEngine";
 import { colors, typography } from "../theme";
 
 import { Avatar } from "./Avatar";
@@ -62,13 +67,21 @@ export function VoiceCallOverlay() {
         "Vex user";
     const direction = hasLiveCall ? callState.direction : "incoming";
     const visible = hasLiveCall || Boolean(pendingIncomingEvent);
-    const callTone = callState.error
-        ? "error"
-        : pendingIncomingEvent
-          ? "incoming"
-          : direction === "outgoing"
-            ? "outgoing"
-            : "active";
+    const isOutgoingStartup =
+        direction === "outgoing" &&
+        callState.phase === "connecting" &&
+        !callState.callID;
+    const canEndCall = Boolean(pendingIncomingEvent) || !isOutgoingStartup;
+    const callTone =
+        callState.error ||
+        callState.mediaState === "disconnected" ||
+        callState.mediaState === "failed"
+            ? "error"
+            : pendingIncomingEvent
+              ? "incoming"
+              : direction === "outgoing"
+                ? "outgoing"
+                : "active";
     const statusText = callStatusText({
         direction,
         hasLiveCall,
@@ -149,7 +162,7 @@ export function VoiceCallOverlay() {
     }, [busyAction, peerName, pendingIncomingEvent]);
 
     const endCall = useCallback(async () => {
-        if (busyAction) {
+        if (busyAction || !canEndCall) {
             return;
         }
         setBusyAction("end");
@@ -168,7 +181,7 @@ export function VoiceCallOverlay() {
         } finally {
             setBusyAction(null);
         }
-    }, [busyAction, pendingIncomingEvent]);
+    }, [busyAction, canEndCall, pendingIncomingEvent]);
 
     const toggleMute = useCallback(() => {
         if (busyAction || callState.phase === "idle") {
@@ -312,6 +325,7 @@ export function VoiceCallOverlay() {
                             <CallControl
                                 busy={busyAction === "end"}
                                 color={colors.error}
+                                disabled={!canEndCall}
                                 icon="call"
                                 label={
                                     direction === "outgoing" ? "Cancel" : "End"
@@ -333,6 +347,7 @@ function CallControl({
     active = false,
     busy = false,
     color,
+    disabled = false,
     icon,
     label,
     onPress,
@@ -342,6 +357,7 @@ function CallControl({
     active?: boolean;
     busy?: boolean;
     color: string;
+    disabled?: boolean;
     icon: IconName;
     label: string;
     onPress: () => void;
@@ -353,13 +369,14 @@ function CallControl({
             <Pressable
                 accessibilityLabel={label}
                 accessibilityRole="button"
-                accessibilityState={{ busy, selected: active }}
-                disabled={busy}
+                accessibilityState={{ busy, disabled, selected: active }}
+                disabled={busy || disabled}
                 onPress={onPress}
                 style={({ pressed }) => [
                     styles.controlButton,
                     secondary ? styles.secondaryButton : null,
                     { backgroundColor: color },
+                    disabled && styles.controlDisabled,
                     pressed && styles.controlPressed,
                 ]}
             >
@@ -392,9 +409,9 @@ function callStatusText({
 }: {
     direction: "incoming" | "outgoing" | null;
     hasLiveCall: boolean;
-    mediaState: string;
+    mediaState: VoiceCallMediaState;
     pendingIncoming: boolean;
-    phase: string;
+    phase: VoiceCallPhase;
 }): string {
     if (pendingIncoming) {
         return "Incoming call";
@@ -406,10 +423,19 @@ function callStatusText({
         return "Call failed";
     }
     if (phase === "active") {
-        if (mediaState === "signaling-only") {
-            return "Connected - signaling only";
+        switch (mediaState) {
+            case "connected":
+                return "Connected";
+            case "connecting":
+            case "idle":
+                return "Connecting media";
+            case "disconnected":
+                return "Media interrupted";
+            case "failed":
+                return "Media failed";
+            case "signaling-only":
+                return "Connected - signaling only";
         }
-        return "Connected";
     }
     if (phase === "ringing") {
         return direction === "outgoing" ? "Ringing" : "Incoming call";
@@ -513,6 +539,9 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.36,
         shadowRadius: 18,
         width: 76,
+    },
+    controlDisabled: {
+        opacity: 0.42,
     },
     controlLabel: {
         ...typography.body,
