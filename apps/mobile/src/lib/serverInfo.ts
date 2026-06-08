@@ -27,10 +27,11 @@ export async function fetchConnectedServerInfo(): Promise<ConnectedServerInfo> {
     const options = getServerOptions();
     const baseUrl = `${options.unsafeHttp ? "http" : "https"}://${host}`;
     const checkedAt = new Date().toISOString();
+    const headers = jsonHeaders(options.devApiKey);
 
     const [healthResult, statusResult] = await Promise.allSettled([
-        timedJson(`${baseUrl}/healthz`),
-        timedJson(`${baseUrl}/status`),
+        timedJson(`${baseUrl}/healthz`, headers),
+        timedJson(`${baseUrl}/status`, headers),
     ]);
 
     const health =
@@ -80,6 +81,13 @@ function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
 }
 
+function jsonHeaders(devApiKey: string | undefined): Record<string, string> {
+    return {
+        Accept: "application/json",
+        ...(devApiKey ? { "x-dev-api-key": devApiKey } : {}),
+    };
+}
+
 function numberField(
     record: Record<string, unknown>,
     field: string,
@@ -127,6 +135,7 @@ function stringField(
 
 async function timedJson(
     url: string,
+    headers: Record<string, string>,
 ): Promise<{ data: unknown; valueLatencyMs: number }> {
     const started = Date.now();
     const controller = new AbortController();
@@ -135,7 +144,7 @@ async function timedJson(
     }, SERVER_INFO_TIMEOUT_MS);
     try {
         const response = await publicServerFetch(url, {
-            headers: { Accept: "application/json" },
+            headers,
             signal: controller.signal,
         });
         if (!response.ok) {

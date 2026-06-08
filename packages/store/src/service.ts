@@ -267,8 +267,8 @@ export interface SendMessageOptions {
 /** Server connection options — identical across all auth flows. */
 export interface ServerOptions {
     /**
-     * Local/load-test API key sent as `x-dev-api-key` by libvex.
-     * Only set this for disposable development servers.
+     * Dev-only Spire key. When set, libvex sends it as `x-dev-api-key` on
+     * HTTP requests so local/load-test Spire instances can bypass rate limits.
      */
     devApiKey?: string;
     host: string;
