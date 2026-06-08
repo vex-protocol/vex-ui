@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
     },
     container: {
         alignItems: "center",
-        backgroundColor: colors.bg,
+        backgroundColor: "rgba(9,9,11,0.9)",
         borderBottomColor: colors.borderSubtle,
         borderBottomWidth: 1,
         flexDirection: "row",
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
         paddingRight: 12,
     },
     separator: {
-        color: colors.muted,
+        color: colors.mutedDark,
         fontSize: 14,
     },
     subtitle: {

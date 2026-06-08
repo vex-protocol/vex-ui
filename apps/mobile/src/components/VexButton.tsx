@@ -7,6 +7,8 @@ import {
     type ViewStyle,
 } from "react-native";
 
+import { Ionicons } from "@expo/vector-icons";
+
 import { haptic } from "../lib/haptics";
 import { colors, typography } from "../theme";
 
@@ -15,6 +17,7 @@ import { CornerBracketBox } from "./CornerBracketBox";
 interface VexButtonProps {
     disabled?: boolean;
     glow?: boolean;
+    icon?: keyof typeof Ionicons.glyphMap;
     loading?: boolean;
     onPress: () => void;
     style?: ViewStyle;
@@ -25,6 +28,7 @@ interface VexButtonProps {
 export function VexButton({
     disabled = false,
     glow = false,
+    icon,
     loading = false,
     onPress,
     style,
@@ -67,11 +71,23 @@ export function VexButton({
                 {loading ? (
                     <ActivityIndicator color={colors.text} size="small" />
                 ) : (
-                    <Text
-                        style={[styles.text, !isFilled && styles.outlineText]}
-                    >
-                        {title}
-                    </Text>
+                    <>
+                        {icon ? (
+                            <Ionicons
+                                color={colors.text}
+                                name={icon}
+                                size={16}
+                            />
+                        ) : null}
+                        <Text
+                            style={[
+                                styles.text,
+                                !isFilled && styles.outlineText,
+                            ]}
+                        >
+                            {title}
+                        </Text>
+                    </>
                 )}
             </TouchableOpacity>
         </CornerBracketBox>
@@ -81,7 +97,10 @@ export function VexButton({
 const styles = StyleSheet.create({
     button: {
         alignItems: "center",
+        flexDirection: "row",
+        gap: 8,
         justifyContent: "center",
+        minHeight: 48,
         paddingHorizontal: 48,
         paddingVertical: 14,
     },

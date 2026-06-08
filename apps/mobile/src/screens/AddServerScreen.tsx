@@ -7,6 +7,7 @@ import { StyleSheet, Text, TextInput, View } from "react-native";
 import { parseInviteID } from "@vex-chat/store";
 import { vexService } from "@vex-chat/store";
 
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 
 import { CornerBracketBox } from "../components/CornerBracketBox";
@@ -94,23 +95,27 @@ export function AddServerScreen() {
 
     if (mode === "pick") {
         return (
-            <ScreenLayout>
+            <ScreenLayout glows>
                 <View style={styles.content}>
                     <View style={styles.header}>
-                        <Text style={styles.heading}>Add a server.</Text>
+                        <Text style={styles.kicker}>NEW GROUP</Text>
+                        <Text style={styles.heading}>Create or join</Text>
                         <Text style={styles.subtitle}>
-                            Create your own or join an existing one
+                            Encrypted from the first message. Only members hold
+                            the keys.
                         </Text>
                     </View>
                     <View style={styles.options}>
                         <VexButton
                             glow
+                            icon="add"
                             onPress={() => {
                                 setMode("create");
                             }}
-                            title="Create a server"
+                            title="Create group"
                         />
                         <VexButton
+                            icon="link-outline"
                             onPress={() => {
                                 setMode("join");
                             }}
@@ -125,12 +130,14 @@ export function AddServerScreen() {
 
     if (mode === "create") {
         return (
-            <ScreenLayout>
+            <ScreenLayout glows>
                 <View style={styles.content}>
                     <View style={styles.header}>
-                        <Text style={styles.heading}>Create a server.</Text>
+                        <Text style={styles.kicker}>NEW GROUP</Text>
+                        <Text style={styles.heading}>Create Group</Text>
                         <Text style={styles.subtitle}>
-                            Give your server a name
+                            Encrypted from the first message. Only members hold
+                            the keys.
                         </Text>
                     </View>
 
@@ -140,8 +147,20 @@ export function AddServerScreen() {
                         </View>
                     ) : null}
 
+                    <View style={styles.groupIconWrap}>
+                        <CornerBracketBox color={colors.border} size={8}>
+                            <View style={styles.groupIconBox}>
+                                <Ionicons
+                                    color={colors.muted}
+                                    name="camera-outline"
+                                    size={26}
+                                />
+                            </View>
+                        </CornerBracketBox>
+                    </View>
+
                     <View style={styles.field}>
-                        <Text style={styles.label}>SERVER NAME</Text>
+                        <Text style={styles.label}>GROUP NAME</Text>
                         <CornerBracketBox color={colors.border} size={8}>
                             <TextInput
                                 autoCapitalize="none"
@@ -163,9 +182,10 @@ export function AddServerScreen() {
                         <VexButton
                             disabled={!name.trim()}
                             glow
+                            icon="add"
                             loading={loading}
                             onPress={() => void handleCreate()}
-                            title="Create"
+                            title="Create group"
                         />
                     </View>
                 </View>
@@ -175,10 +195,11 @@ export function AddServerScreen() {
 
     // mode === 'join'
     return (
-        <ScreenLayout>
+        <ScreenLayout glows>
             <View style={styles.content}>
                 <View style={styles.header}>
-                    <Text style={styles.heading}>Join a server.</Text>
+                    <Text style={styles.kicker}>INVITE CODE</Text>
+                    <Text style={styles.heading}>Join Group</Text>
                     <Text style={styles.subtitle}>
                         Enter an invite link or code
                     </Text>
@@ -213,9 +234,10 @@ export function AddServerScreen() {
                     <VexButton
                         disabled={!inviteInput.trim()}
                         glow
+                        icon="link-outline"
                         loading={loading}
                         onPress={() => void handleJoin()}
-                        title="Join"
+                        title="Join group"
                     />
                 </View>
             </View>
@@ -230,7 +252,8 @@ const styles = StyleSheet.create({
     content: {
         flex: 1,
         gap: 24,
-        justifyContent: "center",
+        justifyContent: "flex-start",
+        paddingTop: 18,
     },
     errorBox: {
         backgroundColor: colors.dangerBg,
@@ -245,6 +268,16 @@ const styles = StyleSheet.create({
     field: {
         gap: 6,
     },
+    groupIconBox: {
+        alignItems: "center",
+        backgroundColor: colors.surface,
+        height: 84,
+        justifyContent: "center",
+        width: 84,
+    },
+    groupIconWrap: {
+        alignItems: "center",
+    },
     header: {
         alignItems: "center",
         gap: 8,
@@ -255,11 +288,17 @@ const styles = StyleSheet.create({
         textAlign: "center",
     },
     input: {
-        backgroundColor: colors.surface,
+        backgroundColor: "rgba(255,255,255,0.03)",
+        borderColor: "rgba(255,255,255,0.08)",
+        borderWidth: 1,
         color: colors.textSecondary,
         fontSize: 14,
         paddingHorizontal: 16,
         paddingVertical: 14,
+    },
+    kicker: {
+        ...typography.label,
+        color: colors.accent,
     },
     label: {
         ...typography.label,

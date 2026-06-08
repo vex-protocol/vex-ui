@@ -17,7 +17,7 @@ export function OnboardingEmptyScreen() {
         >();
 
     return (
-        <ScreenLayout>
+        <ScreenLayout glows>
             <View style={styles.body}>
                 <View style={styles.hero}>
                     <Text style={styles.kicker}>NEW ACCOUNT</Text>
@@ -31,12 +31,14 @@ export function OnboardingEmptyScreen() {
                 <View style={styles.actions}>
                     <VexButton
                         glow
+                        icon="add"
                         onPress={() => {
                             navigation.navigate("AddServer");
                         }}
                         title="Create your first group"
                     />
                     <VexButton
+                        icon="link-outline"
                         onPress={() => {
                             navigation.navigate("JoinGroup");
                         }}

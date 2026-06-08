@@ -430,29 +430,28 @@ function formatUnreadCount(count: number): string {
 
 const styles = StyleSheet.create({
     activePill: {
-        backgroundColor: colors.text,
-        borderRadius: 2,
-        height: 28,
+        backgroundColor: colors.accent,
+        height: 22,
         opacity: 0,
-        width: 4,
+        width: 3,
     },
     activePillVisible: {
         opacity: 1,
     },
     addBtn: {
         alignItems: "center",
-        backgroundColor: "#171a22",
-        borderColor: "rgba(255,255,255,0.1)",
-        borderRadius: 18,
+        backgroundColor: colors.transparent,
+        borderColor: colors.border,
+        borderStyle: "dashed",
         borderWidth: 1,
-        height: 56,
+        height: 44,
         justifyContent: "center",
         marginVertical: 4,
-        width: 56,
+        width: 44,
     },
     addText: {
-        color: colors.textSecondary,
-        fontSize: 28,
+        color: colors.success,
+        fontSize: 24,
         marginTop: -2,
     },
     authDotAuthenticated: {
@@ -480,14 +479,11 @@ const styles = StyleSheet.create({
         paddingVertical: 2,
     },
     channelItem: {
-        borderRadius: 8,
         paddingHorizontal: 10,
-        paddingVertical: 8,
+        paddingVertical: 7,
     },
     channelItemActive: {
-        backgroundColor: "rgba(255,255,255,0.09)",
-        borderColor: "rgba(255,255,255,0.16)",
-        borderWidth: 1,
+        backgroundColor: "rgba(231,0,0,0.14)",
     },
     channelItemRow: {
         alignItems: "center",
@@ -499,7 +495,7 @@ const styles = StyleSheet.create({
         fontSize: 13,
     },
     channelItemTextActive: {
-        color: colors.text,
+        color: colors.accentMuted,
         fontWeight: "600",
     },
     channelList: {
@@ -510,8 +506,8 @@ const styles = StyleSheet.create({
         minWidth: 0,
     },
     channelPane: {
-        backgroundColor: "#12151d",
-        borderLeftColor: "rgba(255,255,255,0.08)",
+        backgroundColor: "rgba(9,9,11,0.86)",
+        borderLeftColor: colors.borderSubtle,
         borderLeftWidth: 1,
         flex: 1,
         paddingHorizontal: 10,
@@ -574,8 +570,8 @@ const styles = StyleSheet.create({
         justifyContent: "space-between",
     },
     drawerContainer: {
-        backgroundColor: "#0b0d12",
-        borderRightColor: "rgba(255,255,255,0.08)",
+        backgroundColor: "rgba(0,0,0,0.35)",
+        borderRightColor: colors.borderSubtle,
         borderRightWidth: 1,
         flex: 1,
         flexDirection: "column",
@@ -601,13 +597,12 @@ const styles = StyleSheet.create({
     },
     homeBtn: {
         alignItems: "center",
-        backgroundColor: "#171a22",
+        backgroundColor: colors.surfaceLight,
         borderColor: "rgba(255,255,255,0.1)",
-        borderRadius: 18,
         borderWidth: 1,
-        height: 56,
+        height: 44,
         justifyContent: "center",
-        width: 56,
+        width: 44,
     },
     profileAuthDot: {
         backgroundColor: "#6B7280",
@@ -681,7 +676,7 @@ const styles = StyleSheet.create({
     railContainer: {
         alignItems: "center",
         paddingBottom: 10,
-        width: 80,
+        width: 64,
     },
     serverBadge: {
         alignItems: "center",
@@ -699,17 +694,16 @@ const styles = StyleSheet.create({
     },
     serverBtn: {
         alignItems: "center",
-        backgroundColor: "#171a22",
+        backgroundColor: colors.surfaceLight,
         borderColor: "rgba(255,255,255,0.1)",
-        borderRadius: 18,
         borderWidth: 1,
-        height: 56,
+        height: 44,
         justifyContent: "center",
         marginVertical: 4,
-        width: 56,
+        width: 44,
     },
     serverBtnActive: {
-        backgroundColor: "#1f2430",
+        backgroundColor: colors.accent,
         borderColor: colors.accent,
     },
     serverInitial: {

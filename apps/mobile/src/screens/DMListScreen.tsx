@@ -24,10 +24,12 @@ import {
 import { $dmUnreadCounts } from "@vex-chat/store";
 import { $familiars, $messages, vexService } from "@vex-chat/store";
 
+import { Ionicons } from "@expo/vector-icons";
 import { useStore } from "@nanostores/react";
 
 import { Avatar } from "../components/Avatar";
 import { ChatHeader } from "../components/ChatHeader";
+import { VexField } from "../components/VexField";
 import { colors, typography } from "../theme";
 
 const FRIENDS_DRAWER_WIDTH = 232;
@@ -344,11 +346,7 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
     }
 
     return (
-        <View style={styles.container}>
-            <View pointerEvents="none" style={styles.blackoutLayer} />
-            <View pointerEvents="none" style={styles.glowTop} />
-            <View pointerEvents="none" style={styles.glowBottom} />
-
+        <VexField glows style={styles.container}>
             <ChatHeader
                 onOverflow={() => {
                     toggleFriendsBar();
@@ -358,13 +356,20 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
             />
 
             <View style={styles.searchWrap}>
-                <TextInput
-                    onChangeText={onSearch}
-                    placeholder="Find users by exact username"
-                    placeholderTextColor={colors.mutedDark}
-                    style={styles.searchInput}
-                    value={query}
-                />
+                <View style={styles.searchBox}>
+                    <Ionicons
+                        color={colors.mutedDark}
+                        name="search-outline"
+                        size={16}
+                    />
+                    <TextInput
+                        onChangeText={onSearch}
+                        placeholder="Find users by exact username"
+                        placeholderTextColor={colors.mutedDark}
+                        style={styles.searchInput}
+                        value={query}
+                    />
+                </View>
             </View>
 
             {results.length > 0 && (
@@ -449,18 +454,13 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
                     </Animated.View>
                 </>
             )}
-        </View>
+        </VexField>
     );
 }
 
 const styles = StyleSheet.create({
-    blackoutLayer: {
-        ...StyleSheet.absoluteFill,
-        backgroundColor: "#000000",
-        opacity: 0.72,
-    },
     container: {
-        backgroundColor: "#11131a",
+        backgroundColor: colors.bg,
         flex: 1,
     },
     empty: {
@@ -567,26 +567,6 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: "700",
     },
-    glowBottom: {
-        backgroundColor: colors.accent,
-        borderRadius: 120,
-        bottom: -36,
-        height: 130,
-        left: "36%",
-        opacity: 0.07,
-        position: "absolute",
-        width: 130,
-    },
-    glowTop: {
-        backgroundColor: colors.accent,
-        borderRadius: 120,
-        height: 130,
-        opacity: 0.08,
-        position: "absolute",
-        right: -36,
-        top: -24,
-        width: 130,
-    },
     noFriendsText: {
         ...typography.body,
         color: "rgba(255,255,255,0.52)",
@@ -647,14 +627,23 @@ const styles = StyleSheet.create({
         backgroundColor: "rgba(231,0,0,0.08)",
         borderColor: "rgba(231,0,0,0.35)",
     },
-    searchInput: {
+    searchBox: {
+        alignItems: "center",
         backgroundColor: "rgba(255,255,255,0.03)",
-        borderColor: "rgba(255,255,255,0.1)",
+        borderColor: "rgba(255,255,255,0.08)",
         borderWidth: 1,
-        color: colors.textSecondary,
-        fontSize: 14,
+        flexDirection: "row",
+        gap: 8,
+        minHeight: 42,
         paddingHorizontal: 12,
         paddingVertical: 10,
+    },
+    searchInput: {
+        ...typography.body,
+        color: colors.textSecondary,
+        flex: 1,
+        fontSize: 14,
+        padding: 0,
     },
     searchWrap: {
         paddingHorizontal: 14,

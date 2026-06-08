@@ -31,6 +31,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChatHeader } from "../components/ChatHeader";
 import { MessageBubbleRN } from "../components/MessageBubbleRN";
 import { MessageInputBar } from "../components/MessageInputBar";
+import { VexField } from "../components/VexField";
 import {
     cameraPhotoAttachmentFromUri,
     pickFileAttachment,
@@ -490,71 +491,73 @@ export function ConversationScreen({
             keyboardVerticalOffset={insets.top}
             style={styles.container}
         >
-            <ChatHeader
-                onTitlePress={() => {
-                    navigation.navigate("DMList");
-                }}
-                onVoiceCall={startVoiceCall}
-                subtitle={`@${username}`}
-                title="Direct Messages"
-            />
-
-            {messages.length === 0 ? (
-                <View style={styles.empty}>
-                    <Text style={styles.emptyText}>No messages yet.</Text>
-                    <Text style={styles.emptyHint}>
-                        Say hello to {username}!
-                    </Text>
-                </View>
-            ) : (
-                <FlatList
-                    contentContainerStyle={styles.list}
-                    data={messages}
-                    inverted
-                    keyExtractor={(m) => m.mailID}
-                    onScrollToIndexFailed={(info) => {
-                        listRef.current?.scrollToOffset({
-                            animated: true,
-                            offset: info.averageItemLength * info.index,
-                        });
+            <VexField style={styles.field}>
+                <ChatHeader
+                    onTitlePress={() => {
+                        navigation.navigate("DMList");
                     }}
-                    ref={listRef}
-                    renderItem={renderMessage}
+                    onVoiceCall={startVoiceCall}
+                    subtitle={`@${username}`}
+                    title="Direct Messages"
                 />
-            )}
 
-            {error !== "" && (
-                <View style={styles.errorBar}>
-                    <Text style={styles.errorText}>{error}</Text>
-                </View>
-            )}
+                {messages.length === 0 ? (
+                    <View style={styles.empty}>
+                        <Text style={styles.emptyText}>No messages yet.</Text>
+                        <Text style={styles.emptyHint}>
+                            Say hello to {username}!
+                        </Text>
+                    </View>
+                ) : (
+                    <FlatList
+                        contentContainerStyle={styles.list}
+                        data={messages}
+                        inverted
+                        keyExtractor={(m) => m.mailID}
+                        onScrollToIndexFailed={(info) => {
+                            listRef.current?.scrollToOffset({
+                                animated: true,
+                                offset: info.averageItemLength * info.index,
+                            });
+                        }}
+                        ref={listRef}
+                        renderItem={renderMessage}
+                    />
+                )}
 
-            <MessageInputBar
-                attachment={attachment}
-                bottomInset={insets.bottom}
-                editing={editingMessage !== null}
-                onAttachPress={openAttachmentMenu}
-                onCancelEdit={() => {
-                    setEditingMessage(null);
-                    setText("");
-                }}
-                onCancelReply={() => {
-                    setReplyingToMessage(null);
-                }}
-                onChangeText={setText}
-                onRemoveAttachment={() => {
-                    setAttachment(null);
-                }}
-                onSend={() => void sendMessage()}
-                onVoiceMemoError={setError}
-                onVoiceMemoRecorded={setAttachment}
-                placeholder={
-                    editingMessage ? "Edit message" : `Message @${username}`
-                }
-                replyingTo={replyReference}
-                sending={sending || attachingCameraPhoto}
-                value={text}
-            />
+                {error !== "" && (
+                    <View style={styles.errorBar}>
+                        <Text style={styles.errorText}>{error}</Text>
+                    </View>
+                )}
+
+                <MessageInputBar
+                    attachment={attachment}
+                    bottomInset={insets.bottom}
+                    editing={editingMessage !== null}
+                    onAttachPress={openAttachmentMenu}
+                    onCancelEdit={() => {
+                        setEditingMessage(null);
+                        setText("");
+                    }}
+                    onCancelReply={() => {
+                        setReplyingToMessage(null);
+                    }}
+                    onChangeText={setText}
+                    onRemoveAttachment={() => {
+                        setAttachment(null);
+                    }}
+                    onSend={() => void sendMessage()}
+                    onVoiceMemoError={setError}
+                    onVoiceMemoRecorded={setAttachment}
+                    placeholder={
+                        editingMessage ? "Edit message" : `Message @${username}`
+                    }
+                    replyingTo={replyReference}
+                    sending={sending || attachingCameraPhoto}
+                    value={text}
+                />
+            </VexField>
         </KeyboardAvoidingView>
     );
 }
@@ -596,6 +599,9 @@ const styles = StyleSheet.create({
     errorText: {
         ...typography.body,
         color: colors.error,
+    },
+    field: {
+        flex: 1,
     },
     list: {
         paddingVertical: 8,

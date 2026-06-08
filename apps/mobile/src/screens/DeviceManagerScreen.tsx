@@ -16,6 +16,7 @@ import { useFocusEffect } from "@react-navigation/native";
 
 import { ChatHeader } from "../components/ChatHeader";
 import { MenuRow, MenuSection } from "../components/MenuRow";
+import { VexField } from "../components/VexField";
 import { colors, typography } from "../theme";
 
 export function DeviceManagerScreen({
@@ -98,7 +99,7 @@ export function DeviceManagerScreen({
     const currentDeviceID = sessionInfo?.deviceID;
 
     return (
-        <View style={styles.container}>
+        <VexField style={styles.container}>
             <ChatHeader title="Device Manager" />
             <ScrollView
                 contentContainerStyle={styles.content}
@@ -179,7 +180,7 @@ export function DeviceManagerScreen({
                     </View>
                 ) : null}
             </ScrollView>
-        </View>
+        </VexField>
     );
 }
 

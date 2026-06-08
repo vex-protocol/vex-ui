@@ -44,6 +44,7 @@ import { Avatar } from "../components/Avatar";
 import { ChatHeader } from "../components/ChatHeader";
 import { MessageBubbleRN } from "../components/MessageBubbleRN";
 import { MessageInputBar } from "../components/MessageInputBar";
+import { VexField } from "../components/VexField";
 import {
     cameraPhotoAttachmentFromUri,
     pickFileAttachment,
@@ -824,111 +825,115 @@ export function ChannelScreen({
             keyboardVerticalOffset={insets.top}
             style={styles.container}
         >
-            <ChatHeader
-                onOverflow={() => {
-                    navigation.navigate("ServerSettings", {
-                        serverID,
-                        serverName,
-                    });
-                }}
-                onUsers={() => {
-                    toggleMembersDrawer();
-                }}
-                subtitle={`# ${channelName}`}
-                title={serverName || "Server"}
-            />
+            <VexField style={styles.field}>
+                <ChatHeader
+                    onOverflow={() => {
+                        navigation.navigate("ServerSettings", {
+                            serverID,
+                            serverName,
+                        });
+                    }}
+                    onUsers={() => {
+                        toggleMembersDrawer();
+                    }}
+                    subtitle={`# ${channelName}`}
+                    title={serverName || "Server"}
+                />
 
-            <FlatList
-                contentContainerStyle={styles.list}
-                data={messages}
-                inverted
-                keyExtractor={(m) => m.mailID}
-                onScrollToIndexFailed={(info) => {
-                    listRef.current?.scrollToOffset({
-                        animated: true,
-                        offset: info.averageItemLength * info.index,
-                    });
-                }}
-                ref={listRef}
-                renderItem={renderMessage}
-            />
+                <FlatList
+                    contentContainerStyle={styles.list}
+                    data={messages}
+                    inverted
+                    keyExtractor={(m) => m.mailID}
+                    onScrollToIndexFailed={(info) => {
+                        listRef.current?.scrollToOffset({
+                            animated: true,
+                            offset: info.averageItemLength * info.index,
+                        });
+                    }}
+                    ref={listRef}
+                    renderItem={renderMessage}
+                />
 
-            {sendError !== "" && (
-                <View style={styles.errorBar}>
-                    <Text style={styles.errorText}>{sendError}</Text>
-                </View>
-            )}
+                {sendError !== "" && (
+                    <View style={styles.errorBar}>
+                        <Text style={styles.errorText}>{sendError}</Text>
+                    </View>
+                )}
 
-            <MessageInputBar
-                attachment={attachment}
-                bottomInset={insets.bottom}
-                editing={editingMessage !== null}
-                onAttachPress={openAttachmentMenu}
-                onCancelEdit={() => {
-                    setEditingMessage(null);
-                    setText("");
-                }}
-                onCancelReply={() => {
-                    setReplyingToMessage(null);
-                }}
-                onChangeText={setText}
-                onRemoveAttachment={() => {
-                    setAttachment(null);
-                }}
-                onSend={() => void sendMessage()}
-                onVoiceMemoError={setSendError}
-                onVoiceMemoRecorded={setAttachment}
-                placeholder={
-                    editingMessage ? "Edit message" : `Message #${channelName}`
-                }
-                replyingTo={replyReference}
-                sending={sending || attachingCameraPhoto}
-                value={text}
-            />
-            {membersDrawerVisible && (
-                <>
-                    <Animated.View
-                        pointerEvents="none"
-                        style={[
-                            styles.membersBackdrop,
-                            { opacity: membersBackdropOpacity },
-                        ]}
-                    />
-                    <Pressable
-                        onPress={() => {
-                            closeMembersDrawer();
-                        }}
-                        style={styles.membersBackdropPressable}
-                    />
-                    <Animated.View
-                        pointerEvents="auto"
-                        style={[
-                            styles.membersDrawer,
-                            { transform: [{ translateX: membersDrawerX }] },
-                        ]}
-                    >
-                        <View style={styles.membersDrawerHeader}>
-                            <Text style={styles.membersDrawerTitle}>
-                                MEMBERS
-                            </Text>
-                            <Text style={styles.membersDrawerMeta}>
-                                {members.length}
-                            </Text>
-                        </View>
-                        {members.length === 0 ? (
-                            <Text style={styles.membersEmptyText}>
-                                No members found for this channel.
-                            </Text>
-                        ) : (
-                            <FlatList
-                                data={orderedMembers}
-                                keyExtractor={(member) => member.userID}
-                                renderItem={renderMember}
-                            />
-                        )}
-                    </Animated.View>
-                </>
-            )}
+                <MessageInputBar
+                    attachment={attachment}
+                    bottomInset={insets.bottom}
+                    editing={editingMessage !== null}
+                    onAttachPress={openAttachmentMenu}
+                    onCancelEdit={() => {
+                        setEditingMessage(null);
+                        setText("");
+                    }}
+                    onCancelReply={() => {
+                        setReplyingToMessage(null);
+                    }}
+                    onChangeText={setText}
+                    onRemoveAttachment={() => {
+                        setAttachment(null);
+                    }}
+                    onSend={() => void sendMessage()}
+                    onVoiceMemoError={setSendError}
+                    onVoiceMemoRecorded={setAttachment}
+                    placeholder={
+                        editingMessage
+                            ? "Edit message"
+                            : `Message #${channelName}`
+                    }
+                    replyingTo={replyReference}
+                    sending={sending || attachingCameraPhoto}
+                    value={text}
+                />
+                {membersDrawerVisible && (
+                    <>
+                        <Animated.View
+                            pointerEvents="none"
+                            style={[
+                                styles.membersBackdrop,
+                                { opacity: membersBackdropOpacity },
+                            ]}
+                        />
+                        <Pressable
+                            onPress={() => {
+                                closeMembersDrawer();
+                            }}
+                            style={styles.membersBackdropPressable}
+                        />
+                        <Animated.View
+                            pointerEvents="auto"
+                            style={[
+                                styles.membersDrawer,
+                                { transform: [{ translateX: membersDrawerX }] },
+                            ]}
+                        >
+                            <View style={styles.membersDrawerHeader}>
+                                <Text style={styles.membersDrawerTitle}>
+                                    MEMBERS
+                                </Text>
+                                <Text style={styles.membersDrawerMeta}>
+                                    {members.length}
+                                </Text>
+                            </View>
+                            {members.length === 0 ? (
+                                <Text style={styles.membersEmptyText}>
+                                    No members found for this channel.
+                                </Text>
+                            ) : (
+                                <FlatList
+                                    data={orderedMembers}
+                                    keyExtractor={(member) => member.userID}
+                                    renderItem={renderMember}
+                                />
+                            )}
+                        </Animated.View>
+                    </>
+                )}
+            </VexField>
         </KeyboardAvoidingView>
     );
 }
@@ -954,6 +959,9 @@ const styles = StyleSheet.create({
     errorText: {
         ...typography.body,
         color: colors.error,
+    },
+    field: {
+        flex: 1,
     },
     list: {
         paddingVertical: 8,

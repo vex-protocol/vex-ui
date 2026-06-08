@@ -36,6 +36,7 @@ import * as ImagePicker from "expo-image-picker";
 import { Avatar } from "../components/Avatar";
 import { ChatHeader } from "../components/ChatHeader";
 import { MenuRow, MenuSection } from "../components/MenuRow";
+import { VexField } from "../components/VexField";
 import {
     $appUpdateState,
     checkForAppUpdates,
@@ -830,7 +831,7 @@ export function SettingsSectionScreen({
     }
 
     return (
-        <View style={styles.container}>
+        <VexField style={styles.container}>
             <ChatHeader title={title} />
             <ScrollView
                 contentContainerStyle={styles.content}
@@ -1240,7 +1241,7 @@ export function SettingsSectionScreen({
                     </>
                 ) : null}
             </ScrollView>
-        </View>
+        </VexField>
     );
 }
 

@@ -18,6 +18,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { ChatHeader } from "../components/ChatHeader";
 import { MenuRow, MenuSection } from "../components/MenuRow";
 import { VexButton } from "../components/VexButton";
+import { VexField } from "../components/VexField";
 import { haptic } from "../lib/haptics";
 import {
     isPasskeySupported,
@@ -172,7 +173,7 @@ export function PasskeysScreen() {
     }
 
     return (
-        <View style={styles.container}>
+        <VexField glows style={styles.container}>
             <ChatHeader title="Passkeys" />
             <ScrollView
                 contentContainerStyle={styles.content}
@@ -272,7 +273,7 @@ export function PasskeysScreen() {
                     </View>
                 ) : null}
             </ScrollView>
-        </View>
+        </VexField>
     );
 }
 
