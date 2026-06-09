@@ -39,7 +39,7 @@ catalog:
     svelte: ^5.55.7
     typescript: ~5.9.3
     uuid: ^14.0.0
-    vitest: 3.2.4
+    vitest: 3.2.6
     zod: ^4.1.12
 
 catalogMode: strict
