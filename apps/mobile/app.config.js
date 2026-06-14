@@ -118,6 +118,7 @@ module.exports = ({ config }) => {
         new Set([
             ...(config.android?.permissions ?? []),
             "BLUETOOTH_CONNECT",
+            "CAMERA",
             "FOREGROUND_SERVICE",
             "FOREGROUND_SERVICE_DATA_SYNC",
             "MODIFY_AUDIO_SETTINGS",
@@ -212,6 +213,15 @@ module.exports = ({ config }) => {
                 {
                     supportsBackgroundPlayback: false,
                     supportsPictureInPicture: false,
+                },
+            ],
+            [
+                "expo-camera",
+                {
+                    barcodeScannerEnabled: false,
+                    cameraPermission:
+                        "Allow $(PRODUCT_NAME) to use the camera to take photos to send in chats.",
+                    recordAudioAndroid: false,
                 },
             ],
             "expo-background-task",

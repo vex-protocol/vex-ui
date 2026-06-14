@@ -44,7 +44,15 @@ import { Avatar } from "../components/Avatar";
 import { ChatHeader } from "../components/ChatHeader";
 import { MessageBubbleRN } from "../components/MessageBubbleRN";
 import { MessageInputBar } from "../components/MessageInputBar";
-import { pickFileAttachment, pickImageAttachment } from "../lib/attachments";
+import {
+    cameraPhotoAttachmentFromUri,
+    pickFileAttachment,
+    pickImageAttachment,
+} from "../lib/attachments";
+import {
+    $cameraCaptureResult,
+    clearCameraCaptureResult,
+} from "../lib/cameraCaptureResult";
 import { haptic } from "../lib/haptics";
 import { $leftSidebarOpen, $rightSidebarOpen } from "../lib/sidebarState";
 import { colors, typography } from "../theme";
@@ -70,6 +78,7 @@ export function ChannelScreen({
     const permissions = useStore($permissions);
     // Scoped to just this server's slot so other server churn doesn't re-render us.
     const servers = useStore($servers);
+    const cameraCaptureResult = useStore($cameraCaptureResult);
     const user = useStore($user);
     const serverName = servers[serverID]?.name ?? "";
 
@@ -107,6 +116,7 @@ export function ChannelScreen({
     const [sending, setSending] = useState(false);
     const [sendError, setSendError] = useState("");
     const sendInFlightRef = useRef(false);
+    const handledCameraCaptureRequestIdRef = useRef<null | number>(null);
     const listRef = useRef<FlatList<Message>>(null);
     const [members, setMembers] = useState<User[]>([]);
     const [serverPermissions, setServerPermissions] = useState<Permission[]>(
@@ -138,6 +148,40 @@ export function ChannelScreen({
                   )
                 : null,
         [authorNameForMessage, liveReplyingToMessage],
+    );
+
+    useFocusEffect(
+        useCallback(() => {
+            if (
+                !cameraCaptureResult ||
+                handledCameraCaptureRequestIdRef.current ===
+                    cameraCaptureResult.requestId
+            ) {
+                return;
+            }
+            handledCameraCaptureRequestIdRef.current =
+                cameraCaptureResult.requestId;
+            clearCameraCaptureResult();
+
+            void (async () => {
+                setSendError("");
+                try {
+                    const picked = await cameraPhotoAttachmentFromUri({
+                        height: cameraCaptureResult.height,
+                        uri: cameraCaptureResult.uri,
+                        width: cameraCaptureResult.width,
+                    });
+                    setEditingMessage(null);
+                    setAttachment(picked);
+                } catch (err: unknown) {
+                    setSendError(
+                        err instanceof Error
+                            ? err.message
+                            : "Could not attach photo",
+                    );
+                }
+            })();
+        }, [cameraCaptureResult]),
     );
 
     const membersBackdropOpacity = useMemo(
@@ -541,9 +585,16 @@ export function ChannelScreen({
             { style: "cancel", text: "Cancel" },
             {
                 onPress: () => {
+                    setSendError("");
+                    navigation.navigate("CameraCapture");
+                },
+                text: "Camera",
+            },
+            {
+                onPress: () => {
                     handlePickAttachment("image");
                 },
-                text: "Photo",
+                text: "Photo Library",
             },
             {
                 onPress: () => {
@@ -552,7 +603,7 @@ export function ChannelScreen({
                 text: "File",
             },
         ]);
-    }, [handlePickAttachment, sending]);
+    }, [handlePickAttachment, navigation, sending]);
 
     const deleteMessageForEveryone = useCallback(
         (message: Message) => {

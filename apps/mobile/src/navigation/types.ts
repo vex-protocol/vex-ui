@@ -12,6 +12,7 @@ export type AppStackParamList = {
         sourceUri: string;
         sourceWidth: number;
     };
+    CameraCapture: undefined;
     Channel: { channelID: string; channelName: string; serverID: string };
     ChannelList: { serverID: string; serverName?: string };
     Conversation: { userID: string; username: string };

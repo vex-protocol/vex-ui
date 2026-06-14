@@ -31,7 +31,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChatHeader } from "../components/ChatHeader";
 import { MessageBubbleRN } from "../components/MessageBubbleRN";
 import { MessageInputBar } from "../components/MessageInputBar";
-import { pickFileAttachment, pickImageAttachment } from "../lib/attachments";
+import {
+    cameraPhotoAttachmentFromUri,
+    pickFileAttachment,
+    pickImageAttachment,
+} from "../lib/attachments";
+import {
+    $cameraCaptureResult,
+    clearCameraCaptureResult,
+} from "../lib/cameraCaptureResult";
 import { voiceCallEngine } from "../lib/voiceCallEngine";
 import { colors, typography } from "../theme";
 
@@ -43,6 +51,7 @@ export function ConversationScreen({
 }: AppScreenProps<"Conversation">) {
     const { userID, username } = route.params;
     const allMessages = useStore($messages);
+    const cameraCaptureResult = useStore($cameraCaptureResult);
     const user = useStore($user);
 
     // Store keeps messages oldest-first; inverted FlatList needs newest-first
@@ -78,6 +87,7 @@ export function ConversationScreen({
     const [sending, setSending] = useState(false);
     const [error, setError] = useState("");
     const listRef = useRef<FlatList<Message>>(null);
+    const handledCameraCaptureRequestIdRef = useRef<null | number>(null);
     const sendInFlightRef = useRef(false);
     const insets = useSafeAreaInsets();
     const authorNameForMessage = useCallback(
@@ -99,6 +109,40 @@ export function ConversationScreen({
                   )
                 : null,
         [authorNameForMessage, liveReplyingToMessage],
+    );
+
+    useFocusEffect(
+        useCallback(() => {
+            if (
+                !cameraCaptureResult ||
+                handledCameraCaptureRequestIdRef.current ===
+                    cameraCaptureResult.requestId
+            ) {
+                return;
+            }
+            handledCameraCaptureRequestIdRef.current =
+                cameraCaptureResult.requestId;
+            clearCameraCaptureResult();
+
+            void (async () => {
+                setError("");
+                try {
+                    const picked = await cameraPhotoAttachmentFromUri({
+                        height: cameraCaptureResult.height,
+                        uri: cameraCaptureResult.uri,
+                        width: cameraCaptureResult.width,
+                    });
+                    setEditingMessage(null);
+                    setAttachment(picked);
+                } catch (err: unknown) {
+                    setError(
+                        err instanceof Error
+                            ? err.message
+                            : "Could not attach photo",
+                    );
+                }
+            })();
+        }, [cameraCaptureResult]),
     );
 
     const sendMessage = useCallback(async () => {
@@ -268,9 +312,16 @@ export function ConversationScreen({
             { style: "cancel", text: "Cancel" },
             {
                 onPress: () => {
+                    setError("");
+                    navigation.navigate("CameraCapture");
+                },
+                text: "Camera",
+            },
+            {
+                onPress: () => {
                     handlePickAttachment("image");
                 },
-                text: "Photo",
+                text: "Photo Library",
             },
             {
                 onPress: () => {
@@ -279,7 +330,7 @@ export function ConversationScreen({
                 text: "File",
             },
         ]);
-    }, [handlePickAttachment, sending]);
+    }, [handlePickAttachment, navigation, sending]);
 
     const startVoiceCall = useCallback(() => {
         setError("");
