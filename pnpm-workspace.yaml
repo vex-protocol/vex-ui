@@ -13,7 +13,7 @@ catalog:
     "@vex-chat/libvex": 7.1.5
     "@vex-chat/spire": 2.3.4
     "@vex-chat/types": 4.0.0
-    dompurify: ^3.4.0
+    dompurify: ^3.4.9
     expo-background-fetch: ~55.0.15
     expo-background-task: ~55.0.17
     expo-audio: ~55.0.14
