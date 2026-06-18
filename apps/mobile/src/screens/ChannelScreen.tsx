@@ -114,8 +114,10 @@ export function ChannelScreen({
         null,
     );
     const [sending, setSending] = useState(false);
+    const [attachingCameraPhoto, setAttachingCameraPhoto] = useState(false);
     const [sendError, setSendError] = useState("");
     const sendInFlightRef = useRef(false);
+    const cameraAttachmentInFlightRef = useRef(false);
     const handledCameraCaptureRequestIdRef = useRef<null | number>(null);
     const listRef = useRef<FlatList<Message>>(null);
     const [members, setMembers] = useState<User[]>([]);
@@ -159,9 +161,18 @@ export function ChannelScreen({
             ) {
                 return;
             }
+            if (
+                cameraCaptureResult.source.kind !== "channel" ||
+                cameraCaptureResult.source.channelID !== channelID ||
+                cameraCaptureResult.source.serverID !== serverID
+            ) {
+                return;
+            }
             handledCameraCaptureRequestIdRef.current =
                 cameraCaptureResult.requestId;
             clearCameraCaptureResult();
+            cameraAttachmentInFlightRef.current = true;
+            setAttachingCameraPhoto(true);
 
             void (async () => {
                 setSendError("");
@@ -179,9 +190,12 @@ export function ChannelScreen({
                             ? err.message
                             : "Could not attach photo",
                     );
+                } finally {
+                    cameraAttachmentInFlightRef.current = false;
+                    setAttachingCameraPhoto(false);
                 }
             })();
-        }, [cameraCaptureResult]),
+        }, [cameraCaptureResult, channelID, serverID]),
     );
 
     const membersBackdropOpacity = useMemo(
@@ -422,7 +436,12 @@ export function ChannelScreen({
         const pendingAttachment = attachment;
         const pendingReply = liveReplyingToMessage;
         if (pendingEdit) {
-            if (!content || !user || sendInFlightRef.current) {
+            if (
+                !content ||
+                !user ||
+                sendInFlightRef.current ||
+                cameraAttachmentInFlightRef.current
+            ) {
                 return;
             }
             sendInFlightRef.current = true;
@@ -461,7 +480,8 @@ export function ChannelScreen({
         if (
             (!content && !pendingAttachment) ||
             !user ||
-            sendInFlightRef.current
+            sendInFlightRef.current ||
+            cameraAttachmentInFlightRef.current
         ) {
             return;
         }
@@ -580,13 +600,15 @@ export function ChannelScreen({
     );
 
     const openAttachmentMenu = useCallback(() => {
-        if (sending) return;
+        if (sending || attachingCameraPhoto) return;
         Alert.alert("Attach", undefined, [
             { style: "cancel", text: "Cancel" },
             {
                 onPress: () => {
                     setSendError("");
-                    navigation.navigate("CameraCapture");
+                    navigation.navigate("CameraCapture", {
+                        source: { channelID, kind: "channel", serverID },
+                    });
                 },
                 text: "Camera",
             },
@@ -603,7 +625,14 @@ export function ChannelScreen({
                 text: "File",
             },
         ]);
-    }, [handlePickAttachment, navigation, sending]);
+    }, [
+        attachingCameraPhoto,
+        channelID,
+        handlePickAttachment,
+        navigation,
+        sending,
+        serverID,
+    ]);
 
     const deleteMessageForEveryone = useCallback(
         (message: Message) => {
@@ -853,7 +882,7 @@ export function ChannelScreen({
                     editingMessage ? "Edit message" : `Message #${channelName}`
                 }
                 replyingTo={replyReference}
-                sending={sending}
+                sending={sending || attachingCameraPhoto}
                 value={text}
             />
             {membersDrawerVisible && (

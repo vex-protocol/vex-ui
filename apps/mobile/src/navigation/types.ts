@@ -1,3 +1,4 @@
+import type { CameraCaptureSource } from "../lib/cameraCaptureResult";
 import type { NavigatorScreenParams } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
@@ -12,7 +13,7 @@ export type AppStackParamList = {
         sourceUri: string;
         sourceWidth: number;
     };
-    CameraCapture: undefined;
+    CameraCapture: { source: CameraCaptureSource };
     Channel: { channelID: string; channelName: string; serverID: string };
     ChannelList: { serverID: string; serverName?: string };
     Conversation: { userID: string; username: string };

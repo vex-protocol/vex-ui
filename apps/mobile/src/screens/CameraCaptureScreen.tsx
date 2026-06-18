@@ -33,7 +33,9 @@ interface IconButtonProps {
 
 export function CameraCaptureScreen({
     navigation,
+    route,
 }: AppScreenProps<"CameraCapture">) {
+    const { source } = route.params;
     const cameraRef = useRef<CameraView | null>(null);
     const isFocused = useIsFocused();
     const [permission, requestPermission] = useCameraPermissions();
@@ -138,11 +140,12 @@ export function CameraCaptureScreen({
         $cameraCaptureResult.set({
             height: capturedPhoto.height,
             requestId: nextCameraCaptureRequestId(),
+            source,
             uri: capturedPhoto.uri,
             width: capturedPhoto.width,
         });
         navigation.goBack();
-    }, [capturedPhoto, navigation]);
+    }, [capturedPhoto, navigation, source]);
 
     if (!permission) {
         return (

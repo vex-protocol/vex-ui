@@ -85,8 +85,10 @@ export function ConversationScreen({
         null,
     );
     const [sending, setSending] = useState(false);
+    const [attachingCameraPhoto, setAttachingCameraPhoto] = useState(false);
     const [error, setError] = useState("");
     const listRef = useRef<FlatList<Message>>(null);
+    const cameraAttachmentInFlightRef = useRef(false);
     const handledCameraCaptureRequestIdRef = useRef<null | number>(null);
     const sendInFlightRef = useRef(false);
     const insets = useSafeAreaInsets();
@@ -120,9 +122,17 @@ export function ConversationScreen({
             ) {
                 return;
             }
+            if (
+                cameraCaptureResult.source.kind !== "conversation" ||
+                cameraCaptureResult.source.userID !== userID
+            ) {
+                return;
+            }
             handledCameraCaptureRequestIdRef.current =
                 cameraCaptureResult.requestId;
             clearCameraCaptureResult();
+            cameraAttachmentInFlightRef.current = true;
+            setAttachingCameraPhoto(true);
 
             void (async () => {
                 setError("");
@@ -140,9 +150,12 @@ export function ConversationScreen({
                             ? err.message
                             : "Could not attach photo",
                     );
+                } finally {
+                    cameraAttachmentInFlightRef.current = false;
+                    setAttachingCameraPhoto(false);
                 }
             })();
-        }, [cameraCaptureResult]),
+        }, [cameraCaptureResult, userID]),
     );
 
     const sendMessage = useCallback(async () => {
@@ -151,7 +164,12 @@ export function ConversationScreen({
         const pendingAttachment = attachment;
         const pendingReply = liveReplyingToMessage;
         if (pendingEdit) {
-            if (!content || !user || sendInFlightRef.current) {
+            if (
+                !content ||
+                !user ||
+                sendInFlightRef.current ||
+                cameraAttachmentInFlightRef.current
+            ) {
                 return;
             }
             sendInFlightRef.current = true;
@@ -190,7 +208,8 @@ export function ConversationScreen({
         if (
             (!content && !pendingAttachment) ||
             !user ||
-            sendInFlightRef.current
+            sendInFlightRef.current ||
+            cameraAttachmentInFlightRef.current
         ) {
             return;
         }
@@ -307,13 +326,15 @@ export function ConversationScreen({
     );
 
     const openAttachmentMenu = useCallback(() => {
-        if (sending) return;
+        if (sending || attachingCameraPhoto) return;
         Alert.alert("Attach", undefined, [
             { style: "cancel", text: "Cancel" },
             {
                 onPress: () => {
                     setError("");
-                    navigation.navigate("CameraCapture");
+                    navigation.navigate("CameraCapture", {
+                        source: { kind: "conversation", userID },
+                    });
                 },
                 text: "Camera",
             },
@@ -330,7 +351,13 @@ export function ConversationScreen({
                 text: "File",
             },
         ]);
-    }, [handlePickAttachment, navigation, sending]);
+    }, [
+        attachingCameraPhoto,
+        handlePickAttachment,
+        navigation,
+        sending,
+        userID,
+    ]);
 
     const startVoiceCall = useCallback(() => {
         setError("");
@@ -525,7 +552,7 @@ export function ConversationScreen({
                     editingMessage ? "Edit message" : `Message @${username}`
                 }
                 replyingTo={replyReference}
-                sending={sending}
+                sending={sending || attachingCameraPhoto}
                 value={text}
             />
         </KeyboardAvoidingView>
