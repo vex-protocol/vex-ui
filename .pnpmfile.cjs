@@ -13,7 +13,10 @@ module.exports = {
                 // workspace off the extra HTTP-client dependency chain.
                 delete pkg.dependencies.apisauce;
             }
-            if (pkg.name === "@builder.io/mitosis-cli" && pkg.dependencies?.esbuild) {
+            if (
+                pkg.name === "@builder.io/mitosis-cli" &&
+                pkg.dependencies?.esbuild
+            ) {
                 pkg.dependencies.esbuild = "0.28.1";
             }
             return pkg;
