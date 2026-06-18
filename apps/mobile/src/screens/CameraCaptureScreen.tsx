@@ -41,9 +41,11 @@ export function CameraCaptureScreen({
     const [flash, setFlash] = useState<FlashMode>("off");
     const [cameraReady, setCameraReady] = useState(false);
     const [capturing, setCapturing] = useState(false);
+    const [usingPhoto, setUsingPhoto] = useState(false);
     const [capturedPhoto, setCapturedPhoto] =
         useState<CameraCapturedPicture | null>(null);
     const [error, setError] = useState<null | string>(null);
+    const usePhotoInFlightRef = useRef(false);
     const previewActive = isFocused && capturedPhoto === null;
     const canCapture = cameraReady && !capturing && previewActive;
 
@@ -53,6 +55,9 @@ export function CameraCaptureScreen({
     }, [facing]);
 
     const handleClose = useCallback(() => {
+        if (usePhotoInFlightRef.current) {
+            return;
+        }
         haptic("tap");
         navigation.goBack();
     }, [navigation]);
@@ -114,6 +119,9 @@ export function CameraCaptureScreen({
     }, [canCapture]);
 
     const handleRetake = useCallback(() => {
+        if (usePhotoInFlightRef.current) {
+            return;
+        }
         haptic("selection");
         setCapturedPhoto(null);
         setCameraReady(false);
@@ -121,9 +129,11 @@ export function CameraCaptureScreen({
     }, []);
 
     const handleUsePhoto = useCallback(() => {
-        if (!capturedPhoto?.uri) {
+        if (!capturedPhoto?.uri || usePhotoInFlightRef.current) {
             return;
         }
+        usePhotoInFlightRef.current = true;
+        setUsingPhoto(true);
         haptic("success");
         $cameraCaptureResult.set({
             height: capturedPhoto.height,
@@ -226,7 +236,7 @@ export function CameraCaptureScreen({
             <View style={styles.topBar}>
                 <IconButton
                     accessibilityLabel="Close camera"
-                    disabled={capturing}
+                    disabled={capturing || usingPhoto}
                     icon="close"
                     onPress={handleClose}
                 />
@@ -261,10 +271,12 @@ export function CameraCaptureScreen({
                 <View style={styles.confirmBar}>
                     <Pressable
                         accessibilityRole="button"
+                        disabled={usingPhoto}
                         onPress={handleRetake}
                         style={({ pressed }) => [
                             styles.secondaryButton,
-                            pressed && styles.buttonPressed,
+                            pressed && !usingPhoto && styles.buttonPressed,
+                            usingPhoto && styles.buttonDisabled,
                         ]}
                     >
                         <Ionicons
@@ -276,10 +288,12 @@ export function CameraCaptureScreen({
                     </Pressable>
                     <Pressable
                         accessibilityRole="button"
+                        disabled={usingPhoto}
                         onPress={handleUsePhoto}
                         style={({ pressed }) => [
                             styles.primaryButton,
-                            pressed && styles.buttonPressed,
+                            pressed && !usingPhoto && styles.buttonPressed,
+                            usingPhoto && styles.buttonDisabled,
                         ]}
                     >
                         <Ionicons
