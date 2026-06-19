@@ -1,8 +1,13 @@
 import type { EncryptedFileAttachment } from "@vex-chat/store";
+import type { Action } from "expo-image-manipulator";
 
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
+
+const CAMERA_PHOTO_JPEG_QUALITY = 0.86;
+const CAMERA_PHOTO_MAX_LONG_EDGE = 2048;
 
 export interface PickedAttachment {
     contentType: string;
@@ -38,6 +43,21 @@ export function bytesToBase64(bytes: Uint8Array): string {
         binary += String.fromCharCode(...chunk);
     }
     return encode(binary);
+}
+
+export async function cameraPhotoAttachmentFromUri(input: {
+    height?: number | undefined;
+    uri: string;
+    width?: number | undefined;
+}): Promise<PickedAttachment> {
+    const normalized = await normalizeCameraPhoto(input);
+    return localFileAttachmentFromUri({
+        contentType: "image/jpeg",
+        fileName: `camera-${new Date()
+            .toISOString()
+            .replace(/[:.]/g, "-")}.jpg`,
+        uri: normalized.uri,
+    });
 }
 
 export async function localFileAttachmentFromUri(input: {
@@ -166,6 +186,28 @@ export async function writeAttachmentToCache(
     return uri;
 }
 
+function cameraPhotoResizeActions(
+    width: number | undefined,
+    height: number | undefined,
+): Action[] {
+    if (
+        typeof width !== "number" ||
+        typeof height !== "number" ||
+        width <= 0 ||
+        height <= 0
+    ) {
+        return [];
+    }
+    const longEdge = Math.max(width, height);
+    if (longEdge <= CAMERA_PHOTO_MAX_LONG_EDGE) {
+        return [];
+    }
+    if (width >= height) {
+        return [{ resize: { width: CAMERA_PHOTO_MAX_LONG_EDGE } }];
+    }
+    return [{ resize: { height: CAMERA_PHOTO_MAX_LONG_EDGE } }];
+}
+
 function fileNameFromUri(uri: string, fallback: string): string {
     const raw = uri.split("?")[0]?.split("/").pop();
     if (!raw) {
@@ -234,6 +276,29 @@ function inferContentTypeFromName(fileName: string, fallback: string): string {
         default:
             return fallback;
     }
+}
+
+async function normalizeCameraPhoto(input: {
+    height?: number | undefined;
+    uri: string;
+    width?: number | undefined;
+}): Promise<{ height: number; uri: string; width: number }> {
+    const actions = cameraPhotoResizeActions(input.width, input.height);
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Re-encoding through the stable SDK 55 helper strips camera metadata before upload.
+    const normalized = await ImageManipulator.manipulateAsync(
+        input.uri,
+        actions,
+        {
+            base64: false,
+            compress: CAMERA_PHOTO_JPEG_QUALITY,
+            format: ImageManipulator.SaveFormat.JPEG,
+        },
+    );
+    return {
+        height: normalized.height,
+        uri: normalized.uri,
+        width: normalized.width,
+    };
 }
 
 async function readUriBytes(uri: string): Promise<Uint8Array> {

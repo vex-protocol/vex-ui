@@ -14,6 +14,7 @@ import { haptic } from "../lib/haptics";
 import { $leftSidebarOpen, $rightSidebarOpen } from "../lib/sidebarState";
 import { AddServerScreen } from "../screens/AddServerScreen";
 import { AvatarCropScreen } from "../screens/AvatarCropScreen";
+import { CameraCaptureScreen } from "../screens/CameraCaptureScreen";
 import { ChannelListScreen } from "../screens/ChannelListScreen";
 import { ChannelScreen } from "../screens/ChannelScreen";
 import { ConversationScreen } from "../screens/ConversationScreen";
@@ -54,6 +55,7 @@ const SIDEBAR_SLOT_HAPTIC_INTERVAL_MS = 95;
 const TOP_LEFT_BACK_ROUTES: ReadonlyArray<keyof AppStackParamList> = [
     "AddServer",
     "AvatarCrop",
+    "CameraCapture",
     "DeviceDetails",
     "DeviceManager",
     "DeviceRequests",
@@ -120,6 +122,7 @@ export function AppTabs() {
     // currently in".
     const [paneServerId, setPaneServerId] = useState<null | string>(null);
     const rightSidebarOpen = useStore($rightSidebarOpen);
+    const topLeftHidden = currentRoute === "CameraCapture";
     const topLeftShowsBack = TOP_LEFT_BACK_ROUTES.includes(currentRoute);
     const isChatRoute = CHAT_ROUTES.includes(currentRoute);
     const sidebarX = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
@@ -345,67 +348,69 @@ export function AppTabs() {
                 />
             </View>
 
-            <Animated.View
-                style={[
-                    styles.toggleButtonWrap,
-                    {
-                        top: insets.top + 10,
-                        transform: [{ translateX: toggleX }],
-                    },
-                ]}
-            >
-                <View
+            {topLeftHidden ? null : (
+                <Animated.View
                     style={[
-                        styles.toggleButtonFrame,
-                        sidebarOpen
-                            ? styles.toggleButtonFrameOpen
-                            : styles.toggleButtonFrameClosed,
+                        styles.toggleButtonWrap,
+                        {
+                            top: insets.top + 10,
+                            transform: [{ translateX: toggleX }],
+                        },
                     ]}
                 >
-                    <Pressable
-                        onPress={handleTopLeftPress}
-                        style={styles.hamburgerButton}
+                    <View
+                        style={[
+                            styles.toggleButtonFrame,
+                            sidebarOpen
+                                ? styles.toggleButtonFrameOpen
+                                : styles.toggleButtonFrameClosed,
+                        ]}
                     >
-                        {topLeftShowsBack ? (
-                            <>
-                                <View
-                                    style={[
-                                        styles.chevronBar,
-                                        styles.backBarTop,
-                                    ]}
-                                />
-                                <View
-                                    style={[
-                                        styles.chevronBar,
-                                        styles.backBarBottom,
-                                    ]}
-                                />
-                            </>
-                        ) : sidebarOpen ? (
-                            <>
-                                <View
-                                    style={[
-                                        styles.chevronBar,
-                                        styles.chevronBarTop,
-                                    ]}
-                                />
-                                <View
-                                    style={[
-                                        styles.chevronBar,
-                                        styles.chevronBarBottom,
-                                    ]}
-                                />
-                            </>
-                        ) : (
-                            <>
-                                <View style={styles.hamburgerLine} />
-                                <View style={styles.hamburgerLine} />
-                                <View style={styles.hamburgerLine} />
-                            </>
-                        )}
-                    </Pressable>
-                </View>
-            </Animated.View>
+                        <Pressable
+                            onPress={handleTopLeftPress}
+                            style={styles.hamburgerButton}
+                        >
+                            {topLeftShowsBack ? (
+                                <>
+                                    <View
+                                        style={[
+                                            styles.chevronBar,
+                                            styles.backBarTop,
+                                        ]}
+                                    />
+                                    <View
+                                        style={[
+                                            styles.chevronBar,
+                                            styles.backBarBottom,
+                                        ]}
+                                    />
+                                </>
+                            ) : sidebarOpen ? (
+                                <>
+                                    <View
+                                        style={[
+                                            styles.chevronBar,
+                                            styles.chevronBarTop,
+                                        ]}
+                                    />
+                                    <View
+                                        style={[
+                                            styles.chevronBar,
+                                            styles.chevronBarBottom,
+                                        ]}
+                                    />
+                                </>
+                            ) : (
+                                <>
+                                    <View style={styles.hamburgerLine} />
+                                    <View style={styles.hamburgerLine} />
+                                    <View style={styles.hamburgerLine} />
+                                </>
+                            )}
+                        </Pressable>
+                    </View>
+                </Animated.View>
+            )}
 
             {sidebarOpen && (
                 <Animated.View
@@ -664,6 +669,12 @@ function ContentStack({
                 component={AvatarCropScreen}
                 listeners={withFocus("AvatarCrop")}
                 name="AvatarCrop"
+                options={{ presentation: "modal" }}
+            />
+            <Stack.Screen
+                component={CameraCaptureScreen}
+                listeners={withFocus("CameraCapture")}
+                name="CameraCapture"
                 options={{ presentation: "modal" }}
             />
             <Stack.Screen

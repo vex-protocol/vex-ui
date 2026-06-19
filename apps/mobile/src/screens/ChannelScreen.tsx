@@ -44,7 +44,15 @@ import { Avatar } from "../components/Avatar";
 import { ChatHeader } from "../components/ChatHeader";
 import { MessageBubbleRN } from "../components/MessageBubbleRN";
 import { MessageInputBar } from "../components/MessageInputBar";
-import { pickFileAttachment, pickImageAttachment } from "../lib/attachments";
+import {
+    cameraPhotoAttachmentFromUri,
+    pickFileAttachment,
+    pickImageAttachment,
+} from "../lib/attachments";
+import {
+    $cameraCaptureResult,
+    clearCameraCaptureResult,
+} from "../lib/cameraCaptureResult";
 import { haptic } from "../lib/haptics";
 import { $leftSidebarOpen, $rightSidebarOpen } from "../lib/sidebarState";
 import { colors, typography } from "../theme";
@@ -70,6 +78,7 @@ export function ChannelScreen({
     const permissions = useStore($permissions);
     // Scoped to just this server's slot so other server churn doesn't re-render us.
     const servers = useStore($servers);
+    const cameraCaptureResult = useStore($cameraCaptureResult);
     const user = useStore($user);
     const serverName = servers[serverID]?.name ?? "";
 
@@ -105,8 +114,11 @@ export function ChannelScreen({
         null,
     );
     const [sending, setSending] = useState(false);
+    const [attachingCameraPhoto, setAttachingCameraPhoto] = useState(false);
     const [sendError, setSendError] = useState("");
     const sendInFlightRef = useRef(false);
+    const cameraAttachmentInFlightRef = useRef(false);
+    const handledCameraCaptureRequestIdRef = useRef<null | number>(null);
     const listRef = useRef<FlatList<Message>>(null);
     const [members, setMembers] = useState<User[]>([]);
     const [serverPermissions, setServerPermissions] = useState<Permission[]>(
@@ -138,6 +150,52 @@ export function ChannelScreen({
                   )
                 : null,
         [authorNameForMessage, liveReplyingToMessage],
+    );
+
+    useFocusEffect(
+        useCallback(() => {
+            if (
+                !cameraCaptureResult ||
+                handledCameraCaptureRequestIdRef.current ===
+                    cameraCaptureResult.requestId
+            ) {
+                return;
+            }
+            if (
+                cameraCaptureResult.source.kind !== "channel" ||
+                cameraCaptureResult.source.channelID !== channelID ||
+                cameraCaptureResult.source.serverID !== serverID
+            ) {
+                return;
+            }
+            handledCameraCaptureRequestIdRef.current =
+                cameraCaptureResult.requestId;
+            clearCameraCaptureResult();
+            cameraAttachmentInFlightRef.current = true;
+            setAttachingCameraPhoto(true);
+
+            void (async () => {
+                setSendError("");
+                try {
+                    const picked = await cameraPhotoAttachmentFromUri({
+                        height: cameraCaptureResult.height,
+                        uri: cameraCaptureResult.uri,
+                        width: cameraCaptureResult.width,
+                    });
+                    setEditingMessage(null);
+                    setAttachment(picked);
+                } catch (err: unknown) {
+                    setSendError(
+                        err instanceof Error
+                            ? err.message
+                            : "Could not attach photo",
+                    );
+                } finally {
+                    cameraAttachmentInFlightRef.current = false;
+                    setAttachingCameraPhoto(false);
+                }
+            })();
+        }, [cameraCaptureResult, channelID, serverID]),
     );
 
     const membersBackdropOpacity = useMemo(
@@ -378,7 +436,12 @@ export function ChannelScreen({
         const pendingAttachment = attachment;
         const pendingReply = liveReplyingToMessage;
         if (pendingEdit) {
-            if (!content || !user || sendInFlightRef.current) {
+            if (
+                !content ||
+                !user ||
+                sendInFlightRef.current ||
+                cameraAttachmentInFlightRef.current
+            ) {
                 return;
             }
             sendInFlightRef.current = true;
@@ -417,7 +480,8 @@ export function ChannelScreen({
         if (
             (!content && !pendingAttachment) ||
             !user ||
-            sendInFlightRef.current
+            sendInFlightRef.current ||
+            cameraAttachmentInFlightRef.current
         ) {
             return;
         }
@@ -536,14 +600,23 @@ export function ChannelScreen({
     );
 
     const openAttachmentMenu = useCallback(() => {
-        if (sending) return;
+        if (sending || attachingCameraPhoto) return;
         Alert.alert("Attach", undefined, [
             { style: "cancel", text: "Cancel" },
             {
                 onPress: () => {
+                    setSendError("");
+                    navigation.navigate("CameraCapture", {
+                        source: { channelID, kind: "channel", serverID },
+                    });
+                },
+                text: "Camera",
+            },
+            {
+                onPress: () => {
                     handlePickAttachment("image");
                 },
-                text: "Photo",
+                text: "Photo Library",
             },
             {
                 onPress: () => {
@@ -552,7 +625,14 @@ export function ChannelScreen({
                 text: "File",
             },
         ]);
-    }, [handlePickAttachment, sending]);
+    }, [
+        attachingCameraPhoto,
+        channelID,
+        handlePickAttachment,
+        navigation,
+        sending,
+        serverID,
+    ]);
 
     const deleteMessageForEveryone = useCallback(
         (message: Message) => {
@@ -802,7 +882,7 @@ export function ChannelScreen({
                     editingMessage ? "Edit message" : `Message #${channelName}`
                 }
                 replyingTo={replyReference}
-                sending={sending}
+                sending={sending || attachingCameraPhoto}
                 value={text}
             />
             {membersDrawerVisible && (
