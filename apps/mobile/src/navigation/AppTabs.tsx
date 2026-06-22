@@ -38,7 +38,7 @@ import { colors } from "../theme";
 import { navigationRef } from "./navigationRef";
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
-const SIDEBAR_WIDTH = 304;
+const SIDEBAR_WIDTH = 288;
 // "Machined slot-in" feel: aggressive ease-out so the drawer
 // decelerates into place without bounce. Cubic-bezier modeled on
 // Material's "decelerate emphasized" curve (fast in, hard land).
@@ -128,7 +128,7 @@ export function AppTabs() {
     const sidebarX = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
     const backdropOpacity = sidebarX.interpolate({
         inputRange: [-SIDEBAR_WIDTH, 0],
-        outputRange: [0, 0.32],
+        outputRange: [0, 0.5],
     });
     const toggleX = sidebarX.interpolate({
         inputRange: [-SIDEBAR_WIDTH, 0],
@@ -496,38 +496,14 @@ export function AppTabs() {
                         });
                     }}
                     onSelectHome={() => {
-                        // Peek-then-commit:
-                        //   - if home is *not* currently shown in the
-                        //     pane, swap the pane to DMs *and*
-                        //     navigate the background view to the
-                        //     last-visited DM (or DMList if none) so
-                        //     closing the drawer lands the user on a
-                        //     useful place.
-                        //   - if home *is* already in the pane (which
-                        //     means we already routed on a previous
-                        //     peek or via the rail), just close the
-                        //     drawer.
                         if (paneServerId !== null) {
                             setPaneServerId(null);
                             setActiveServerId(null);
                             navigateHome();
-                            return;
                         }
                         closeSidebar();
                     }}
                     onSelectServer={(id) => {
-                        // Peek-then-commit, with eager background nav:
-                        //   - first tap on a server whose channels are
-                        //     not yet in the pane: swap the pane *and*
-                        //     navigate the background view to that
-                        //     server's last/first channel. Drawer
-                        //     stays open so the user can pick a
-                        //     specific channel; backdrop-tap or
-                        //     re-tapping the same server now just
-                        //     reveals the already-loaded view.
-                        //   - re-tap the server whose channels are in
-                        //     the pane: drawer closes (we're already
-                        //     on its view).
                         if (id === paneServerId) {
                             closeSidebar();
                             return;
@@ -559,6 +535,7 @@ export function AppTabs() {
                             });
                             setActiveChannelId(null);
                         }
+                        closeSidebar();
                     }}
                     onSettings={() => {
                         closeSidebar();
@@ -727,7 +704,7 @@ const styles = StyleSheet.create({
         ],
     },
     backdrop: {
-        backgroundColor: "rgba(0,0,0,0.32)",
+        backgroundColor: "rgba(0,0,0,0.64)",
         left: 0,
         position: "absolute",
         right: 0,
@@ -781,6 +758,7 @@ const styles = StyleSheet.create({
         width: 14,
     },
     sidebarDrawer: {
+        backgroundColor: "#07080c",
         left: 0,
         position: "absolute",
         top: 0,
@@ -793,8 +771,8 @@ const styles = StyleSheet.create({
         width: 36,
     },
     toggleButtonFrameClosed: {
-        backgroundColor: "rgba(17,17,19,0.92)",
-        borderColor: "rgba(255,255,255,0.14)",
+        backgroundColor: "rgba(17,17,19,0.96)",
+        borderColor: "rgba(255,255,255,0.18)",
         borderWidth: 1,
     },
     toggleButtonFrameOpen: {

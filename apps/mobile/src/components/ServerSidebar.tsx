@@ -506,8 +506,8 @@ const styles = StyleSheet.create({
         minWidth: 0,
     },
     channelPane: {
-        backgroundColor: "rgba(9,9,11,0.86)",
-        borderLeftColor: colors.borderSubtle,
+        backgroundColor: "rgba(9,9,11,0.98)",
+        borderLeftColor: "rgba(255,255,255,0.16)",
         borderLeftWidth: 1,
         flex: 1,
         paddingHorizontal: 10,
@@ -570,8 +570,8 @@ const styles = StyleSheet.create({
         justifyContent: "space-between",
     },
     drawerContainer: {
-        backgroundColor: "rgba(0,0,0,0.35)",
-        borderRightColor: colors.borderSubtle,
+        backgroundColor: "rgba(7,8,12,0.98)",
+        borderRightColor: "rgba(255,255,255,0.16)",
         borderRightWidth: 1,
         flex: 1,
         flexDirection: "column",
