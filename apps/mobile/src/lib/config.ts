@@ -63,12 +63,12 @@ export function isLocalDevServer(): boolean {
     return __DEV__ && isLocalDevServerHost(getServerUrl());
 }
 
-function isLocalDevServerHost(host: string): boolean {
-    return DEV_HOST_RE.test(host);
-}
-
 function isDevOverrideEnabled(): boolean {
     return process.env[DEV_OVERRIDE_FLAG]?.trim() === "1";
+}
+
+function isLocalDevServerHost(host: string): boolean {
+    return DEV_HOST_RE.test(host);
 }
 
 function normalizeHost(raw: string): string {
