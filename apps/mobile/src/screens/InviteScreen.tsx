@@ -1,7 +1,7 @@
 import type { AppScreenProps } from "../navigation/types";
 import type { Invite } from "@vex-chat/libvex";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -38,23 +38,40 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
     const [loadingInvites, setLoadingInvites] = useState(true);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState("");
+    const inviteLoadTokenRef = useRef(0);
 
-    async function loadInvites(): Promise<void> {
+    async function loadInvites({
+        clearBeforeLoad = false,
+    }: { clearBeforeLoad?: boolean } = {}): Promise<void> {
+        const loadToken = inviteLoadTokenRef.current + 1;
+        inviteLoadTokenRef.current = loadToken;
         setLoadingInvites(true);
+        setError("");
+        if (clearBeforeLoad) {
+            setInvites([]);
+        }
         try {
             const loaded = await vexService.getInvites(serverID);
-            setInvites(loaded);
+            if (inviteLoadTokenRef.current === loadToken) {
+                setInvites(loaded);
+            }
         } catch (err: unknown) {
-            setError(
-                err instanceof Error ? err.message : "Failed to load invites",
-            );
+            if (inviteLoadTokenRef.current === loadToken) {
+                setError(
+                    err instanceof Error
+                        ? err.message
+                        : "Failed to load invites",
+                );
+            }
         } finally {
-            setLoadingInvites(false);
+            if (inviteLoadTokenRef.current === loadToken) {
+                setLoadingInvites(false);
+            }
         }
     }
 
     useEffect(() => {
-        void loadInvites();
+        void loadInvites({ clearBeforeLoad: true });
         // serverID changes only when navigating to a different server invite screen
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [serverID]);
@@ -88,7 +105,7 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
         }
     }
 
-    const primaryInvite = invites[0];
+    const primaryInvite = loadingInvites ? undefined : invites[0];
     const primaryLink = primaryInvite
         ? formatInviteLink(primaryInvite.inviteID)
         : null;
