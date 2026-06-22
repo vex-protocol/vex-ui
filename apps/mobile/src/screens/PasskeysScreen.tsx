@@ -17,7 +17,9 @@ import { useFocusEffect } from "@react-navigation/native";
 
 import { ChatHeader } from "../components/ChatHeader";
 import { MenuRow, MenuSection } from "../components/MenuRow";
+import { PrivacyMeter } from "../components/PrivacyMeter";
 import { VexButton } from "../components/VexButton";
+import { VexField } from "../components/VexField";
 import { haptic } from "../lib/haptics";
 import {
     isPasskeySupported,
@@ -172,7 +174,7 @@ export function PasskeysScreen() {
     }
 
     return (
-        <View style={styles.container}>
+        <VexField glows style={styles.container}>
             <ChatHeader title="Passkeys" />
             <ScrollView
                 contentContainerStyle={styles.content}
@@ -186,14 +188,53 @@ export function PasskeysScreen() {
                     />
                 }
             >
-                <MenuSection
-                    footer={
-                        supported
-                            ? "A passkey is required at signup and sign-in, and lets you authorize new devices if you lose every signed-in device. Stored on this phone (iCloud Keychain or Google Password Manager) or a security key."
-                            : "This device doesn't support passkeys. iOS 16+ or Android 9+ with a screen lock is required."
-                    }
-                    title="Add a passkey"
-                >
+                <View style={styles.intro}>
+                    <Text style={styles.kicker}>ACCOUNT RECOVERY</Text>
+                    <Text style={styles.introText}>
+                        {supported
+                            ? "A passkey lets you restore your account if you lose every signed-in device. Vex never sees its secret."
+                            : "This device doesn't support passkeys. iOS 16+ or Android 9+ with a screen lock is required."}
+                    </Text>
+                </View>
+
+                <MenuSection title="Your Passkeys">
+                    {passkeys.length === 0 && !refreshing ? (
+                        <MenuRow
+                            description="Add one below to keep this account sign-in ready."
+                            icon="key-outline"
+                            label="No passkeys yet"
+                            showChevron={false}
+                        />
+                    ) : null}
+                    {passkeys.map((passkey) => {
+                        const lastUsedLabel = passkey.lastUsedAt
+                            ? `Last used ${new Date(
+                                  passkey.lastUsedAt,
+                              ).toLocaleString()}`
+                            : `Added ${new Date(
+                                  passkey.createdAt,
+                              ).toLocaleDateString()}`;
+                        return (
+                            <MenuRow
+                                accessory={
+                                    <PrivacyMeter
+                                        level={privacyLevelForPasskey(passkey)}
+                                    />
+                                }
+                                description={lastUsedLabel}
+                                icon="key-outline"
+                                key={passkey.passkeyID}
+                                label={passkey.name}
+                                onPress={() => {
+                                    handleDelete(passkey);
+                                }}
+                                showChevron={false}
+                            />
+                        );
+                    })}
+                </MenuSection>
+
+                <MenuSection title="Add a passkey">
                     <View style={styles.formCard}>
                         <Text style={styles.formLabel}>Name</Text>
                         <TextInput
@@ -235,36 +276,15 @@ export function PasskeysScreen() {
                     </View>
                 </MenuSection>
 
-                <MenuSection title="Your passkeys">
-                    {passkeys.length === 0 && !refreshing ? (
-                        <MenuRow
-                            description="Add one above to keep this account sign-in ready."
-                            icon="key-outline"
-                            label="No passkeys yet"
-                        />
-                    ) : null}
-                    {passkeys.map((passkey) => {
-                        const lastUsedLabel = passkey.lastUsedAt
-                            ? `Last used ${new Date(
-                                  passkey.lastUsedAt,
-                              ).toLocaleString()}`
-                            : `Added ${new Date(
-                                  passkey.createdAt,
-                              ).toLocaleDateString()}`;
-                        return (
-                            <MenuRow
-                                description={lastUsedLabel}
-                                icon="key-outline"
-                                key={passkey.passkeyID}
-                                label={passkey.name}
-                                onPress={() => {
-                                    handleDelete(passkey);
-                                }}
-                                showChevron
-                            />
-                        );
-                    })}
-                </MenuSection>
+                <View style={styles.warningCard}>
+                    <Text style={styles.warningTitle}>
+                        Keep at least one recovery method
+                    </Text>
+                    <Text style={styles.warningText}>
+                        Without a passkey or second device, losing this phone
+                        means losing the account.
+                    </Text>
+                </View>
 
                 {error !== null ? (
                     <View style={styles.errorCard}>
@@ -272,8 +292,16 @@ export function PasskeysScreen() {
                     </View>
                 ) : null}
             </ScrollView>
-        </View>
+        </VexField>
     );
+}
+
+function privacyLevelForPasskey(passkey: Passkey): 1 | 2 | 3 | 4 {
+    const name = passkey.name.toLowerCase();
+    if (name.includes("yubi") || name.includes("security key")) {
+        return 4;
+    }
+    return 3;
 }
 
 const styles = StyleSheet.create({
@@ -285,7 +313,7 @@ const styles = StyleSheet.create({
         gap: 18,
         paddingBottom: 24,
         paddingHorizontal: 14,
-        paddingVertical: 12,
+        paddingTop: 16,
     },
     errorCard: {
         backgroundColor: colors.dangerBg,
@@ -331,5 +359,38 @@ const styles = StyleSheet.create({
         ...typography.label,
         color: "rgba(255,255,255,0.5)",
         textTransform: "uppercase",
+    },
+    intro: {
+        gap: 6,
+        marginBottom: -2,
+    },
+    introText: {
+        ...typography.body,
+        color: colors.muted,
+    },
+    kicker: {
+        ...typography.label,
+        color: colors.accent,
+    },
+    warningCard: {
+        alignItems: "flex-start",
+        backgroundColor: "rgba(251,36,36,0.1)",
+        borderColor: "rgba(251,36,36,0.4)",
+        borderRadius: 10,
+        borderWidth: 1,
+        gap: 6,
+        padding: 14,
+    },
+    warningText: {
+        ...typography.body,
+        color: colors.textSecondary,
+        fontSize: 13,
+        lineHeight: 19,
+    },
+    warningTitle: {
+        ...typography.button,
+        color: colors.error,
+        fontSize: 14,
+        fontWeight: "600",
     },
 });

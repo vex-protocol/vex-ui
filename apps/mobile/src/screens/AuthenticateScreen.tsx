@@ -449,7 +449,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         height: 64,
         justifyContent: "center",
-        width: 56,
+        width: 54,
     },
     cellText: {
         ...typography.headingSmall,
@@ -466,12 +466,12 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         marginTop: 12,
-        paddingVertical: 16,
+        paddingVertical: 20,
     },
     content: {
         flex: 1,
         gap: 14,
-        marginTop: 32,
+        marginTop: 28,
     },
     expiredBody: {
         ...typography.body,

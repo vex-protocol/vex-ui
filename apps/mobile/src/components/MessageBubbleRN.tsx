@@ -603,7 +603,7 @@ export function MessageBubbleRN({
                         {showIdentity ? (
                             <Avatar
                                 displayName={authorName}
-                                size={32}
+                                size={40}
                                 userID={message.authorID}
                             />
                         ) : (
@@ -1976,14 +1976,16 @@ const styles = StyleSheet.create({
     author: {
         ...typography.body,
         color: colors.textSecondary,
-        fontSize: 13,
+        fontFamily: fontFamilies.heading,
+        fontSize: 14,
         fontWeight: "600",
+        lineHeight: 20,
     },
     authorSelf: {
         color: colors.accentMuted,
     },
     avatarSpacer: {
-        width: 32,
+        width: 36,
     },
     codeBlock: {
         backgroundColor: "#0d1117",
@@ -1995,8 +1997,8 @@ const styles = StyleSheet.create({
         overflow: "hidden",
     },
     codeBlockContent: {
-        paddingHorizontal: 12,
-        paddingVertical: 10,
+        paddingHorizontal: 11,
+        paddingVertical: 9,
     },
     codeBlockLanguage: {
         ...typography.body,
@@ -2041,11 +2043,11 @@ const styles = StyleSheet.create({
         color: "#d2a8ff",
     },
     container: {
-        paddingHorizontal: 12,
-        paddingVertical: 6,
+        paddingHorizontal: 16,
+        paddingVertical: 5,
     },
     containerGrouped: {
-        paddingVertical: 2,
+        paddingVertical: 1,
     },
     content: {
         flex: 1,
@@ -2293,7 +2295,7 @@ const styles = StyleSheet.create({
         fontWeight: "700",
     },
     markdownStack: {
-        gap: 2,
+        gap: 0,
     },
     mediaFooter: {
         alignItems: "center",
@@ -2406,7 +2408,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         flexDirection: "row",
         gap: 8,
-        marginBottom: 2,
+        marginBottom: 1,
     },
     reactionCount: {
         ...typography.body,
@@ -2487,8 +2489,8 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         flexDirection: "row",
         gap: 4,
-        minHeight: 24,
-        paddingHorizontal: 8,
+        minHeight: 22,
+        paddingHorizontal: 9,
         paddingVertical: 3,
     },
     reactionPillSelected: {
@@ -2578,7 +2580,7 @@ const styles = StyleSheet.create({
     },
     systemContainer: {
         alignItems: "center",
-        paddingHorizontal: 12,
+        paddingHorizontal: 16,
         paddingVertical: 6,
     },
     systemText: {
@@ -2588,7 +2590,7 @@ const styles = StyleSheet.create({
         fontStyle: "italic",
     },
     text: {
-        ...typography.bodyLarge,
+        ...typography.body,
         color: colors.textSecondary,
     },
     textGrouped: {
@@ -2597,7 +2599,9 @@ const styles = StyleSheet.create({
     timestamp: {
         ...typography.body,
         color: colors.muted,
-        fontSize: 10,
+        fontFamily: fontFamilies.mono,
+        fontSize: 11,
+        lineHeight: 16,
     },
     videoAttachment: {
         backgroundColor: colors.input,

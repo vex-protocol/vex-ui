@@ -15,6 +15,8 @@ import { $channels, $servers } from "@vex-chat/store";
 import { useStore } from "@nanostores/react";
 
 import { ChatHeader } from "../components/ChatHeader";
+import { VexField } from "../components/VexField";
+import { colors, fontFamilies, typography } from "../theme";
 
 export function ChannelListScreen({
     navigation,
@@ -46,7 +48,7 @@ export function ChannelListScreen({
     }
 
     return (
-        <View style={styles.container}>
+        <VexField style={styles.container}>
             <ChatHeader
                 onOverflow={() => {
                     navigation.navigate("ServerSettings", {
@@ -63,27 +65,40 @@ export function ChannelListScreen({
                 </View>
             ) : (
                 <FlatList
+                    contentContainerStyle={styles.list}
                     data={channels}
                     keyExtractor={(c) => c.channelID}
                     renderItem={renderChannel}
                 />
             )}
-        </View>
+        </VexField>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { backgroundColor: "#1a1a1a", flex: 1 },
+    container: { backgroundColor: colors.bg, flex: 1 },
     empty: { alignItems: "center", flex: 1, justifyContent: "center" },
-    emptyText: { color: "#666666", fontSize: 14, fontStyle: "italic" },
-    hash: { color: "#666666", fontSize: 18, fontWeight: "700", width: 20 },
-    name: { color: "#e8e8e8", fontSize: 15 },
+    emptyText: { ...typography.body, color: colors.muted, fontStyle: "italic" },
+    hash: {
+        color: colors.mutedDark,
+        fontFamily: fontFamilies.mono,
+        fontSize: 14,
+        width: 12,
+    },
+    list: {
+        paddingHorizontal: 6,
+        paddingTop: 10,
+    },
+    name: { ...typography.body, color: colors.muted, flex: 1, fontSize: 14 },
     row: {
         alignItems: "center",
-        borderBottomColor: "#2a2a2a",
-        borderBottomWidth: 1,
+        backgroundColor: "rgba(255,255,255,0.02)",
+        borderColor: "rgba(255,255,255,0.08)",
+        borderWidth: 1,
         flexDirection: "row",
         gap: 8,
-        padding: 14,
+        marginBottom: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 7,
     },
 });

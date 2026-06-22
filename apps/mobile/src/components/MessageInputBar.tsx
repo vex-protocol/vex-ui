@@ -131,7 +131,7 @@ export function MessageInputBar({
             style={[
                 styles.container,
                 Platform.OS === "ios"
-                    ? { paddingBottom: 8 + Math.max(0, bottomInset - 2) }
+                    ? { paddingBottom: 14 + Math.max(0, bottomInset - 2) }
                     : null,
             ]}
         >
@@ -701,9 +701,7 @@ function VoiceMemoRecorder({
 const styles = StyleSheet.create({
     actionBtn: {
         alignItems: "center",
-        borderColor: colors.border,
-        borderRadius: 18,
-        borderWidth: 1,
+        borderRadius: 999,
         height: 36,
         justifyContent: "center",
         width: 36,
@@ -748,11 +746,13 @@ const styles = StyleSheet.create({
         fontSize: 11,
     },
     container: {
-        backgroundColor: colors.surface,
+        backgroundColor: "rgba(9,9,11,0.9)",
         borderTopColor: colors.borderSubtle,
         borderTopWidth: 1,
-        gap: 8,
-        padding: 8,
+        gap: 10,
+        paddingBottom: 14,
+        paddingHorizontal: 14,
+        paddingTop: 10,
     },
     editingPreview: {
         alignItems: "center",
@@ -773,7 +773,8 @@ const styles = StyleSheet.create({
     },
     input: {
         backgroundColor: colors.input,
-        borderColor: colors.borderSubtle,
+        borderColor: "rgba(255,255,255,0.08)",
+        borderRadius: 999,
         borderWidth: 1,
         color: colors.textSecondary,
         flex: 1,
@@ -781,8 +782,8 @@ const styles = StyleSheet.create({
         lineHeight: 20,
         maxHeight: 132,
         minHeight: 40,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+        paddingHorizontal: 14,
+        paddingVertical: 9,
         textAlignVertical: "top",
     },
     inputRow: {
@@ -879,10 +880,10 @@ const styles = StyleSheet.create({
     sendBtn: {
         alignItems: "center",
         backgroundColor: colors.accent,
-        borderRadius: 18,
-        height: 36,
+        borderRadius: 999,
+        height: 40,
         justifyContent: "center",
-        width: 36,
+        width: 40,
     },
     sendBtnDisabled: {
         opacity: 0.4,

@@ -12,7 +12,7 @@ type Props = AuthScreenProps<"Welcome">;
 
 export function WelcomeScreen({ navigation }: Props) {
     return (
-        <ScreenLayout style={styles.layout}>
+        <ScreenLayout paddingHorizontal={28} style={styles.layout}>
             <View style={styles.container}>
                 <View pointerEvents="none" style={styles.blackoutLayer} />
                 <View pointerEvents="none" style={styles.glowTop} />
@@ -101,6 +101,6 @@ const styles = StyleSheet.create({
         backgroundColor: "#000000",
     },
     logoWrap: {
-        marginBottom: 22,
+        marginBottom: 26,
     },
 });

@@ -217,6 +217,7 @@ const styles = StyleSheet.create({
         ...typography.body,
         color: "rgba(255,255,255,0.52)",
         fontSize: 12,
+        lineHeight: 16,
     },
     head: {
         alignItems: "center",

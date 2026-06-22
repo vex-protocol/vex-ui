@@ -1,12 +1,12 @@
 import type { AppScreenProps } from "../navigation/types";
 import type { Invite } from "@vex-chat/libvex";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
     Clipboard,
-    FlatList,
+    ScrollView,
     Share,
     StyleSheet,
     Text,
@@ -16,7 +16,12 @@ import {
 
 import { formatInviteLink, vexService } from "@vex-chat/store";
 
+import { Ionicons } from "@expo/vector-icons";
+
 import { ChatHeader } from "../components/ChatHeader";
+import { CornerBracketBox } from "../components/CornerBracketBox";
+import { VexButton } from "../components/VexButton";
+import { VexField } from "../components/VexField";
 import { colors, fontFamilies, typography } from "../theme";
 
 const DURATIONS: { label: string; value: string }[] = [
@@ -33,23 +38,40 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
     const [loadingInvites, setLoadingInvites] = useState(true);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState("");
+    const inviteLoadTokenRef = useRef(0);
 
-    async function loadInvites(): Promise<void> {
+    async function loadInvites({
+        clearBeforeLoad = false,
+    }: { clearBeforeLoad?: boolean } = {}): Promise<void> {
+        const loadToken = inviteLoadTokenRef.current + 1;
+        inviteLoadTokenRef.current = loadToken;
         setLoadingInvites(true);
+        setError("");
+        if (clearBeforeLoad) {
+            setInvites([]);
+        }
         try {
             const loaded = await vexService.getInvites(serverID);
-            setInvites(loaded);
+            if (inviteLoadTokenRef.current === loadToken) {
+                setInvites(loaded);
+            }
         } catch (err: unknown) {
-            setError(
-                err instanceof Error ? err.message : "Failed to load invites",
-            );
+            if (inviteLoadTokenRef.current === loadToken) {
+                setError(
+                    err instanceof Error
+                        ? err.message
+                        : "Failed to load invites",
+                );
+            }
         } finally {
-            setLoadingInvites(false);
+            if (inviteLoadTokenRef.current === loadToken) {
+                setLoadingInvites(false);
+            }
         }
     }
 
     useEffect(() => {
-        void loadInvites();
+        void loadInvites({ clearBeforeLoad: true });
         // serverID changes only when navigating to a different server invite screen
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [serverID]);
@@ -83,11 +105,99 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
         }
     }
 
+    const primaryInvite = loadingInvites ? undefined : invites[0];
+    const primaryLink = primaryInvite
+        ? formatInviteLink(primaryInvite.inviteID)
+        : null;
+
     return (
-        <View style={styles.container}>
-            <ChatHeader title={`Invite to ${serverName ?? "server"}`} />
-            <View style={styles.body}>
-                <Text style={styles.label}>Create invite</Text>
+        <VexField glows style={styles.container}>
+            <ChatHeader title="Invite" />
+            <ScrollView
+                contentContainerStyle={styles.body}
+                showsVerticalScrollIndicator={false}
+            >
+                <View style={styles.hero}>
+                    <Text style={styles.kicker}>
+                        {serverName ?? "GROUP INVITE"}
+                    </Text>
+                    <Text style={styles.heading}>Invite to group</Text>
+                </View>
+
+                {primaryInvite ? (
+                    <>
+                        <View style={styles.qrWrap}>
+                            <CornerBracketBox color={colors.accent} size={10}>
+                                <View style={styles.qrSurface}>
+                                    <Ionicons
+                                        color={colors.text}
+                                        name="qr-code-outline"
+                                        size={118}
+                                    />
+                                </View>
+                            </CornerBracketBox>
+                        </View>
+
+                        <View style={styles.codeBlock}>
+                            <Text style={styles.label}>INVITE CODE</Text>
+                            <View style={styles.codeRow}>
+                                <Text numberOfLines={1} style={styles.codeText}>
+                                    {primaryInvite.inviteID}
+                                </Text>
+                                <TouchableOpacity
+                                    accessibilityLabel="Copy invite code"
+                                    onPress={() => {
+                                        copy(
+                                            primaryInvite.inviteID,
+                                            "Invite code",
+                                        );
+                                    }}
+                                    style={styles.iconBtn}
+                                >
+                                    <Ionicons
+                                        color={colors.muted}
+                                        name="copy-outline"
+                                        size={18}
+                                    />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        <View style={styles.infoCard}>
+                            <Ionicons
+                                color={colors.infoText}
+                                name="information-circle-outline"
+                                size={18}
+                            />
+                            <Text style={styles.infoText}>
+                                Codes expire based on the duration selected
+                                below.
+                            </Text>
+                        </View>
+
+                        {primaryLink ? (
+                            <VexButton
+                                glow
+                                icon="share-outline"
+                                onPress={() => void handleShare(primaryLink)}
+                                title="Share invite"
+                            />
+                        ) : null}
+                    </>
+                ) : (
+                    <View style={styles.infoCard}>
+                        <Ionicons
+                            color={colors.infoText}
+                            name="information-circle-outline"
+                            size={18}
+                        />
+                        <Text style={styles.infoText}>
+                            Create an invite link to show a shareable code here.
+                        </Text>
+                    </View>
+                )}
+
+                <Text style={styles.label}>CREATE INVITE</Text>
                 <View style={styles.durationRow}>
                     {DURATIONS.map((d) => {
                         const selected = duration === d.value;
@@ -115,21 +225,14 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
                     })}
                 </View>
                 <View style={styles.actions}>
-                    <TouchableOpacity
+                    <VexButton
                         disabled={creating}
+                        icon="link-outline"
+                        loading={creating}
                         onPress={() => void handleCreateInvite()}
-                        style={[styles.btn, styles.btnPrimary]}
-                    >
-                        {creating ? (
-                            <ActivityIndicator color="#FFFFFF" />
-                        ) : (
-                            <Text
-                                style={[styles.btnText, styles.btnPrimaryText]}
-                            >
-                                Create invite link
-                            </Text>
-                        )}
-                    </TouchableOpacity>
+                        style={styles.createButton}
+                        title="Create invite link"
+                    />
                     <TouchableOpacity
                         disabled={loadingInvites}
                         onPress={() => {
@@ -144,7 +247,7 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
                 </View>
 
                 <Text style={[styles.label, styles.listLabel]}>
-                    Active invites
+                    ACTIVE INVITES
                 </Text>
                 {loadingInvites ? (
                     <ActivityIndicator color={colors.textSecondary} />
@@ -153,13 +256,14 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
                         No active invite links yet.
                     </Text>
                 ) : (
-                    <FlatList
-                        data={invites}
-                        keyExtractor={(item) => item.inviteID}
-                        renderItem={({ item }) => {
+                    <View style={styles.inviteList}>
+                        {invites.map((item) => {
                             const link = formatInviteLink(item.inviteID);
                             return (
-                                <View style={styles.inviteCard}>
+                                <View
+                                    key={item.inviteID}
+                                    style={styles.inviteCard}
+                                >
                                     <Text
                                         numberOfLines={1}
                                         style={styles.fieldValue}
@@ -217,12 +321,12 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
                                     </View>
                                 </View>
                             );
-                        }}
-                    />
+                        })}
+                    </View>
                 )}
                 {error !== "" && <Text style={styles.error}>{error}</Text>}
-            </View>
-        </View>
+            </ScrollView>
+        </VexField>
     );
 }
 
@@ -233,12 +337,15 @@ const styles = StyleSheet.create({
         gap: 8,
         marginTop: 16,
     },
-    body: { flex: 1, padding: 16 },
+    body: {
+        paddingBottom: 24,
+        paddingHorizontal: 16,
+        paddingTop: 18,
+    },
     btn: {
         alignItems: "center",
         backgroundColor: colors.surface,
         borderColor: colors.borderSubtle,
-        borderRadius: 6,
         borderWidth: 1,
         paddingHorizontal: 14,
         paddingVertical: 10,
@@ -249,11 +356,35 @@ const styles = StyleSheet.create({
     },
     btnPrimaryText: { color: "#FFFFFF" },
     btnText: { ...typography.button, color: colors.text },
+    codeBlock: {
+        gap: 8,
+        marginBottom: 16,
+    },
+    codeRow: {
+        alignItems: "center",
+        backgroundColor: "rgba(255,255,255,0.02)",
+        borderColor: "rgba(255,255,255,0.08)",
+        borderWidth: 1,
+        flexDirection: "row",
+        gap: 10,
+        minHeight: 50,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+    },
+    codeText: {
+        color: colors.text,
+        flex: 1,
+        fontFamily: fontFamilies.mono,
+        fontSize: 15,
+        letterSpacing: 1,
+    },
     container: { backgroundColor: colors.bg, flex: 1 },
+    createButton: {
+        width: "100%",
+    },
     durationChip: {
         backgroundColor: colors.surface,
         borderColor: colors.borderSubtle,
-        borderRadius: 6,
         borderWidth: 1,
         paddingHorizontal: 12,
         paddingVertical: 8,
@@ -278,28 +409,62 @@ const styles = StyleSheet.create({
         fontSize: 12,
         marginTop: 8,
     },
-    field: {
-        backgroundColor: colors.surface,
-        borderColor: colors.borderSubtle,
-        borderRadius: 6,
-        borderWidth: 1,
-        marginBottom: 12,
-        marginTop: 4,
-        padding: 12,
-    },
     fieldValue: { ...typography.body, color: colors.text },
+    heading: {
+        ...typography.headingSmall,
+        color: colors.text,
+    },
+    hero: {
+        gap: 6,
+        marginBottom: 18,
+    },
+    iconBtn: {
+        alignItems: "center",
+        height: 32,
+        justifyContent: "center",
+        width: 32,
+    },
+    infoCard: {
+        alignItems: "center",
+        backgroundColor: colors.infoBg,
+        borderColor: colors.infoBorder,
+        borderWidth: 1,
+        flexDirection: "row",
+        gap: 12,
+        marginBottom: 18,
+        padding: 14,
+    },
+    infoText: {
+        ...typography.body,
+        color: colors.textSecondary,
+        flex: 1,
+        fontSize: 13,
+    },
     inviteCard: {
         backgroundColor: "rgba(255,255,255,0.02)",
         borderColor: colors.borderSubtle,
-        borderRadius: 8,
         borderWidth: 1,
-        marginBottom: 10,
         padding: 10,
+    },
+    inviteList: {
+        gap: 10,
+    },
+    kicker: {
+        ...typography.label,
+        color: colors.accent,
     },
     label: { ...typography.label, color: colors.muted, fontSize: 12 },
     listLabel: { marginTop: 12 },
-    mono: { fontFamily: fontFamilies.mono },
-    resetBtn: { alignItems: "center", marginTop: 24, padding: 8 },
+    qrSurface: {
+        alignItems: "center",
+        backgroundColor: colors.surface,
+        height: 186,
+        justifyContent: "center",
+        width: 186,
+    },
+    qrWrap: {
+        alignItems: "center",
+        marginBottom: 18,
+    },
     resetText: { color: colors.muted },
-    submit: { alignSelf: "stretch", marginTop: 8 },
 });

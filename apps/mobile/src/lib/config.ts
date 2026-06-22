@@ -9,6 +9,7 @@ import Constants from "expo-constants";
 // app.config.js metadata and defaults to the dev API even for OTA updates.
 const PROD_SERVER_URL = "api.vex.wtf";
 const DEV_SERVER_URL = "dev.vex.wtf";
+const DEV_API_KEY_FLAG = "EXPO_PUBLIC_DEV_API_KEY";
 const DEV_OVERRIDE_FLAG = "EXPO_PUBLIC_ENABLE_DEV_SERVER";
 
 type VexExpoConfig = {
@@ -34,8 +35,9 @@ export function getServerOptions(): ServerOptions {
     const override = readOverride();
     const unsafeByScheme = override?.trim().startsWith("http://") ?? false;
     const isLocalDev = isLocalDevServerHost(host);
+    const devApiKey = readDevApiKey(host);
     return {
-        ...(isLocalDev && __DEV__ ? { devApiKey: "local-dev" } : {}),
+        ...(devApiKey ? { devApiKey } : {}),
         host,
         localMessageRetentionDays: $localMessageRetentionDays.get(),
         unsafeHttp: unsafeByScheme || isLocalDev,
@@ -59,6 +61,10 @@ export function getServerUrl(): string {
 
 export function isLocalDevServer(): boolean {
     return __DEV__ && isLocalDevServerHost(getServerUrl());
+}
+
+function isDevOverrideEnabled(): boolean {
+    return process.env[DEV_OVERRIDE_FLAG]?.trim() === "1";
 }
 
 function isLocalDevServerHost(host: string): boolean {
@@ -86,12 +92,17 @@ function normalizeHost(raw: string): string {
     return trimmed.replace(/\/+$/, "");
 }
 
+function readDevApiKey(host: string): string | undefined {
+    if (!__DEV__ || !isDevOverrideEnabled() || !isLocalDevServerHost(host)) {
+        return undefined;
+    }
+    const raw = process.env[DEV_API_KEY_FLAG]?.trim();
+    return raw && raw.length > 0 ? raw : undefined;
+}
+
 function readOverride(): string | undefined {
-    const allowDevOverride =
-        (process.env[DEV_OVERRIDE_FLAG] as string | undefined)?.trim() === "1";
-    const raw = (
-        process.env["EXPO_PUBLIC_SERVER_URL"] as string | undefined
-    )?.trim();
+    const allowDevOverride = isDevOverrideEnabled();
+    const raw = process.env["EXPO_PUBLIC_SERVER_URL"]?.trim();
     if (!raw || raw.length === 0) {
         return undefined;
     }

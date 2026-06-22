@@ -17,7 +17,7 @@ export function OnboardingEmptyScreen() {
         >();
 
     return (
-        <ScreenLayout>
+        <ScreenLayout glows>
             <View style={styles.body}>
                 <View style={styles.hero}>
                     <Text style={styles.kicker}>NEW ACCOUNT</Text>
@@ -31,12 +31,14 @@ export function OnboardingEmptyScreen() {
                 <View style={styles.actions}>
                     <VexButton
                         glow
+                        icon="add"
                         onPress={() => {
                             navigation.navigate("AddServer");
                         }}
                         title="Create your first group"
                     />
                     <VexButton
+                        icon="link-outline"
                         onPress={() => {
                             navigation.navigate("JoinGroup");
                         }}
@@ -72,7 +74,6 @@ const styles = StyleSheet.create({
     heading: {
         ...typography.headingSmall,
         color: colors.text,
-        fontSize: 28,
     },
     hero: {
         alignItems: "center",
@@ -96,8 +97,7 @@ const styles = StyleSheet.create({
     subtitle: {
         ...typography.body,
         color: colors.muted,
-        maxWidth: 320,
-        paddingHorizontal: 16,
+        maxWidth: 300,
         textAlign: "center",
     },
 });
