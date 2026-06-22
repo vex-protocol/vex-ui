@@ -2,7 +2,14 @@ import type { AppStackParamList } from "../navigation/types";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import React, { useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import {
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 import { parseInviteID } from "@vex-chat/store";
 import { vexService } from "@vex-chat/store";
@@ -10,9 +17,11 @@ import { vexService } from "@vex-chat/store";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 
+import { ChatHeader } from "../components/ChatHeader";
 import { CornerBracketBox } from "../components/CornerBracketBox";
 import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
+import { VexField } from "../components/VexField";
 import { navigateToJoinedServer } from "../navigation/navigationRef";
 import { colors, typography } from "../theme";
 
@@ -22,6 +31,9 @@ export function AddServerScreen() {
             NativeStackNavigationProp<AppStackParamList, "AddServer">
         >();
     const [mode, setMode] = useState<"create" | "join" | "pick">("pick");
+    const [visibility, setVisibility] = useState<"discoverable" | "invite">(
+        "invite",
+    );
     const [name, setName] = useState("");
     const [inviteInput, setInviteInput] = useState("");
     const [error, setError] = useState("");
@@ -130,12 +142,16 @@ export function AddServerScreen() {
 
     if (mode === "create") {
         return (
-            <ScreenLayout glows>
-                <View style={styles.content}>
-                    <View style={styles.header}>
+            <VexField glows style={styles.container}>
+                <ChatHeader title="Create Group" />
+                <ScrollView
+                    contentContainerStyle={styles.createScroll}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                >
+                    <View style={styles.createIntro}>
                         <Text style={styles.kicker}>NEW GROUP</Text>
-                        <Text style={styles.heading}>Create Group</Text>
-                        <Text style={styles.subtitle}>
+                        <Text style={styles.createSubtitle}>
                             Encrypted from the first message. Only members hold
                             the keys.
                         </Text>
@@ -170,12 +186,32 @@ export function AddServerScreen() {
                                     setName(t);
                                     setError("");
                                 }}
-                                placeholder="My server"
+                                placeholder="Field Operations"
                                 placeholderTextColor={colors.mutedDark}
                                 style={styles.input}
                                 value={name}
                             />
                         </CornerBracketBox>
+                    </View>
+
+                    <View style={styles.visibility}>
+                        <Text style={styles.label}>VISIBILITY</Text>
+                        <VisibilityRow
+                            active={visibility === "invite"}
+                            description="Members join by code"
+                            label="Invite-only"
+                            onPress={() => {
+                                setVisibility("invite");
+                            }}
+                        />
+                        <VisibilityRow
+                            active={visibility === "discoverable"}
+                            description="Anyone with the link"
+                            label="Discoverable"
+                            onPress={() => {
+                                setVisibility("discoverable");
+                            }}
+                        />
                     </View>
 
                     <View style={styles.buttonRow}>
@@ -188,8 +224,8 @@ export function AddServerScreen() {
                             title="Create group"
                         />
                     </View>
-                </View>
-            </ScreenLayout>
+                </ScrollView>
+            </VexField>
         );
     }
 
@@ -245,15 +281,63 @@ export function AddServerScreen() {
     );
 }
 
+function VisibilityRow({
+    active,
+    description,
+    label,
+    onPress,
+}: {
+    active: boolean;
+    description: string;
+    label: string;
+    onPress: () => void;
+}) {
+    return (
+        <TouchableOpacity
+            activeOpacity={0.78}
+            onPress={onPress}
+            style={styles.toggleRow}
+        >
+            <View style={styles.toggleInfo}>
+                <Text style={styles.toggleLabel}>{label}</Text>
+                <Text style={styles.toggleDesc}>{description}</Text>
+            </View>
+            <View style={[styles.switchTrack, active && styles.switchOn]}>
+                <View
+                    style={[styles.switchKnob, active && styles.switchKnobOn]}
+                />
+            </View>
+        </TouchableOpacity>
+    );
+}
+
 const styles = StyleSheet.create({
     buttonRow: {
         alignItems: "center",
+        marginTop: 24,
+    },
+    container: {
+        backgroundColor: colors.bg,
+        flex: 1,
     },
     content: {
         flex: 1,
         gap: 24,
         justifyContent: "flex-start",
         paddingTop: 18,
+    },
+    createIntro: {
+        gap: 6,
+        marginBottom: 18,
+    },
+    createScroll: {
+        paddingBottom: 24,
+        paddingHorizontal: 16,
+        paddingTop: 18,
+    },
+    createSubtitle: {
+        ...typography.body,
+        color: colors.muted,
     },
     errorBox: {
         backgroundColor: colors.dangerBg,
@@ -266,7 +350,7 @@ const styles = StyleSheet.create({
         color: colors.error,
     },
     field: {
-        gap: 6,
+        gap: 8,
     },
     groupIconBox: {
         alignItems: "center",
@@ -293,8 +377,8 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         color: colors.textSecondary,
         fontSize: 14,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
+        paddingHorizontal: 12,
+        paddingVertical: 11,
     },
     kicker: {
         ...typography.label,
@@ -312,5 +396,61 @@ const styles = StyleSheet.create({
         ...typography.body,
         color: colors.muted,
         textAlign: "center",
+    },
+    switchKnob: {
+        backgroundColor: "#fff",
+        borderRadius: 999,
+        height: 20,
+        left: 2,
+        position: "absolute",
+        top: 2,
+        width: 20,
+    },
+    switchKnobOn: {
+        left: 20,
+    },
+    switchOn: {
+        backgroundColor: colors.success,
+        borderColor: "rgba(0,184,135,0.65)",
+    },
+    switchTrack: {
+        backgroundColor: colors.surfaceLight,
+        borderColor: colors.border,
+        borderRadius: 999,
+        borderWidth: 1,
+        height: 26,
+        position: "relative",
+        width: 44,
+    },
+    toggleDesc: {
+        ...typography.body,
+        color: "rgba(255,255,255,0.52)",
+        fontSize: 12,
+        lineHeight: 16,
+    },
+    toggleInfo: {
+        flex: 1,
+        gap: 2,
+    },
+    toggleLabel: {
+        ...typography.button,
+        color: colors.textSecondary,
+        fontSize: 14,
+    },
+    toggleRow: {
+        alignItems: "center",
+        backgroundColor: "rgba(255,255,255,0.02)",
+        borderColor: "rgba(255,255,255,0.08)",
+        borderRadius: 10,
+        borderWidth: 1,
+        flexDirection: "row",
+        gap: 12,
+        minHeight: 52,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+    },
+    visibility: {
+        gap: 8,
+        marginTop: 14,
     },
 });

@@ -49,7 +49,11 @@ export function VexButton({
                       : colors.border
             }
             size={8}
-            style={StyleSheet.flatten([glow && styles.glow, style])}
+            style={StyleSheet.flatten([
+                styles.frame,
+                glow && styles.glow,
+                style,
+            ])}
         >
             <TouchableOpacity
                 activeOpacity={0.7}
@@ -101,7 +105,7 @@ const styles = StyleSheet.create({
         gap: 8,
         justifyContent: "center",
         minHeight: 48,
-        paddingHorizontal: 48,
+        paddingHorizontal: 24,
         paddingVertical: 14,
     },
     danger: {
@@ -110,12 +114,15 @@ const styles = StyleSheet.create({
     disabled: {
         opacity: 0.4,
     },
+    frame: {
+        alignSelf: "stretch",
+    },
     glow: {
         elevation: 12,
         shadowColor: colors.accent,
         shadowOffset: { height: 6, width: 0 },
-        shadowOpacity: 0.8,
-        shadowRadius: 20,
+        shadowOpacity: 0.5,
+        shadowRadius: 26,
     },
     outline: {
         backgroundColor: colors.transparent,

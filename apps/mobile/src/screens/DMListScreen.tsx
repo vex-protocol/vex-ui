@@ -582,11 +582,13 @@ const styles = StyleSheet.create({
     preview: {
         ...typography.body,
         color: "rgba(255,255,255,0.58)",
+        lineHeight: 18,
         marginTop: 2,
     },
     previewEmpty: {
         ...typography.body,
         color: "rgba(255,255,255,0.42)",
+        lineHeight: 18,
         marginTop: 2,
     },
     resultName: {
@@ -605,7 +607,7 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
     },
     resultsList: {
-        marginHorizontal: 14,
+        marginHorizontal: 16,
         maxHeight: 220,
     },
     row: {
@@ -616,7 +618,7 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         gap: 12,
         marginBottom: 8,
-        marginHorizontal: 14,
+        marginHorizontal: 16,
         paddingHorizontal: 10,
         paddingVertical: 10,
     },
@@ -646,14 +648,15 @@ const styles = StyleSheet.create({
         padding: 0,
     },
     searchWrap: {
-        paddingHorizontal: 14,
+        paddingHorizontal: 16,
         paddingVertical: 10,
     },
     sectionHeader: {
         alignItems: "center",
         flexDirection: "row",
         justifyContent: "space-between",
-        paddingHorizontal: 14,
+        marginBottom: 8,
+        paddingHorizontal: 16,
     },
     sectionMeta: {
         ...typography.body,
@@ -668,10 +671,10 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.error,
         borderRadius: 12,
+        height: 22,
         justifyContent: "center",
         minWidth: 24,
         paddingHorizontal: 6,
-        paddingVertical: 3,
     },
     unreadText: {
         color: "#fff",

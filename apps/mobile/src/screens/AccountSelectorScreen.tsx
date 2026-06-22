@@ -194,9 +194,6 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
             <View style={styles.header}>
                 <Text style={styles.kicker}>SIGNED IN</Text>
                 <Text style={styles.heading}>Choose account</Text>
-                <Text style={styles.subtitle}>
-                    Tap to sign in. Long-press to remove from this device.
-                </Text>
             </View>
 
             {errorText ? (
@@ -388,15 +385,14 @@ const styles = StyleSheet.create({
         fontSize: 14,
     },
     header: {
-        alignItems: "center",
-        gap: 8,
+        alignItems: "flex-start",
+        gap: 6,
         marginBottom: 18,
         marginTop: 20,
     },
     heading: {
         ...typography.headingSmall,
         color: colors.text,
-        textAlign: "center",
     },
     kicker: {
         ...typography.label,

@@ -11,6 +11,7 @@ import {
 
 import { $user, vexService } from "@vex-chat/store";
 
+import { Ionicons } from "@expo/vector-icons";
 import { useStore } from "@nanostores/react";
 import { useFocusEffect } from "@react-navigation/native";
 
@@ -161,7 +162,7 @@ export function DeviceManagerScreen({
                                         deviceName: device.name,
                                     });
                                 }}
-                                showChevron
+                                showChevron={!isCurrent}
                             />
                         );
                     })}
@@ -173,6 +174,18 @@ export function DeviceManagerScreen({
                         />
                     ) : null}
                 </MenuSection>
+
+                <View style={styles.infoCard}>
+                    <Ionicons
+                        color={colors.infoText}
+                        name="information-circle-outline"
+                        size={18}
+                    />
+                    <Text style={styles.infoText}>
+                        New sign-ins must be approved from a device already on
+                        your account.
+                    </Text>
+                </View>
 
                 {deviceError !== "" ? (
                     <View style={styles.errorCard}>
@@ -220,5 +233,22 @@ const styles = StyleSheet.create({
     errorText: {
         ...typography.body,
         color: colors.error,
+    },
+    infoCard: {
+        alignItems: "center",
+        backgroundColor: colors.infoBg,
+        borderColor: "rgba(82,145,191,0.45)",
+        borderRadius: 10,
+        borderWidth: 1,
+        flexDirection: "row",
+        gap: 12,
+        padding: 14,
+    },
+    infoText: {
+        ...typography.body,
+        color: colors.textSecondary,
+        flex: 1,
+        fontSize: 13,
+        lineHeight: 19,
     },
 });

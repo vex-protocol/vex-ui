@@ -74,7 +74,6 @@ const styles = StyleSheet.create({
     heading: {
         ...typography.headingSmall,
         color: colors.text,
-        fontSize: 28,
     },
     hero: {
         alignItems: "center",
@@ -98,8 +97,7 @@ const styles = StyleSheet.create({
     subtitle: {
         ...typography.body,
         color: colors.muted,
-        maxWidth: 320,
-        paddingHorizontal: 16,
+        maxWidth: 300,
         textAlign: "center",
     },
 });

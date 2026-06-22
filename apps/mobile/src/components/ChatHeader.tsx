@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
     },
     container: {
         alignItems: "center",
-        backgroundColor: "rgba(9,9,11,0.9)",
+        backgroundColor: "rgba(9,9,11,0.82)",
         borderBottomColor: colors.borderSubtle,
         borderBottomWidth: 1,
         flexDirection: "row",

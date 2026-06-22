@@ -9,6 +9,7 @@ interface ScreenLayoutProps {
     children: React.ReactNode;
     glows?: boolean;
     padded?: boolean;
+    paddingHorizontal?: number;
     style?: ViewStyle;
 }
 
@@ -16,6 +17,7 @@ export function ScreenLayout({
     children,
     glows = false,
     padded = true,
+    paddingHorizontal = 16,
     style,
 }: ScreenLayoutProps) {
     const insets = useSafeAreaInsets();
@@ -25,10 +27,10 @@ export function ScreenLayout({
             <View
                 style={[
                     styles.content,
-                    padded && { paddingHorizontal: 24 },
+                    padded && { paddingHorizontal },
                     {
                         paddingBottom: insets.bottom + 16,
-                        paddingTop: insets.top + 16,
+                        paddingTop: insets.top,
                     },
                     style,
                 ]}

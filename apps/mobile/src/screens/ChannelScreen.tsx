@@ -1,6 +1,6 @@
 import type { PickedAttachment } from "../lib/attachments";
 import type { AppScreenProps } from "../navigation/types";
-import type { Message, Permission, User } from "@vex-chat/libvex";
+import type { Channel, Message, Permission, User } from "@vex-chat/libvex";
 import type { MessageEmoji } from "@vex-chat/store";
 
 import React, {
@@ -25,6 +25,8 @@ import {
 } from "react-native";
 
 import {
+    $channels,
+    $channelUnreadCounts,
     $groupMessages,
     $permissions,
     $servers,
@@ -76,12 +78,15 @@ export function ChannelScreen({
 }: AppScreenProps<"Channel">) {
     const { channelID, channelName, serverID } = route.params;
     const allGroupMessages = useStore($groupMessages);
+    const channelsByServer = useStore($channels);
+    const channelUnreadCounts = useStore($channelUnreadCounts);
     const permissions = useStore($permissions);
     // Scoped to just this server's slot so other server churn doesn't re-render us.
     const servers = useStore($servers);
     const cameraCaptureResult = useStore($cameraCaptureResult);
     const user = useStore($user);
     const serverName = servers[serverID]?.name ?? "";
+    const serverChannels = channelsByServer[serverID] ?? [];
 
     // Store keeps messages oldest-first; inverted FlatList needs newest-first
     const messages = useMemo(() => {
@@ -819,6 +824,55 @@ export function ChannelScreen({
         );
     }
 
+    function renderInlineChannel(channel: Channel) {
+        const active = channel.channelID === channelID;
+        const unread = channelUnreadCounts[channel.channelID] ?? 0;
+        return (
+            <TouchableOpacity
+                key={channel.channelID}
+                onPress={() => {
+                    if (active) {
+                        return;
+                    }
+                    navigation.navigate("Channel", {
+                        channelID: channel.channelID,
+                        channelName: channel.name,
+                        serverID,
+                    });
+                }}
+                style={[
+                    styles.inlineChannelRow,
+                    active && styles.inlineChannelRowActive,
+                ]}
+            >
+                <Text
+                    style={[
+                        styles.inlineChannelHash,
+                        active && styles.inlineChannelTextActive,
+                    ]}
+                >
+                    #
+                </Text>
+                <Text
+                    numberOfLines={1}
+                    style={[
+                        styles.inlineChannelText,
+                        active && styles.inlineChannelTextActive,
+                    ]}
+                >
+                    {channel.name}
+                </Text>
+                {unread > 0 ? (
+                    <View style={styles.inlineChannelCount}>
+                        <Text style={styles.inlineChannelCountText}>
+                            {unread > 99 ? "99+" : unread}
+                        </Text>
+                    </View>
+                ) : null}
+            </TouchableOpacity>
+        );
+    }
+
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -840,20 +894,27 @@ export function ChannelScreen({
                     title={serverName || "Server"}
                 />
 
-                <FlatList
-                    contentContainerStyle={styles.list}
-                    data={messages}
-                    inverted
-                    keyExtractor={(m) => m.mailID}
-                    onScrollToIndexFailed={(info) => {
-                        listRef.current?.scrollToOffset({
-                            animated: true,
-                            offset: info.averageItemLength * info.index,
-                        });
-                    }}
-                    ref={listRef}
-                    renderItem={renderMessage}
-                />
+                <View style={styles.channelBody}>
+                    <View style={styles.inlineChannelPane}>
+                        <Text style={styles.inlineChannelTitle}>CHANNELS</Text>
+                        {serverChannels.map(renderInlineChannel)}
+                    </View>
+                    <FlatList
+                        contentContainerStyle={styles.list}
+                        data={messages}
+                        inverted
+                        keyExtractor={(m) => m.mailID}
+                        onScrollToIndexFailed={(info) => {
+                            listRef.current?.scrollToOffset({
+                                animated: true,
+                                offset: info.averageItemLength * info.index,
+                            });
+                        }}
+                        ref={listRef}
+                        renderItem={renderMessage}
+                        style={styles.messagePane}
+                    />
+                </View>
 
                 {sendError !== "" && (
                     <View style={styles.errorBar}>
@@ -947,6 +1008,11 @@ function waitForComposerPaint(): Promise<void> {
 }
 
 const styles = StyleSheet.create({
+    channelBody: {
+        flex: 1,
+        flexDirection: "row",
+        minHeight: 0,
+    },
     container: {
         backgroundColor: colors.bg,
         flex: 1,
@@ -963,8 +1029,61 @@ const styles = StyleSheet.create({
     field: {
         flex: 1,
     },
+    inlineChannelCount: {
+        alignItems: "center",
+        backgroundColor: colors.error,
+        borderRadius: 10,
+        justifyContent: "center",
+        minWidth: 18,
+        paddingHorizontal: 5,
+        paddingVertical: 2,
+    },
+    inlineChannelCountText: {
+        color: "#fff",
+        fontSize: 10,
+        fontWeight: "700",
+    },
+    inlineChannelHash: {
+        color: colors.mutedDark,
+        fontSize: 14,
+        fontWeight: "600",
+    },
+    inlineChannelPane: {
+        borderRightColor: colors.borderSubtle,
+        borderRightWidth: 1,
+        paddingHorizontal: 6,
+        paddingTop: 10,
+        width: 150,
+    },
+    inlineChannelRow: {
+        alignItems: "center",
+        flexDirection: "row",
+        gap: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+    },
+    inlineChannelRowActive: {
+        backgroundColor: "rgba(231,0,0,0.14)",
+    },
+    inlineChannelText: {
+        ...typography.body,
+        color: colors.muted,
+        flex: 1,
+        fontSize: 14,
+    },
+    inlineChannelTextActive: {
+        color: colors.accentMuted,
+    },
+    inlineChannelTitle: {
+        ...typography.label,
+        color: "rgba(255,255,255,0.52)",
+        fontSize: 10,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    },
     list: {
-        paddingVertical: 8,
+        paddingBottom: 6,
+        paddingTop: 6,
     },
     memberAvatarWrap: {
         position: "relative",
@@ -1076,6 +1195,9 @@ const styles = StyleSheet.create({
         ...typography.body,
         color: "rgba(255,255,255,0.52)",
         fontSize: 10,
+    },
+    messagePane: {
+        flex: 1,
     },
 });
 
