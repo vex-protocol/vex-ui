@@ -153,8 +153,12 @@ module.exports = ({ config }) => {
             },
             infoPlist: {
                 ...config.ios?.infoPlist,
+                NSCameraUsageDescription:
+                    "Allow $(PRODUCT_NAME) to use the camera to take photos to send in chats.",
                 NSMicrophoneUsageDescription:
                     "Allow $(PRODUCT_NAME) to use the microphone for voice calls and voice memos.",
+                NSPhotoLibraryUsageDescription:
+                    "Allow $(PRODUCT_NAME) to choose photos to send in chats and update your profile.",
             },
         },
         android: {
