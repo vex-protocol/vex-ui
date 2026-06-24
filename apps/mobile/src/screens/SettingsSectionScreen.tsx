@@ -21,10 +21,13 @@ import {
 } from "react-native";
 
 import {
+    $accountEntitlements,
     $channels,
     $localMessageRetentionDays,
     $servers,
     $user,
+    ACCOUNT_TIERS,
+    type AccountTier,
     vexService,
 } from "@vex-chat/store";
 
@@ -78,6 +81,7 @@ export function SettingsSectionScreen({
 }: AppScreenProps<"SettingsSection">) {
     const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
     const appUpdateState = useStore($appUpdateState);
+    const accountEntitlements = useStore($accountEntitlements);
     const channelsByServer = useStore($channels);
     const servers = useStore($servers);
     const user = useStore($user);
@@ -92,6 +96,7 @@ export function SettingsSectionScreen({
     const [avatarUploading, setAvatarUploading] = useState(false);
     const [loggingOut, setLoggingOut] = useState(false);
     const [updateBusy, setUpdateBusy] = useState(false);
+    const [tierBusy, setTierBusy] = useState<AccountTier | null>(null);
     const [wsDebugEnabled, setWsDebugEnabled] = useState(() =>
         vexService.getWebsocketDebugEnabled(),
     );
@@ -470,6 +475,24 @@ export function SettingsSectionScreen({
         vexService.setLocalMessageRetentionDays(days);
     }
 
+    async function handleSelectAccountTier(tier: AccountTier): Promise<void> {
+        if (tierBusy != null || tier === accountEntitlements.tier) {
+            return;
+        }
+        setTierBusy(tier);
+        try {
+            const result = await vexService.setDevAccountTier(tier);
+            if (!result.ok) {
+                Alert.alert(
+                    "Tier override unavailable",
+                    result.error ?? "The local server rejected the override.",
+                );
+            }
+        } finally {
+            setTierBusy(null);
+        }
+    }
+
     function pushNotificationDescription(): string {
         if (!pushNotificationsEnabled) {
             return "Push notifications are off";
@@ -576,6 +599,10 @@ export function SettingsSectionScreen({
             appUpdateState.status === "checking" ||
             appUpdateState.status === "apk_downloading"
         );
+    }
+
+    function formatTierLabel(tier: AccountTier): string {
+        return tier.charAt(0).toUpperCase() + tier.slice(1);
     }
 
     function renderUpdateAccessory() {
@@ -1136,6 +1163,50 @@ export function SettingsSectionScreen({
                                 icon="pulse-outline"
                                 label="State transition logs"
                             />
+                        </MenuSection>
+                        <MenuSection
+                            footer="Requires a local Spire started with dev entitlement overrides enabled."
+                            title="Entitlements"
+                        >
+                            <MenuRow
+                                description={accountEntitlements.source}
+                                icon="layers-outline"
+                                label="Current tier"
+                                value={formatTierLabel(
+                                    accountEntitlements.tier,
+                                )}
+                            />
+                            {ACCOUNT_TIERS.map((tier) => {
+                                const selected =
+                                    tier === accountEntitlements.tier;
+                                return (
+                                    <MenuRow
+                                        accessory={
+                                            selected ? (
+                                                <Ionicons
+                                                    color="rgba(255,255,255,0.85)"
+                                                    name="checkmark"
+                                                    size={22}
+                                                />
+                                            ) : undefined
+                                        }
+                                        description={
+                                            tierBusy === tier
+                                                ? "Applying override..."
+                                                : selected
+                                                  ? "Selected"
+                                                  : "Apply local override"
+                                        }
+                                        disabled={selected || tierBusy != null}
+                                        icon="flask-outline"
+                                        key={tier}
+                                        label={formatTierLabel(tier)}
+                                        onPress={() => {
+                                            void handleSelectAccountTier(tier);
+                                        }}
+                                    />
+                                );
+                            })}
                         </MenuSection>
                         <MenuSection
                             footer="Hides this menu again until you re-enter the easter egg in About."
