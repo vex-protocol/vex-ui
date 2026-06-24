@@ -40,6 +40,12 @@ import {
     $latestCallEventWritable,
 } from "./domains/calls.ts";
 import {
+    $accountEntitlementsWritable,
+    type AccountEntitlements,
+    type AccountTier,
+    defaultAccountEntitlements,
+} from "./domains/entitlements.ts";
+import {
     $authStatusWritable,
     $avatarHashWritable,
     $avatarVersionsWritable,
@@ -304,6 +310,10 @@ export interface SessionInfo {
     username: string;
 }
 
+export interface SetAccountTierResult extends OperationResult {
+    entitlements?: AccountEntitlements;
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 export interface ThreadDeleteForEveryoneResult extends OperationResult {
@@ -347,6 +357,19 @@ interface ClientWithCallsLike {
 type ClientWithDeviceApprovals = Omit<Client, "devices"> & {
     devices: DevicesWithApprovalLike;
 };
+
+interface ClientWithEntitlementsLike {
+    entitlements?: {
+        retrieve?: () => Promise<AccountEntitlements>;
+        setDevTier?: (
+            tier: AccountTier,
+            options?: { expiresAt?: null | string },
+        ) => Promise<AccountEntitlements>;
+    };
+    me?: {
+        user?: () => User;
+    };
+}
 
 interface ClientWithInternalHttp {
     http?: ClientHttpLike;
@@ -1240,8 +1263,6 @@ class VexService {
         this.resetAll();
     }
 
-    // ── Server CRUD ─────────────────────────────────────────────────────
-
     async deleteLocalMessage(
         conversationKey: string,
         mailID: string,
@@ -1324,6 +1345,8 @@ class VexService {
         }
         return true;
     }
+
+    // ── Server CRUD ─────────────────────────────────────────────────────
 
     async deleteMessageForEveryone(
         conversationKey: string,
@@ -1576,8 +1599,6 @@ class VexService {
         }
     }
 
-    // ── Channel operations ──────────────────────────────────────────────
-
     async getChannelMembers(channelID: string): Promise<User[]> {
         const client = this.requireClient();
         return client.channels.userList(channelID);
@@ -1600,6 +1621,8 @@ class VexService {
         }
         return null;
     }
+
+    // ── Channel operations ──────────────────────────────────────────────
 
     async getInvites(serverID: string): Promise<Invite[]> {
         const client = this.requireClient();
@@ -1665,8 +1688,6 @@ class VexService {
         }
     }
 
-    // ── Messaging ───────────────────────────────────────────────────────
-
     async getVoiceIceServers(): Promise<IceServerConfig[]> {
         return this.requireCallsClient().calls.iceServers();
     }
@@ -1674,6 +1695,8 @@ class VexService {
     getWebsocketDebugEnabled(): boolean {
         return this.wsDebugEnabled;
     }
+
+    // ── Messaging ───────────────────────────────────────────────────────
 
     getWebsocketFrameDebugEnabled(): boolean {
         return this.wsDebugFrameLogsEnabled;
@@ -1821,8 +1844,6 @@ class VexService {
         }
     }
 
-    // ── User operations ─────────────────────────────────────────────────
-
     async lookupUser(query: string): Promise<null | User> {
         try {
             const client = this.requireClient();
@@ -1846,6 +1867,8 @@ class VexService {
         $dmUnreadCountsWritable.setKey(conversationKey, 0);
         $channelUnreadCountsWritable.setKey(conversationKey, 0);
     }
+
+    // ── User operations ─────────────────────────────────────────────────
 
     onDeviceRequestQueueChanged(listener: () => void): () => void {
         this.deviceRequestQueueListeners.add(listener);
@@ -1997,6 +2020,10 @@ class VexService {
         });
         this.deferredDeviceApproval = null;
         return { ok: true };
+    }
+
+    async refreshAccountEntitlements(): Promise<AccountEntitlements> {
+        return this.refreshEntitlementsForClient(this.requireClient());
     }
 
     async refreshSessionAfterForeground(): Promise<ResumeNetworkStatus> {
@@ -2409,6 +2436,29 @@ class VexService {
 
     setBackgroundConnectionRecoverySuspended(suspended: boolean): void {
         this.backgroundConnectionRecoverySuspended = suspended;
+    }
+
+    async setDevAccountTier(
+        tier: AccountTier,
+        options?: { expiresAt?: null | string },
+    ): Promise<SetAccountTierResult> {
+        try {
+            const client = this.requireClient();
+            const withEntitlements =
+                client as unknown as ClientWithEntitlementsLike;
+            const setDevTier = withEntitlements.entitlements?.setDevTier;
+            if (typeof setDevTier !== "function") {
+                return {
+                    error: "Client does not support entitlement overrides.",
+                    ok: false,
+                };
+            }
+            const entitlements = await setDevTier(tier, options);
+            $accountEntitlementsWritable.set(entitlements);
+            return { entitlements, ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
     }
 
     /**
@@ -4238,6 +4288,33 @@ class VexService {
         }, 200);
     }
 
+    private async refreshEntitlementsForClient(
+        owner: Client,
+    ): Promise<AccountEntitlements> {
+        const userID = owner.me.user().userID;
+        const withEntitlements = owner as unknown as ClientWithEntitlementsLike;
+        const retrieve = withEntitlements.entitlements?.retrieve;
+        if (typeof retrieve !== "function") {
+            const fallback = defaultAccountEntitlements(userID);
+            $accountEntitlementsWritable.set(fallback);
+            return fallback;
+        }
+
+        try {
+            const entitlements = await retrieve();
+            $accountEntitlementsWritable.set(entitlements);
+            return entitlements;
+        } catch (err: unknown) {
+            debugAuth("entitlements:refresh:failed", {
+                message: errorMessage(err),
+                userID,
+            });
+            const fallback = defaultAccountEntitlements(userID);
+            $accountEntitlementsWritable.set(fallback);
+            return fallback;
+        }
+    }
+
     private async registerInitialPasskeyForCurrentClient(
         name: string,
     ): Promise<void> {
@@ -4696,6 +4773,7 @@ class VexService {
         this.failedUserLookups.clear();
         this.invitePreviewCache.clear();
         $authStatusWritable.set("signed_out");
+        $accountEntitlementsWritable.set(defaultAccountEntitlements());
         $userWritable.set(null);
         $keyReplacedWritable.set(false);
         $pendingApprovalStageWritable.set("idle");
@@ -4772,7 +4850,7 @@ class VexService {
             $hydrationStatusWritable.set({
                 completedSteps: 0,
                 ready: false,
-                stage: "syncing_inbox",
+                stage: "loading_entitlements",
                 totalSteps: hydrationTotalSteps,
             });
         }
@@ -4879,6 +4957,12 @@ class VexService {
         };
 
         let bootstrapChannelsByServer: null | Record<string, Channel[]> = null;
+
+        await this.refreshEntitlementsForClient(owner);
+        if (shouldStop()) {
+            return;
+        }
+        publishHydrationProgress("syncing_inbox");
 
         if (hasSyncInboxNow(owner)) {
             try {

@@ -13,6 +13,7 @@ export type HistoryRecoveryStatus = "idle" | "recovering_local_history";
 export type HydrationStage =
     | "idle"
     | "loading_channels"
+    | "loading_entitlements"
     | "loading_familiars"
     | "loading_group_history"
     | "loading_sessions"
