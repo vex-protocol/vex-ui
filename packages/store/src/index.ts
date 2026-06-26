@@ -18,6 +18,23 @@ export {
     $latestCallEvent,
 } from "./domains/calls.ts";
 export {
+    $accountEntitlements,
+    $accountEntitlementsWritable,
+    $accountTier,
+    ACCOUNT_TIERS,
+    accountHasCapability,
+    accountLimitValue,
+    accountTierAtLeast,
+    defaultAccountEntitlements,
+} from "./domains/entitlements.ts";
+export type {
+    AccountEntitlementCapability,
+    AccountEntitlementLimit,
+    AccountEntitlements,
+    AccountEntitlementSource,
+    AccountTier,
+} from "./domains/entitlements.ts";
+export {
     $authStatus,
     $avatarHash,
     $avatarVersions,
@@ -169,6 +186,7 @@ export type {
     SendMessageOptions,
     ServerOptions,
     SessionInfo,
+    SetAccountTierResult,
     VoiceCallResult,
 } from "./service.ts";
 export {
