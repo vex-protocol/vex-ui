@@ -43,10 +43,9 @@ interface AccountRowProps {
 type Props = AuthScreenProps<"AccountSelector">;
 
 /**
- * Account picker: saved slots on this device. Choosing one starts passkey
- * account auth first, then the provisioning screen uses the saved Vex device
- * key to enter the identity cluster. Long-press removes key material for that
- * slot.
+ * Account picker: saved slots on this device. Choosing one starts account auth;
+ * local dev can use the saved Vex device key directly, while normal builds use
+ * passkey auth before provisioning. Long-press removes key material for that slot.
  */
 export function AccountSelectorScreen({ navigation, route }: Props) {
     const [accounts, setAccounts] = useState<KnownAccount[]>([]);
@@ -93,6 +92,9 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
                                   "Could not sign in with passkey."),
                     );
                     await refresh();
+                    return;
+                }
+                if (result.localDeviceAuthenticated) {
                     return;
                 }
                 navigation.replace("ProvisionDevice", {
