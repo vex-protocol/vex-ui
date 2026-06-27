@@ -244,7 +244,7 @@ a different deployment from spire, you have two options:
 
 ## Local development
 
-For testing without owning the RP host you can:
+For testing actual passkey ceremonies without owning the RP host you can:
 
 - Run spire with `SPIRE_PASSKEY_RP_ID=localhost` and
   `SPIRE_PASSKEY_ORIGINS=http://localhost:5173` (browser dev only).
@@ -252,6 +252,23 @@ For testing without owning the RP host you can:
   all three legs (`associatedDomains`, asset links, spire env)
   consistently.
 
-There is no usable local-dev mode for native passkeys without a
-domain you control — Apple and Google both gate the ceremony on
-the cryptographically-verified domain ↔ app association.
+Native emulators cannot run real local passkey ceremonies without a
+domain you control — Apple and Google both gate the ceremony on the
+cryptographically-verified domain ↔ app association.
+
+For everyday emulator development against local Spire, use the insecure local
+bypass instead:
+
+1. From `vex-protocol`, start Spire with
+   `pnpm --dir apps/spire start:local`. Its default `DEV_API_KEY` is
+   `local-dev`.
+2. From `vex-ui`, start mobile with `pnpm --dir apps/mobile dev:local` for iOS
+   simulator, `pnpm --dir apps/mobile dev:android-reverse` for an already
+   installed Android dev client, or build/install the local Android dev client
+   with `pnpm --dir apps/mobile android:dev:local`.
+
+Those scripts send `EXPO_PUBLIC_DEV_API_KEY=local-dev` to Spire as
+`x-dev-api-key`. In development builds, the app then skips initial passkey setup
+for unsafe local HTTP hosts, and Spire permits no-passkey disposable local
+accounts to connect. Accounts that already have passkeys still require a real
+passkey ceremony.

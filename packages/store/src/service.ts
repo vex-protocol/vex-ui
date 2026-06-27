@@ -104,6 +104,17 @@ export interface AccountPasskeyAuthResult extends OperationResult {
      */
     hasLocalDevice?: boolean;
     /**
+     * True when local-dev passkey bypass used the saved Vex device key to
+     * complete authentication immediately. Callers should not continue into
+     * the passkey provisioning flow.
+     */
+    localDeviceAuthenticated?: boolean;
+    /**
+     * Set when saved local credentials were stale and the caller should return
+     * to an explicit sign-in/new-device flow.
+     */
+    requireReauth?: boolean;
+    /**
      * Set when passkey auth failed in a way where the next best UX is the
      * device-approval/new-account path. Examples: the account has no passkey
      * available to this platform credential manager, or the username does not
@@ -2935,13 +2946,6 @@ class VexService {
         options: ServerOptions,
         keyStore: KeyStore,
     ): Promise<AccountPasskeyAuthResult> {
-        const driver = this.passkeyCeremonyDriver;
-        if (!driver) {
-            return {
-                error: "Passkeys aren't available on this device.",
-                ok: false,
-            };
-        }
         const normalizedUsername = username.trim().toLowerCase();
         if (normalizedUsername.length === 0) {
             return { error: "Enter your handle to sign in.", ok: false };
@@ -2969,6 +2973,56 @@ class VexService {
                 !localCredentials,
             );
             const client = this.requireClient();
+            if (
+                shouldSkipInitialPasskeySetup(config, options) &&
+                localCredentials !== null
+            ) {
+                const authErr = await this.loginWithDeviceKeyWithRetry(
+                    client,
+                    localCredentials.deviceID,
+                );
+                if (!authErr) {
+                    await this.saveCredentials(keyStore, {
+                        ...localCredentials,
+                        token: "",
+                    });
+                    await client.connect();
+                    const user = client.me.user();
+                    $userWritable.set(user);
+                    this.setAuthStatus("authenticated");
+                    this.kickPopulateState();
+                    return {
+                        hasLocalDevice: true,
+                        localDeviceAuthenticated: true,
+                        ok: true,
+                        userID: user.userID,
+                        username: user.username,
+                    };
+                }
+                if (isStaleCredentialError(authErr)) {
+                    await this.clearStoredCredentials(
+                        keyStore,
+                        localCredentials.username,
+                    );
+                    this.setAuthStatus("unauthorized");
+                    return {
+                        error: "Session expired. Please sign in again.",
+                        ok: false,
+                        requireReauth: true,
+                    };
+                }
+                if (!isPasskeyRequiredError(authErr)) {
+                    return { error: errorMessage(authErr), ok: false };
+                }
+            }
+
+            const driver = this.passkeyCeremonyDriver;
+            if (!driver) {
+                return {
+                    error: "Passkeys aren't available on this device.",
+                    ok: false,
+                };
+            }
             const begin =
                 await client.passkeys.beginAuthentication(normalizedUsername);
             const response = await driver.authenticate(

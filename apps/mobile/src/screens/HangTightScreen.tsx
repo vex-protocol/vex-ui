@@ -351,6 +351,9 @@ export function HangTightScreen({
                 keychainKeyStore,
             );
             if (passkey.ok && passkey.username) {
+                if (passkey.localDeviceAuthenticated) {
+                    return;
+                }
                 navigation.replace("ProvisionDevice", {
                     hasLocalDevice: passkey.hasLocalDevice === true,
                     ...(passkey.userID !== undefined
