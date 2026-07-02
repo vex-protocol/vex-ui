@@ -87,6 +87,12 @@ catalogs:
     nanostores:
       specifier: ^1.2.0
       version: 1.2.0
+    react-native-iap:
+      specifier: 15.3.3
+      version: 15.3.3
+    react-native-nitro-modules:
+      specifier: 0.35.10
+      version: 0.35.10
     react-native-passkey:
       specifier: 3.3.3
       version: 3.3.3
@@ -379,9 +385,15 @@ importers:
       react-native-get-random-values:
         specifier: ^1.11.0
         version: 1.11.0(react-native@0.83.4(@babel/core@7.29.6)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.1(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.0))
+      react-native-iap:
+        specifier: 'catalog:'
+        version: 15.3.3(react-native-nitro-modules@0.35.10(react-native@0.83.4(@babel/core@7.29.6)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.1(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.0))(react@19.2.0))(react-native@0.83.4(@babel/core@7.29.6)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.1(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)
       react-native-logs:
         specifier: ^5.6.0
         version: 5.6.0
+      react-native-nitro-modules:
+        specifier: 'catalog:'
+        version: 0.35.10(react-native@0.83.4(@babel/core@7.29.6)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.1(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)
       react-native-passkey:
         specifier: 'catalog:'
         version: 3.3.3(react-native@0.83.4(@babel/core@7.29.6)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.1(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)
@@ -5543,8 +5555,21 @@ packages:
     peerDependencies:
       react-native: '>=0.56'
 
+  react-native-iap@15.3.3:
+    resolution: {integrity: sha512-ClEbc/1rET28VBI0UUaWHzFAbzKIEJcJw/WlKBywWFlnGZoV+CkILI7QCvtQRHZfsmRUm7r1Cg1g0XJvzYQntw==}
+    peerDependencies:
+      react: 19.2.0
+      react-native: '*'
+      react-native-nitro-modules: ^0.35.0
+
   react-native-logs@5.6.0:
     resolution: {integrity: sha512-+5A/AlepSGvaT2RE8YpoLOUNxfra8WBqUOM/GBjggCnfH5+RaCDThpKL6QnengAf+Limmoidm9YXPFzQ9cj3bQ==}
+
+  react-native-nitro-modules@0.35.10:
+    resolution: {integrity: sha512-KsySOAIkbSTjNiX2GvXiNT9P5DMeZd99yvtE/+Lw7RXV7Ztxh9Z+YyAbYkBqadhN5J/KXXuPjhRYgyLOIZgsbQ==}
+    peerDependencies:
+      react: 19.2.0
+      react-native: '*'
 
   react-native-passkey@3.3.3:
     resolution: {integrity: sha512-6pBKxjJ5lU6Mpw5sup7pwHqNDBnPd8sBXAKCN3pacAafldk0XU+fps8ZI7ut1iP6MxiNC/7LSwWq3/2Vn8tfbw==}
@@ -12728,7 +12753,18 @@ snapshots:
       fast-base64-decode: 1.0.0
       react-native: 0.83.4(@babel/core@7.29.6)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.1(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.0)
 
+  react-native-iap@15.3.3(react-native-nitro-modules@0.35.10(react-native@0.83.4(@babel/core@7.29.6)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.1(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.0))(react@19.2.0))(react-native@0.83.4(@babel/core@7.29.6)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.1(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.0))(react@19.2.0):
+    dependencies:
+      react: 19.2.0
+      react-native: 0.83.4(@babel/core@7.29.6)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.1(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.0)
+      react-native-nitro-modules: 0.35.10(react-native@0.83.4(@babel/core@7.29.6)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.1(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.0))(react@19.2.0)
+
   react-native-logs@5.6.0: {}
+
+  react-native-nitro-modules@0.35.10(react-native@0.83.4(@babel/core@7.29.6)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.1(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.0))(react@19.2.0):
+    dependencies:
+      react: 19.2.0
+      react-native: 0.83.4(@babel/core@7.29.6)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.1(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.0)
 
   react-native-passkey@3.3.3(react-native@0.83.4(@babel/core@7.29.6)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.1(@babel/core@7.29.6))(@types/react@19.2.14)(react@19.2.0))(react@19.2.0):
     dependencies:

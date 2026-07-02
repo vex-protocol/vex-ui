@@ -38,6 +38,8 @@ catalog:
     nanostores: ^1.2.0
     react: 19.2.0
     react-dom: 19.2.0
+    react-native-iap: 15.3.3
+    react-native-nitro-modules: 0.35.10
     react-native-passkey: 3.3.3
     svelte: ^5.55.7
     typescript: ~5.9.3
