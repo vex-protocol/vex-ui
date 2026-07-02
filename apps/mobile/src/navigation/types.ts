@@ -34,6 +34,7 @@ export type AppStackParamList = {
         section:
             | "about"
             | "account"
+            | "billing"
             | "connection"
             | "data"
             | "developer"
