@@ -1985,7 +1985,7 @@ const styles = StyleSheet.create({
         color: colors.accentMuted,
     },
     avatarSpacer: {
-        width: 36,
+        width: 40,
     },
     codeBlock: {
         backgroundColor: "#0d1117",
