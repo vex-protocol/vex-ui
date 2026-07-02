@@ -44,6 +44,14 @@ export function SettingsScreen({ navigation }: AppScreenProps<"Settings">) {
             },
         },
         {
+            description: "Free, Plus, Pro",
+            icon: "sparkles-outline",
+            label: "Plan",
+            onPress: () => {
+                navigation.navigate("SettingsSection", { section: "billing" });
+            },
+        },
+        {
             description: "Manage your devices",
             icon: "phone-portrait-outline",
             label: "Devices",

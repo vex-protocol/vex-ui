@@ -22,12 +22,17 @@ import {
 
 import {
     $accountEntitlements,
+    $billingAccount,
+    $billingOperation,
     $channels,
     $localMessageRetentionDays,
     $servers,
     $user,
     ACCOUNT_TIERS,
+    type AccountEntitlements,
     type AccountTier,
+    type BillingProduct,
+    type BillingSubscription,
     vexService,
 } from "@vex-chat/store";
 
@@ -51,6 +56,7 @@ import {
     restartForOtaUpdate,
 } from "../lib/appUpdates";
 import { $avatarCropResult } from "../lib/avatarCropResult";
+import { useBillingPurchases } from "../lib/billingPurchases";
 import { buildInfo } from "../lib/buildInfo";
 import { getServerUrl } from "../lib/config";
 import { $devOptionsUnlocked, setDevOptionsUnlocked } from "../lib/devMode";
@@ -178,6 +184,8 @@ export function SettingsSectionScreen({
                 return "About";
             case "account":
                 return "Account";
+            case "billing":
+                return "Plan";
             case "connection":
                 return "Connection";
             case "data":
@@ -599,10 +607,6 @@ export function SettingsSectionScreen({
             appUpdateState.status === "checking" ||
             appUpdateState.status === "apk_downloading"
         );
-    }
-
-    function formatTierLabel(tier: AccountTier): string {
-        return tier.charAt(0).toUpperCase() + tier.slice(1);
     }
 
     function renderUpdateAccessory() {
@@ -1033,6 +1037,12 @@ export function SettingsSectionScreen({
                     </>
                 ) : null}
 
+                {section === "billing" ? (
+                    <BillingSettingsContent
+                        accountEntitlements={accountEntitlements}
+                    />
+                ) : null}
+
                 {section === "developer" && devUnlocked ? (
                     <>
                         <MenuSection title="Update diagnostics">
@@ -1340,8 +1350,225 @@ export function SettingsSectionScreen({
     );
 }
 
+function BillingSettingsContent({
+    accountEntitlements,
+}: {
+    accountEntitlements: AccountEntitlements;
+}) {
+    const billingAccount = useStore($billingAccount);
+    const billingOperation = useStore($billingOperation);
+    const purchases = useBillingPurchases();
+    const {
+        connected,
+        error: purchaseError,
+        pendingProductID,
+        products: purchaseProducts,
+        refresh: refreshPurchases,
+        restore: restorePurchases,
+        startPurchase,
+        storeProductFor,
+    } = purchases;
+    const [refreshing, setRefreshing] = useState(false);
+    const [restoreBusy, setRestoreBusy] = useState(false);
+    const effectiveEntitlements =
+        billingAccount?.entitlements ?? accountEntitlements;
+    const activeSubscriptions = billingAccount?.subscriptions ?? [];
+    const products = useMemo(
+        () =>
+            [...purchaseProducts].sort(
+                (a, b) => tierSortRank(a.tier) - tierSortRank(b.tier),
+            ),
+        [purchaseProducts],
+    );
+
+    const refreshBilling = useCallback(
+        async (options?: { silent?: boolean }) => {
+            if (refreshing) {
+                return;
+            }
+            if (!options?.silent) {
+                setRefreshing(true);
+            }
+            try {
+                await refreshPurchases();
+            } catch (err: unknown) {
+                if (!options?.silent) {
+                    Alert.alert("Plan unavailable", errorMessage(err));
+                }
+            } finally {
+                if (!options?.silent) {
+                    setRefreshing(false);
+                }
+            }
+        },
+        [refreshPurchases, refreshing],
+    );
+
+    useEffect(() => {
+        void refreshPurchases().catch((err: unknown) => {
+            console.warn("[vex-billing] initial refresh failed", err);
+        });
+    }, [refreshPurchases]);
+
+    async function handlePurchase(product: BillingProduct): Promise<void> {
+        try {
+            await startPurchase(product);
+        } catch (err: unknown) {
+            Alert.alert("Subscription unavailable", errorMessage(err));
+        }
+    }
+
+    async function handleRestore(): Promise<void> {
+        if (restoreBusy) {
+            return;
+        }
+        setRestoreBusy(true);
+        try {
+            await restorePurchases();
+        } catch (err: unknown) {
+            Alert.alert("Restore unavailable", errorMessage(err));
+        } finally {
+            setRestoreBusy(false);
+        }
+    }
+
+    const busy = billingOperation.busy || pendingProductID != null;
+    const billingError = purchaseError;
+
+    return (
+        <>
+            {billingError != null && billingError !== "" ? (
+                <View style={styles.statusCardError}>
+                    <Text style={styles.statusTitle}>Plan issue</Text>
+                    <Text style={styles.errorText}>{billingError}</Text>
+                </View>
+            ) : null}
+
+            <MenuSection title="Current plan">
+                <MenuRow
+                    description={effectiveEntitlements.source}
+                    icon="sparkles-outline"
+                    label="Current tier"
+                    value={formatTierLabel(effectiveEntitlements.tier)}
+                />
+            </MenuSection>
+
+            {activeSubscriptions.length > 0 ? (
+                <MenuSection title="Store subscriptions">
+                    {activeSubscriptions.map((subscription) => (
+                        <MenuRow
+                            description={subscriptionDescription(subscription)}
+                            icon="receipt-outline"
+                            key={subscription.subscriptionID}
+                            label={formatTierLabel(subscription.tier)}
+                            value={subscriptionStatusLabel(subscription)}
+                        />
+                    ))}
+                </MenuSection>
+            ) : null}
+
+            <MenuSection
+                footer={
+                    connected
+                        ? "Subscriptions are verified by Spire before the store transaction is finished on this device."
+                        : "Connect this build to App Store or Google Play services before starting a store purchase."
+                }
+                title="Available tiers"
+            >
+                {products.length > 0 ? (
+                    products.map((product) => {
+                        const nativeProduct = storeProductFor(product);
+                        const selected =
+                            product.tier === effectiveEntitlements.tier;
+                        const pending =
+                            pendingProductID === product.productID ||
+                            pendingProductID === product.storeProductID;
+                        const disabled =
+                            busy || selected || nativeProduct == null;
+                        return (
+                            <MenuRow
+                                accessory={
+                                    selected ? (
+                                        <Ionicons
+                                            color="rgba(255,255,255,0.85)"
+                                            name="checkmark"
+                                            size={22}
+                                        />
+                                    ) : undefined
+                                }
+                                description={productDescription(
+                                    product,
+                                    nativeProduct,
+                                    selected,
+                                    pending,
+                                )}
+                                disabled={disabled}
+                                icon={
+                                    product.tier === "pro"
+                                        ? "diamond-outline"
+                                        : "add-circle-outline"
+                                }
+                                key={product.productID}
+                                label={formatTierLabel(product.tier)}
+                                onPress={() => {
+                                    void handlePurchase(product);
+                                }}
+                                value={nativeProduct?.displayPrice}
+                            />
+                        );
+                    })
+                ) : (
+                    <MenuRow
+                        description="No subscriptions were returned by this Spire environment."
+                        disabled
+                        icon="cloud-offline-outline"
+                        label="Store products"
+                    />
+                )}
+            </MenuSection>
+
+            <MenuSection title="Store actions">
+                <MenuRow
+                    description={
+                        restoreBusy
+                            ? "Checking the device store account..."
+                            : "Verify existing store subscriptions"
+                    }
+                    disabled={restoreBusy || busy}
+                    icon="refresh-outline"
+                    label={restoreBusy ? "Restoring..." : "Restore purchases"}
+                    onPress={() => {
+                        void handleRestore();
+                    }}
+                />
+                <MenuRow
+                    description={
+                        refreshing
+                            ? "Reloading server catalog..."
+                            : "Reload products and entitlement state"
+                    }
+                    disabled={refreshing || busy}
+                    icon="sync-outline"
+                    label={refreshing ? "Refreshing..." : "Refresh plan"}
+                    onPress={() => {
+                        void refreshBilling();
+                    }}
+                />
+            </MenuSection>
+        </>
+    );
+}
+
 function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
+}
+
+function formatDate(value: string): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+    return date.toLocaleDateString();
 }
 
 function formatReleaseLabel(
@@ -1352,6 +1579,10 @@ function formatReleaseLabel(
     return target === "development"
         ? `${version}RC-${shortCommit}`
         : `${version}-${shortCommit}`;
+}
+
+function formatTierLabel(tier: AccountTier): string {
+    return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
 function InlineActionButton({
@@ -1379,10 +1610,65 @@ function InlineActionButton({
     );
 }
 
+function productDescription(
+    product: BillingProduct,
+    nativeProduct: null | undefined | { displayPrice?: string },
+    selected: boolean,
+    pending: boolean,
+): string {
+    if (pending) {
+        return "Waiting for store confirmation";
+    }
+    if (selected) {
+        return "Active on this account";
+    }
+    if (!nativeProduct) {
+        return `Configured for ${storeName(product.platform)}, not returned by the store`;
+    }
+    if (nativeProduct.displayPrice) {
+        return `${storeName(product.platform)} subscription`;
+    }
+    return `Subscribe with ${storeName(product.platform)}`;
+}
+
 function shortIdentifier(value: null | string | undefined): null | string {
     if (!value) return null;
     if (value.length <= 12) return value;
     return `${value.slice(0, 6)} · ${value.slice(-4)}`;
+}
+
+function storeName(platform: BillingProduct["platform"]): string {
+    return platform === "apple_app_store" ? "App Store" : "Google Play";
+}
+
+function subscriptionDescription(subscription: BillingSubscription): string {
+    const expires = subscription.expiresAt
+        ? `Renews or expires ${formatDate(subscription.expiresAt)}`
+        : "No expiration reported";
+    return `${storeName(subscription.platform)} · ${expires}`;
+}
+
+function subscriptionStatusLabel(subscription: BillingSubscription): string {
+    switch (subscription.status) {
+        case "active":
+            return "Active";
+        case "billing_retry":
+            return "Retry";
+        case "expired":
+            return "Expired";
+        case "grace_period":
+            return "Grace";
+        case "pending":
+            return "Pending";
+        case "revoked":
+            return "Revoked";
+        default:
+            return subscription.status;
+    }
+}
+
+function tierSortRank(tier: BillingProduct["tier"]): number {
+    return tier === "plus" ? 1 : 2;
 }
 
 function VerifiedCheck() {

@@ -34,6 +34,15 @@ import { Client, msgpack } from "@vex-chat/libvex";
 import { validate as uuidValidate } from "uuid";
 
 import {
+    $billingAccountWritable,
+    $billingOperationWritable,
+    $billingProductsWritable,
+    type BillingAccountState,
+    type BillingEnvironment,
+    type BillingProduct,
+    defaultBillingOperationState,
+} from "./domains/billing.ts";
+import {
     $activeCallsWritable,
     $currentCallIDWritable,
     $incomingCallsWritable,
@@ -140,6 +149,12 @@ export interface AccountProvisioningResult extends AuthResult {
     username?: string;
 }
 
+export interface AppleStoreTransactionInput {
+    environment?: BillingEnvironment;
+    signedTransactionInfo?: string;
+    transactionID?: string;
+}
+
 export type AuthProbeStatus = "authenticated" | "offline" | "unauthorized";
 
 /** Result from any auth flow. */
@@ -187,6 +202,10 @@ export interface AuthResult {
 
 export type BackgroundNetworkFetchResult = "failed" | "new_data" | "no_data";
 
+export interface BillingOperationResult extends OperationResult {
+    account?: BillingAccountState;
+}
+
 /** App-provided platform configuration for client bootstrap. */
 export interface BootstrapConfig {
     /**
@@ -223,6 +242,13 @@ export interface DeviceApprovalRequest {
     signKey: string;
     status: "approved" | "expired" | "pending" | "rejected";
     username: string;
+}
+
+export interface GooglePlayPurchaseInput {
+    environment?: BillingEnvironment;
+    packageName?: string;
+    productID?: string;
+    purchaseToken: string;
 }
 
 export interface InvitePreview {
@@ -340,6 +366,19 @@ export interface VoiceCallResult extends OperationResult {
 interface ClientHttpLike {
     get?: (...args: unknown[]) => Promise<unknown>;
     post?: (...args: unknown[]) => Promise<unknown>;
+}
+
+interface ClientWithBillingLike {
+    billing?: {
+        products?: () => Promise<BillingProduct[]>;
+        retrieve?: () => Promise<BillingAccountState>;
+        submitAppleTransaction?: (
+            request: AppleStoreTransactionInput,
+        ) => Promise<BillingAccountState>;
+        submitGooglePurchase?: (
+            request: GooglePlayPurchaseInput,
+        ) => Promise<BillingAccountState>;
+    };
 }
 
 interface ClientWithCallsLike {
@@ -2037,6 +2076,50 @@ class VexService {
         return this.refreshEntitlementsForClient(this.requireClient());
     }
 
+    async refreshBillingAccount(): Promise<BillingAccountState | null> {
+        const client = this.requireClient();
+        const retrieve = (client as unknown as ClientWithBillingLike).billing
+            ?.retrieve;
+        if (typeof retrieve !== "function") {
+            return null;
+        }
+        try {
+            const account = await retrieve();
+            this.publishBillingAccountState(account);
+            return account;
+        } catch (err: unknown) {
+            $billingOperationWritable.set({
+                busy: false,
+                error: errorMessage(err),
+                lastUpdatedAt: new Date().toISOString(),
+            });
+            return null;
+        }
+    }
+
+    async refreshBillingProducts(): Promise<BillingProduct[]> {
+        const client = this.requireClient();
+        const products = (client as unknown as ClientWithBillingLike).billing
+            ?.products;
+        if (typeof products !== "function") {
+            $billingProductsWritable.set([]);
+            return [];
+        }
+        try {
+            const result = await products();
+            $billingProductsWritable.set(result);
+            return result;
+        } catch (err: unknown) {
+            $billingOperationWritable.set({
+                busy: false,
+                error: errorMessage(err),
+                lastUpdatedAt: new Date().toISOString(),
+            });
+            $billingProductsWritable.set([]);
+            return [];
+        }
+    }
+
     async refreshSessionAfterForeground(): Promise<ResumeNetworkStatus> {
         if (!this.client) {
             this.setAuthStatus("signed_out");
@@ -2511,8 +2594,6 @@ class VexService {
         this.wsDebugStateLogsEnabled = enabled;
     }
 
-    // ── Unread management ───────────────────────────────────────────────
-
     async startVoiceCall(
         recipientUserID: string,
         signal?: CallSignalPayload,
@@ -2520,6 +2601,20 @@ class VexService {
         return this.runVoiceCallMutation((client) =>
             client.calls.startDM(recipientUserID, signal),
         );
+    }
+
+    async submitAppleStoreTransaction(
+        request: AppleStoreTransactionInput,
+    ): Promise<BillingOperationResult> {
+        return this.submitBillingProof("apple", request);
+    }
+
+    // ── Unread management ───────────────────────────────────────────────
+
+    async submitGooglePlayPurchase(
+        request: GooglePlayPurchaseInput,
+    ): Promise<BillingOperationResult> {
+        return this.submitBillingProof("google", request);
     }
 
     async subscribePushNotifications(
@@ -4227,6 +4322,11 @@ class VexService {
         }
     }
 
+    private publishBillingAccountState(account: BillingAccountState): void {
+        $billingAccountWritable.set(account);
+        $accountEntitlementsWritable.set(account.entitlements);
+    }
+
     private queuePendingMessageEventMessage(
         conversationKey: string,
         msg: Message,
@@ -4340,6 +4440,30 @@ class VexService {
         setTimeout(() => {
             this.kickPopulateState(attempt + 1);
         }, 200);
+    }
+
+    private async refreshBillingAccountForClient(
+        owner: Client,
+    ): Promise<BillingAccountState | null> {
+        const retrieve = (owner as unknown as ClientWithBillingLike).billing
+            ?.retrieve;
+        if (typeof retrieve !== "function") {
+            $billingAccountWritable.set(null);
+            return null;
+        }
+
+        try {
+            const account = await retrieve();
+            this.publishBillingAccountState(account);
+            return account;
+        } catch (err: unknown) {
+            debugAuth("billing:account:failed", {
+                message: errorMessage(err),
+                userID: owner.me.user().userID,
+            });
+            $billingAccountWritable.set(null);
+            return null;
+        }
     }
 
     private async refreshEntitlementsForClient(
@@ -4828,6 +4952,9 @@ class VexService {
         this.invitePreviewCache.clear();
         $authStatusWritable.set("signed_out");
         $accountEntitlementsWritable.set(defaultAccountEntitlements());
+        $billingAccountWritable.set(null);
+        $billingOperationWritable.set(defaultBillingOperationState());
+        $billingProductsWritable.set([]);
         $userWritable.set(null);
         $keyReplacedWritable.set(false);
         $pendingApprovalStageWritable.set("idle");
@@ -5013,6 +5140,7 @@ class VexService {
         let bootstrapChannelsByServer: null | Record<string, Channel[]> = null;
 
         await this.refreshEntitlementsForClient(owner);
+        await this.refreshBillingAccountForClient(owner);
         if (shouldStop()) {
             return;
         }
@@ -5754,6 +5882,61 @@ class VexService {
         }
         this.detachWebsocketWatchdogListener();
         this.wsWatchdogLastFrameAt = 0;
+    }
+
+    private async submitBillingProof(
+        platform: "apple" | "google",
+        request: AppleStoreTransactionInput | GooglePlayPurchaseInput,
+    ): Promise<BillingOperationResult> {
+        const client = this.requireClient();
+        const billing = (client as unknown as ClientWithBillingLike).billing;
+        let submit: (
+            request: AppleStoreTransactionInput | GooglePlayPurchaseInput,
+        ) => Promise<BillingAccountState>;
+        if (platform === "apple") {
+            const submitApple = billing?.submitAppleTransaction;
+            if (typeof submitApple !== "function") {
+                return {
+                    error: "Client does not support subscription verification.",
+                    ok: false,
+                };
+            }
+            submit = (input) =>
+                submitApple(input as AppleStoreTransactionInput);
+        } else {
+            const submitGoogle = billing?.submitGooglePurchase;
+            if (typeof submitGoogle !== "function") {
+                return {
+                    error: "Client does not support subscription verification.",
+                    ok: false,
+                };
+            }
+            submit = (input) => submitGoogle(input as GooglePlayPurchaseInput);
+        }
+
+        $billingOperationWritable.set({
+            busy: true,
+            error: null,
+            lastUpdatedAt: null,
+        });
+        try {
+            const account = await submit(request);
+            this.publishBillingAccountState(account);
+            $billingOperationWritable.set({
+                busy: false,
+                error: null,
+                lastUpdatedAt: new Date().toISOString(),
+            });
+            return { account, ok: true };
+        } catch (err: unknown) {
+            const error = errorMessage(err);
+            $billingOperationWritable.set({
+                busy: false,
+                error,
+                lastUpdatedAt: new Date().toISOString(),
+            });
+            return { error, ok: false };
+        }
     }
 
     private subscribe<E extends keyof ClientEvents>(
