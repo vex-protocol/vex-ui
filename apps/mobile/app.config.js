@@ -228,6 +228,7 @@ module.exports = ({ config }) => {
                     recordAudioAndroid: false,
                 },
             ],
+            "react-native-iap",
             "expo-background-task",
             "./plugins/withForegroundService",
             "./plugins/withAndroidShareIntent",

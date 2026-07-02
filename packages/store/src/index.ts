@@ -12,6 +12,24 @@ export type { VexLink } from "./deeplink.ts";
 // ── Domain atoms (readonly — apps can subscribe, not write) ─────────────────
 
 export {
+    $billingAccount,
+    $billingAccountWritable,
+    $billingOperation,
+    $billingOperationWritable,
+    $billingProducts,
+    $billingProductsWritable,
+    defaultBillingOperationState,
+} from "./domains/billing.ts";
+export type {
+    BillingAccountState,
+    BillingEnvironment,
+    BillingOperationState,
+    BillingPlatform,
+    BillingProduct,
+    BillingSubscription,
+    BillingSubscriptionStatus,
+} from "./domains/billing.ts";
+export {
     $activeCalls,
     $currentCallID,
     $incomingCalls,
