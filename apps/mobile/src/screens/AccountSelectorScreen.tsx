@@ -43,9 +43,8 @@ interface AccountRowProps {
 type Props = AuthScreenProps<"AccountSelector">;
 
 /**
- * Account picker: saved slots on this device. Choosing one starts account auth;
- * local dev can use the saved Vex device key directly, while normal builds use
- * passkey auth before provisioning. Long-press removes key material for that slot.
+ * Account picker: saved slots on this device. Choosing one uses the saved Vex
+ * device key directly. Long-press removes key material for that slot.
  */
 export function AccountSelectorScreen({ navigation, route }: Props) {
     const [accounts, setAccounts] = useState<KnownAccount[]>([]);
@@ -78,32 +77,36 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
             setErrorText(null);
             setSigningInUsername(account.username);
             try {
-                const result = await vexService.authenticateAccountWithPasskey(
+                const result = await vexService.login(
                     account.username,
+                    "",
                     mobileConfig(),
                     getServerOptions(),
                     keychainKeyStore,
                 );
-                if (!result.ok || !result.username) {
+                if (!result.ok && result.passkeySetupRequired) {
+                    const retry =
+                        await vexService.completeInitialPasskeySetup(
+                            mobileConfig(),
+                        );
+                    if (retry.ok) {
+                        return;
+                    }
                     setErrorText(
-                        result.userCancelled
-                            ? "Passkey sign-in was cancelled."
-                            : (result.error ??
-                                  "Could not sign in with passkey."),
+                        retry.error ??
+                            result.error ??
+                            "Could not finish account setup.",
                     );
                     await refresh();
                     return;
                 }
-                if (result.localDeviceAuthenticated) {
+                if (result.ok) {
                     return;
                 }
-                navigation.replace("ProvisionDevice", {
-                    hasLocalDevice: result.hasLocalDevice === true,
-                    ...(result.userID !== undefined
-                        ? { userID: result.userID }
-                        : {}),
-                    username: result.username,
-                });
+                setErrorText(
+                    result.error ?? "Could not activate this account.",
+                );
+                await refresh();
             } catch (err: unknown) {
                 setErrorText(
                     err instanceof Error
@@ -115,7 +118,7 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
                 setSigningInUsername(null);
             }
         },
-        [navigation, refresh, signingInUsername],
+        [refresh, signingInUsername],
     );
 
     const handleRemove = useCallback(
