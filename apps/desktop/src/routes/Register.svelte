@@ -8,6 +8,7 @@
     import { user as userAtom, vexService } from "../lib/store/index.js";
 
     let username = $state("");
+    let password = $state("");
     let errors: Record<string, string> = $state({});
     let loading = $state(false);
     let needsPasskeyRetry = $state(false);
@@ -39,12 +40,16 @@
             errors = { username: usernameError };
             return;
         }
+        if (password.trim().length === 0) {
+            errors = { password: "Enter a password" };
+            return;
+        }
 
         loading = true;
 
         const result = await vexService.register(
             normalizedUsername,
-            "",
+            password,
             desktopConfig(),
             getServerOptions(),
             keyStore,
@@ -129,7 +134,7 @@
 <div class="auth-page">
     <div class="auth-card">
         <h1 class="auth-card__title">Create account</h1>
-        <p class="auth-card__subtitle">Join Vex Chat</p>
+        <p class="auth-card__subtitle">Choose a username and password</p>
 
         {#if errors.form}
             <p class="auth-card__error">{errors.form}</p>
@@ -149,6 +154,22 @@
                 />
                 {#if errors.username}<span class="field-error"
                         >{errors.username}</span
+                    >{/if}
+            </div>
+
+            <div class="auth-form__field">
+                <label for="password">Password</label>
+                <input
+                    id="password"
+                    type="password"
+                    autocomplete="new-password"
+                    placeholder="choose a password"
+                    bind:value={password}
+                    disabled={loading}
+                    required
+                />
+                {#if errors.password}<span class="field-error"
+                        >{errors.password}</span
                     >{/if}
             </div>
 

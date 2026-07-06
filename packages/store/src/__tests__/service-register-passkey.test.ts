@@ -115,7 +115,7 @@ async function waitForMockCall(mock: ReturnType<typeof vi.fn>): Promise<void> {
     throw new Error("Expected mock to be called.");
 }
 
-describe("vexService.register passkey setup", () => {
+describe("vexService.register password-first signup", () => {
     beforeEach(async () => {
         await vexService.close();
         vexService.setPasskeyCeremonyDriver(null);
@@ -124,14 +124,12 @@ describe("vexService.register passkey setup", () => {
         libvexMock.generateSecretKey.mockReturnValue("generated-private-key");
     });
 
-    test("keeps the new account retryable when required passkey setup fails", async () => {
+    test("passes the password through and connects without initial passkey setup", async () => {
         const client = makeClient();
         const config = makeConfig();
         const { keyStore, saveCredentials } = makeKeyStore();
         const options: ServerOptions = { host: "api.vex.wtf" };
-        const registerPasskey = vi.fn(async () => {
-            throw new Error("aborted");
-        });
+        const registerPasskey = vi.fn();
         vexService.setPasskeyCeremonyDriver({
             authenticate: vi.fn(),
             register: registerPasskey,
@@ -140,155 +138,86 @@ describe("vexService.register passkey setup", () => {
 
         const result = await vexService.register(
             "Blood",
-            "",
+            "correct horse",
             config,
             options,
             keyStore,
         );
 
-        expect(result).toEqual({
-            error: "Passkey setup did not finish. Tap Retry to finish passkey setup for this account.",
-            ok: false,
-            passkeySetupRequired: true,
-        });
-        expect(client.register).toHaveBeenCalledWith("blood");
+        expect(result).toEqual({ ok: true });
+        expect(client.register).toHaveBeenCalledWith("blood", "correct horse");
         expect(saveCredentials).toHaveBeenCalledWith({
             deviceID: "device-blood",
             deviceKey: "generated-private-key",
             token: "",
             username: "blood",
         });
-        expect(client.passkeys.beginRegistration).toHaveBeenCalledWith(
-            "test-device",
-        );
-        expect(registerPasskey).toHaveBeenCalledOnce();
+        expect(client.passkeys.beginRegistration).not.toHaveBeenCalled();
         expect(client.passkeys.finishRegistration).not.toHaveBeenCalled();
-        expect(client.connect).not.toHaveBeenCalled();
+        expect(registerPasskey).not.toHaveBeenCalled();
+        expect(client.connect).toHaveBeenCalledOnce();
     });
 
-    test("reports an auth flow while signup passkey setup is finishing", async () => {
+    test("reports an auth flow while registration is in flight", async () => {
         const client = makeClient();
         const config = makeConfig();
         const { keyStore } = makeKeyStore();
         const options: ServerOptions = { host: "api.vex.wtf" };
-        const passkey = deferred<{ id: string }>();
-        const registerPasskey = vi.fn(() => passkey.promise);
-        vexService.setPasskeyCeremonyDriver({
-            authenticate: vi.fn(),
-            register: registerPasskey,
-        });
+        const registration =
+            deferred<[{ userID: string; username: string }, null]>();
+        client.register.mockReturnValueOnce(registration.promise);
         libvexMock.create.mockResolvedValueOnce(client);
 
         const resultPromise = vexService.register(
             "blood",
-            "",
+            "correct horse",
             config,
             options,
             keyStore,
         );
 
-        await waitForMockCall(registerPasskey);
+        await waitForMockCall(client.register);
         expect(vexService.isAuthFlowInFlight()).toBe(true);
 
-        passkey.resolve({ id: "credential-blood" });
+        registration.resolve([
+            { userID: "user-blood", username: "blood" },
+            null,
+        ]);
         await expect(resultPromise).resolves.toEqual({ ok: true });
         expect(vexService.isAuthFlowInFlight()).toBe(false);
     });
 
-    test("can complete required passkey setup after signup already created the account", async () => {
-        const client = makeClient();
-        const config = makeConfig();
-        const { keyStore } = makeKeyStore();
-        const options: ServerOptions = { host: "api.vex.wtf" };
-        const response = { id: "credential-blood" };
-        const registerPasskey = vi
-            .fn()
-            .mockRejectedValueOnce(new Error("aborted"))
-            .mockResolvedValueOnce(response);
-        vexService.setPasskeyCeremonyDriver({
-            authenticate: vi.fn(),
-            register: registerPasskey,
-        });
-        libvexMock.create.mockResolvedValueOnce(client);
-
-        const first = await vexService.register(
-            "blood",
-            "",
-            config,
-            options,
-            keyStore,
-        );
-        const second = await vexService.completeInitialPasskeySetup(config);
-
-        expect(first).toMatchObject({
-            ok: false,
-            passkeySetupRequired: true,
-        });
-        expect(second).toEqual({ ok: true });
-        expect(client.passkeys.beginRegistration).toHaveBeenCalledTimes(2);
-        expect(client.passkeys.finishRegistration).toHaveBeenCalledWith({
-            name: "test-device",
-            requestID: "passkey-request",
-            response,
-        });
-        expect(client.connect).toHaveBeenCalledOnce();
-    });
-
-    test("does not require another passkey when reconnect fails after setup retry", async () => {
-        const client = makeClient();
-        const config = makeConfig();
-        const { keyStore } = makeKeyStore();
-        const options: ServerOptions = { host: "api.vex.wtf" };
-        const response = { id: "credential-blood" };
-        const registerPasskey = vi
-            .fn()
-            .mockRejectedValueOnce(new Error("aborted"))
-            .mockResolvedValueOnce(response);
-        client.connect.mockRejectedValueOnce(new Error("network error"));
-        vexService.setPasskeyCeremonyDriver({
-            authenticate: vi.fn(),
-            register: registerPasskey,
-        });
-        libvexMock.create.mockResolvedValueOnce(client);
-
-        const first = await vexService.register(
-            "blood",
-            "",
-            config,
-            options,
-            keyStore,
-        );
-        const second = await vexService.completeInitialPasskeySetup(config);
-
-        expect(first).toMatchObject({
-            ok: false,
-            passkeySetupRequired: true,
-        });
-        expect(second).toEqual({
-            error: "network error",
-            ok: false,
-        });
-        expect(second).not.toHaveProperty("passkeySetupRequired");
-        expect(client.passkeys.beginRegistration).toHaveBeenCalledTimes(2);
-        expect(client.passkeys.finishRegistration).toHaveBeenCalledWith({
-            name: "test-device",
-            requestID: "passkey-request",
-            response,
-        });
-        expect(client.connect).toHaveBeenCalledOnce();
-    });
-
-    test("finishes signup when the required passkey is registered", async () => {
+    test("does not require a passkey ceremony driver for signup", async () => {
         const client = makeClient();
         const config = makeConfig();
         const { keyStore, saveCredentials } = makeKeyStore();
         const options: ServerOptions = { host: "api.vex.wtf" };
-        const response = { id: "credential-blood" };
-        const registerPasskey = vi.fn(async () => response);
-        vexService.setPasskeyCeremonyDriver({
-            authenticate: vi.fn(),
-            register: registerPasskey,
-        });
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        const result = await vexService.register(
+            "blood",
+            "correct horse",
+            config,
+            options,
+            keyStore,
+        );
+
+        expect(result).toEqual({ ok: true });
+        expect(client.register).toHaveBeenCalledWith("blood", "correct horse");
+        expect(client.passkeys.beginRegistration).not.toHaveBeenCalled();
+        expect(client.connect).toHaveBeenCalledOnce();
+        expect(saveCredentials).toHaveBeenCalledOnce();
+    });
+
+    test("surfaces a password registration error without saving credentials", async () => {
+        const client = makeClient();
+        const config = makeConfig();
+        const { keyStore, saveCredentials } = makeKeyStore();
+        const options: ServerOptions = { host: "api.vex.wtf" };
+        const regErr = new Error(
+            "Password is required to register a new account.",
+        );
+        client.register.mockResolvedValueOnce([null, regErr]);
         libvexMock.create.mockResolvedValueOnce(client);
 
         const result = await vexService.register(
@@ -299,12 +228,38 @@ describe("vexService.register passkey setup", () => {
             keyStore,
         );
 
-        expect(result).toEqual({ ok: true });
-        expect(client.passkeys.finishRegistration).toHaveBeenCalledWith({
-            name: "test-device",
-            requestID: "passkey-request",
-            response,
+        expect(result).toEqual({
+            error: "Password is required to register a new account.",
+            ok: false,
         });
+        expect(client.register).toHaveBeenCalledWith("blood", "");
+        expect(saveCredentials).not.toHaveBeenCalled();
+        expect(client.passkeys.beginRegistration).not.toHaveBeenCalled();
+        expect(client.connect).not.toHaveBeenCalled();
+    });
+
+    test("returns connect errors without asking for a passkey", async () => {
+        const client = makeClient();
+        const config = makeConfig();
+        const { keyStore, saveCredentials } = makeKeyStore();
+        const options: ServerOptions = { host: "api.vex.wtf" };
+        client.connect.mockRejectedValueOnce(new Error("network error"));
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        const result = await vexService.register(
+            "blood",
+            "correct horse",
+            config,
+            options,
+            keyStore,
+        );
+
+        expect(result).toEqual({
+            error: "network error",
+            ok: false,
+        });
+        expect(client.passkeys.beginRegistration).not.toHaveBeenCalled();
+        expect(client.passkeys.finishRegistration).not.toHaveBeenCalled();
         expect(client.connect).toHaveBeenCalledOnce();
         expect(saveCredentials).toHaveBeenCalledOnce();
     });

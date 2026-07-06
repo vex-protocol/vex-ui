@@ -138,16 +138,9 @@ export function PasskeysScreen() {
 
     function handleDelete(passkey: Passkey): void {
         haptic("destructive");
-        if (passkeys.length <= 1) {
-            Alert.alert(
-                "Passkey required",
-                "Add another passkey before removing this one.",
-            );
-            return;
-        }
         Alert.alert(
             `Remove "${passkey.name}"?`,
-            "You'll need another passkey to keep signing in to this account.",
+            "Passkeys are optional. You can add another one from this screen later.",
             [
                 { style: "cancel", text: "Cancel" },
                 {
@@ -192,7 +185,7 @@ export function PasskeysScreen() {
                     <Text style={styles.kicker}>ACCOUNT RECOVERY</Text>
                     <Text style={styles.introText}>
                         {supported
-                            ? "A passkey lets you restore your account if you lose every signed-in device. Vex never sees its secret."
+                            ? "A passkey is an optional way to restore or sign in to your account. Vex never sees its secret."
                             : "This device doesn't support passkeys. iOS 16+ or Android 9+ with a screen lock is required."}
                     </Text>
                 </View>
@@ -200,7 +193,7 @@ export function PasskeysScreen() {
                 <MenuSection title="Your Passkeys">
                     {passkeys.length === 0 && !refreshing ? (
                         <MenuRow
-                            description="Add one below to keep this account sign-in ready."
+                            description="Add one below whenever you want an extra recovery method."
                             icon="key-outline"
                             label="No passkeys yet"
                             showChevron={false}
@@ -278,11 +271,11 @@ export function PasskeysScreen() {
 
                 <View style={styles.warningCard}>
                     <Text style={styles.warningTitle}>
-                        Keep at least one recovery method
+                        Passkeys are supplementary
                     </Text>
                     <Text style={styles.warningText}>
-                        Without a passkey or second device, losing this phone
-                        means losing the account.
+                        You can use Vex without a passkey, then add or remove
+                        passkeys here as your devices change.
                     </Text>
                 </View>
 
