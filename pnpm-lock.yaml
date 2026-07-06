@@ -31,8 +31,8 @@ catalogs:
       specifier: 8.0.0
       version: 8.0.0
     '@vex-chat/types':
-      specifier: 4.3.1
-      version: 4.3.1
+      specifier: 4.3.2
+      version: 4.3.2
     dompurify:
       specifier: ^3.4.11
       version: 3.4.11
@@ -500,13 +500,13 @@ importers:
         version: 1.1.0(nanostores@1.2.0)(react@19.2.0)
       '@vex-chat/crypto':
         specifier: 'catalog:'
-        version: 10.0.0(@vex-chat/types@4.3.1)(typescript@5.9.3)
+        version: 10.0.0(@vex-chat/types@4.3.2)(typescript@5.9.3)
       '@vex-chat/libvex':
         specifier: 'catalog:'
         version: 8.0.0(better-sqlite3@11.10.0)(typescript@5.9.3)
       '@vex-chat/types':
         specifier: 'catalog:'
-        version: 4.3.1
+        version: 4.3.2
       eventemitter3:
         specifier: 5.0.4
         version: 5.0.4
@@ -2618,6 +2618,10 @@ packages:
 
   '@vex-chat/types@4.3.1':
     resolution: {integrity: sha512-qlH1PA5U4Xqr1hDe6xtZ1mX40fAiOqHKq601DZx7x/nBWiR7GF4Lwe0pOXRjxJaHefPrrh6plSQrrWSJ5bHclA==}
+    engines: {node: '>=18.0.0'}
+
+  '@vex-chat/types@4.3.2':
+    resolution: {integrity: sha512-2Wdp4GUdAWbTpOphqfezb8TgQodCMYWGec5bihmz9WMN6OXPjXP+Crterx8+t5dxgGEGuJ+gfAcTrSbIfnz72w==}
     engines: {node: '>=18.0.0'}
 
   '@vitest/expect@4.1.0':
@@ -9323,6 +9327,21 @@ snapshots:
     optionalDependencies:
       typescript: 5.9.3
 
+  '@vex-chat/crypto@10.0.0(@vex-chat/types@4.3.2)(typescript@5.9.3)':
+    dependencies:
+      '@noble/curves': 1.4.0
+      '@noble/hashes': 2.2.0
+      '@stablelib/base64': 2.0.1
+      '@stablelib/utf8': 2.1.0
+      '@vex-chat/types': 4.3.2
+      bip39: 3.1.0
+      ed2curve: 0.3.0
+      msgpackr: 1.11.10
+      tweetnacl: 1.0.3
+      zod: 4.3.6
+    optionalDependencies:
+      typescript: 5.9.3
+
   '@vex-chat/libvex@8.0.0(better-sqlite3@11.10.0)(typescript@5.9.3)':
     dependencies:
       '@vex-chat/crypto': 10.0.0(@vex-chat/types@4.3.1)(typescript@5.9.3)
@@ -9338,6 +9357,10 @@ snapshots:
       - typescript
 
   '@vex-chat/types@4.3.1':
+    dependencies:
+      zod: 4.3.6
+
+  '@vex-chat/types@4.3.2':
     dependencies:
       zod: 4.3.6
 
