@@ -12,9 +12,9 @@ catalog:
     "@tauri-apps/cli": ^2.11.0
     "@types/node": ^24.10.1
     "@vex-chat/crypto": 10.0.0
-    "@vex-chat/libvex": 7.4.0
-    "@vex-chat/spire": 2.6.0
-    "@vex-chat/types": 4.3.0
+    "@vex-chat/libvex": 8.0.0
+    "@vex-chat/spire": 3.0.0
+    "@vex-chat/types": 4.3.1
     dompurify: ^3.4.11
     expo-audio: ~55.0.14
     expo-background-fetch: ~55.0.15
