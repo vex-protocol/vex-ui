@@ -431,9 +431,10 @@ function formatUnreadCount(count: number): string {
 const styles = StyleSheet.create({
     activePill: {
         backgroundColor: colors.accent,
-        height: 22,
+        borderRadius: 2,
+        height: 28,
         opacity: 0,
-        width: 3,
+        width: 4,
     },
     activePillVisible: {
         opacity: 1,
@@ -442,16 +443,16 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.transparent,
         borderColor: colors.border,
-        borderStyle: "dashed",
+        borderRadius: 18,
         borderWidth: 1,
-        height: 44,
+        height: 56,
         justifyContent: "center",
         marginVertical: 4,
-        width: 44,
+        width: 56,
     },
     addText: {
         color: colors.success,
-        fontSize: 24,
+        fontSize: 28,
         marginTop: -2,
     },
     authDotAuthenticated: {
@@ -479,11 +480,14 @@ const styles = StyleSheet.create({
         paddingVertical: 2,
     },
     channelItem: {
+        borderRadius: 8,
         paddingHorizontal: 10,
-        paddingVertical: 7,
+        paddingVertical: 8,
     },
     channelItemActive: {
         backgroundColor: "rgba(231,0,0,0.14)",
+        borderColor: "rgba(231,0,0,0.28)",
+        borderWidth: 1,
     },
     channelItemRow: {
         alignItems: "center",
@@ -599,10 +603,11 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.surfaceLight,
         borderColor: "rgba(255,255,255,0.1)",
+        borderRadius: 18,
         borderWidth: 1,
-        height: 44,
+        height: 56,
         justifyContent: "center",
-        width: 44,
+        width: 56,
     },
     profileAuthDot: {
         backgroundColor: "#6B7280",
@@ -676,7 +681,7 @@ const styles = StyleSheet.create({
     railContainer: {
         alignItems: "center",
         paddingBottom: 10,
-        width: 64,
+        width: 80,
     },
     serverBadge: {
         alignItems: "center",
@@ -696,11 +701,12 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.surfaceLight,
         borderColor: "rgba(255,255,255,0.1)",
+        borderRadius: 18,
         borderWidth: 1,
-        height: 44,
+        height: 56,
         justifyContent: "center",
         marginVertical: 4,
-        width: 44,
+        width: 56,
     },
     serverBtnActive: {
         backgroundColor: colors.accent,

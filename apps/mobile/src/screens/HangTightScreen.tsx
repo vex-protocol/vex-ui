@@ -69,8 +69,10 @@ export function HangTightScreen({
     const [bootError, setBootError] = useState("");
     const [busy, setBusy] = useState(true);
     const [username, setUsername] = useState("");
+    const [password, setPassword] = useState("");
     const [phase, setPhase] = useState<Phase>("boot");
     const [focused, setFocused] = useState(false);
+    const [passwordFocused, setPasswordFocused] = useState(false);
     const [pendingApproval, setPendingApproval] =
         useState<null | PendingApprovalSnapshot>(null);
 
@@ -319,8 +321,14 @@ export function HangTightScreen({
     const handleSubmit = () => {
         if (busy) return;
         const candidate = username.trim();
+        const passwordCandidate = password;
         if (!HANDLE_PATTERN.test(candidate)) {
             setBootError("Handles are 3-19 letters, digits, or underscores.");
+            playInvalidShake();
+            return;
+        }
+        if (passwordCandidate.trim().length === 0) {
+            setBootError("Enter a password to continue.");
             playInvalidShake();
             return;
         }
@@ -375,7 +383,7 @@ export function HangTightScreen({
 
             return vexService.register(
                 candidate,
-                "",
+                passwordCandidate,
                 mobileConfig(),
                 getServerOptions(),
                 keychainKeyStore,
@@ -476,6 +484,7 @@ export function HangTightScreen({
             setBootError("");
             setBusy(false);
             setUsername("");
+            setPassword("");
             setPhase("form");
         })();
     };
@@ -483,6 +492,7 @@ export function HangTightScreen({
     const handleValid = HANDLE_PATTERN.test(username.trim());
     const showHint = username.length > 0;
     const cornerColor = focused ? colors.accent : colors.border;
+    const passwordCornerColor = passwordFocused ? colors.accent : colors.border;
 
     const inputGlowOpacity = inputGlow.interpolate({
         inputRange: [0, 1],
@@ -538,8 +548,8 @@ export function HangTightScreen({
                             <Text style={styles.eyebrow}>SIGN IN</Text>
                             <Text style={styles.heading}>Welcome.</Text>
                             <Text style={styles.subheading}>
-                                Enter your handle. If it&apos;s yours, your
-                                passkey opens the next step.
+                                Enter your handle and password. New accounts use
+                                the password first; passkeys can be added later.
                             </Text>
 
                             <View style={styles.inputArea}>
@@ -624,6 +634,45 @@ export function HangTightScreen({
                                 3-19 letters, digits, or underscores
                             </Text>
 
+                            <View style={styles.passwordArea}>
+                                <CornerBracketBox
+                                    color={passwordCornerColor}
+                                    size={10}
+                                    thickness={1.5}
+                                >
+                                    <View style={styles.inputRow}>
+                                        <TextInput
+                                            autoCapitalize="none"
+                                            autoComplete="new-password"
+                                            autoCorrect={false}
+                                            editable={!busy}
+                                            onBlur={() => {
+                                                setPasswordFocused(false);
+                                            }}
+                                            onChangeText={(text) => {
+                                                setPassword(text);
+                                                if (bootError) setBootError("");
+                                            }}
+                                            onFocus={() => {
+                                                setPasswordFocused(true);
+                                                Vibration.vibrate(8);
+                                            }}
+                                            onSubmitEditing={handleSubmit}
+                                            placeholder="password"
+                                            placeholderTextColor={
+                                                colors.mutedDark
+                                            }
+                                            returnKeyType="go"
+                                            secureTextEntry
+                                            selectionColor={colors.accent}
+                                            style={styles.input}
+                                            textContentType="newPassword"
+                                            value={password}
+                                        />
+                                    </View>
+                                </CornerBracketBox>
+                            </View>
+
                             {bootError ? (
                                 <View style={styles.errorBox}>
                                     <Text style={styles.errorText}>
@@ -637,21 +686,24 @@ export function HangTightScreen({
                             >
                                 <VexButton
                                     disabled={
-                                        busy || username.trim().length === 0
+                                        busy ||
+                                        username.trim().length === 0 ||
+                                        password.trim().length === 0
                                     }
                                     glow
                                     loading={busy}
                                     onPress={handleSubmit}
                                     style={styles.signInBtn}
-                                    title={busy ? "Signing in..." : "Sign in"}
+                                    title={busy ? "Continuing..." : "Continue"}
                                     variant="primary"
                                 />
                             </Animated.View>
 
                             {!busy ? (
                                 <Text style={styles.bottomHint}>
-                                    New handles create an account. Existing
-                                    handles use passkey sign-in first.
+                                    Existing handles can still continue with a
+                                    passkey or approval from another signed-in
+                                    device.
                                 </Text>
                             ) : null}
                         </Animated.View>
@@ -986,6 +1038,10 @@ const styles = StyleSheet.create({
     },
     logoBlock: {
         alignItems: "flex-start",
+    },
+    passwordArea: {
+        marginTop: 14,
+        position: "relative",
     },
     signInBtn: {
         marginTop: 20,

@@ -163,9 +163,9 @@ export interface AuthResult {
     keyReplaced?: boolean;
     ok: boolean;
     /**
-     * Set when signup created the account/device, but the required first
-     * passkey did not finish. Credentials have been saved so callers should
-     * retry auth/passkey setup instead of submitting another registration.
+     * Set when a legacy server requires passkey setup before the device can
+     * finish signing in. Credentials have been saved so callers should retry
+     * auth/passkey setup instead of submitting another registration.
      */
     passkeySetupRequired?: boolean;
     pendingDeviceApproval?: boolean;
@@ -4576,7 +4576,7 @@ class VexService {
                     ? username.trim().toLowerCase()
                     : generateAutoProvisionUsername();
             const [user, regErr] = await withTimeout(
-                client.register(registrationUsername),
+                client.register(registrationUsername, _password),
                 REGISTER_STEP_TIMEOUT_MS,
                 `Signup stalled before reaching server registration at ${options.host}.`,
             );
@@ -4651,28 +4651,6 @@ class VexService {
                 token: "",
                 username: client.me.user().username,
             });
-
-            if (!shouldSkipInitialPasskeySetup(config, options)) {
-                try {
-                    await withTimeout(
-                        this.registerInitialPasskeyForCurrentClient(
-                            config.deviceName || "This device",
-                        ),
-                        PASSKEY_SETUP_TIMEOUT_MS,
-                        "Signup stalled while adding a passkey.",
-                    );
-                } catch (passkeyErr: unknown) {
-                    debugAuth("register:passkeySetup:failed", {
-                        message: errorMessage(passkeyErr),
-                    });
-                    this.setAuthStatus("unauthorized");
-                    return {
-                        error: initialPasskeySetupErrorMessage(passkeyErr),
-                        ok: false,
-                        passkeySetupRequired: true,
-                    };
-                }
-            }
 
             await withTimeout(
                 client.connect(),
