@@ -327,11 +327,6 @@ export function HangTightScreen({
             playInvalidShake();
             return;
         }
-        if (passwordCandidate.trim().length === 0) {
-            setBootError("Enter a password to continue.");
-            playInvalidShake();
-            return;
-        }
         Keyboard.dismiss();
         Vibration.vibrate(20);
         Animated.sequence([
@@ -371,7 +366,7 @@ export function HangTightScreen({
                 });
                 return;
             }
-            if (!passkey.shouldTryDeviceApproval) {
+            if (passkey.userCancelled || passkey.networkError) {
                 setBootError(
                     passkey.userCancelled
                         ? "Passkey sign-in was cancelled."
@@ -548,8 +543,9 @@ export function HangTightScreen({
                             <Text style={styles.eyebrow}>SIGN IN</Text>
                             <Text style={styles.heading}>Welcome.</Text>
                             <Text style={styles.subheading}>
-                                Enter your handle and password. New accounts use
-                                the password first; passkeys can be added later.
+                                Enter your handle to use a passkey or device
+                                approval. Add a password to create a new account
+                                or continue without passkeys.
                             </Text>
 
                             <View style={styles.inputArea}>
@@ -658,7 +654,7 @@ export function HangTightScreen({
                                                 Vibration.vibrate(8);
                                             }}
                                             onSubmitEditing={handleSubmit}
-                                            placeholder="password"
+                                            placeholder="password (optional)"
                                             placeholderTextColor={
                                                 colors.mutedDark
                                             }
@@ -686,9 +682,7 @@ export function HangTightScreen({
                             >
                                 <VexButton
                                     disabled={
-                                        busy ||
-                                        username.trim().length === 0 ||
-                                        password.trim().length === 0
+                                        busy || username.trim().length === 0
                                     }
                                     glow
                                     loading={busy}
@@ -701,9 +695,9 @@ export function HangTightScreen({
 
                             {!busy ? (
                                 <Text style={styles.bottomHint}>
-                                    Existing handles can still continue with a
-                                    passkey or approval from another signed-in
-                                    device.
+                                    New handles need a password. Existing
+                                    handles can continue with a passkey or
+                                    another signed-in device.
                                 </Text>
                             ) : null}
                         </Animated.View>

@@ -263,4 +263,56 @@ describe("vexService.register password-first signup", () => {
         expect(client.connect).toHaveBeenCalledOnce();
         expect(saveCredentials).toHaveBeenCalledOnce();
     });
+
+    test("keeps legacy connect-required passkey setup retryable", async () => {
+        const client = makeClient();
+        const config = makeConfig();
+        const { keyStore, saveCredentials } = makeKeyStore();
+        const options: ServerOptions = { host: "api.vex.wtf" };
+        const passkeyRequired = Object.assign(
+            new Error("Request failed with status 403"),
+            {
+                response: {
+                    data: "Passkey setup required before connect.",
+                    status: 403,
+                },
+            },
+        );
+        const response = { id: "credential-blood" };
+        const registerPasskey = vi.fn(async () => response);
+        client.connect
+            .mockRejectedValueOnce(passkeyRequired)
+            .mockResolvedValueOnce(undefined);
+        vexService.setPasskeyCeremonyDriver({
+            authenticate: vi.fn(),
+            register: registerPasskey,
+        });
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        const first = await vexService.register(
+            "blood",
+            "correct horse",
+            config,
+            options,
+            keyStore,
+        );
+        const second = await vexService.completeInitialPasskeySetup(config);
+
+        expect(first).toEqual({
+            error: "Passkey setup did not finish. Tap Retry to finish passkey setup for this account.",
+            ok: false,
+            passkeySetupRequired: true,
+        });
+        expect(saveCredentials).toHaveBeenCalledOnce();
+        expect(client.passkeys.beginRegistration).toHaveBeenCalledWith(
+            "test-device",
+        );
+        expect(client.passkeys.finishRegistration).toHaveBeenCalledWith({
+            name: "test-device",
+            requestID: "passkey-request",
+            response,
+        });
+        expect(second).toEqual({ ok: true });
+        expect(client.connect).toHaveBeenCalledTimes(2);
+    });
 });

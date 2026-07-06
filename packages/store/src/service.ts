@@ -119,6 +119,12 @@ export interface AccountPasskeyAuthResult extends OperationResult {
      */
     localDeviceAuthenticated?: boolean;
     /**
+     * Set when passkey auth failed because the network is unavailable. Callers
+     * should not fall through into registration/device-approval automatically
+     * after this.
+     */
+    networkError?: boolean;
+    /**
      * Set when saved local credentials were stale and the caller should return
      * to an explicit sign-in/new-device flow.
      */
@@ -3147,7 +3153,8 @@ class VexService {
             };
         } catch (err: unknown) {
             const message = errorMessage(err);
-            if (isNetworkError(err)) {
+            const networkError = isNetworkError(err);
+            if (networkError) {
                 this.setAuthStatus("offline");
             } else {
                 this.setAuthStatus("signed_out");
@@ -3159,6 +3166,7 @@ class VexService {
             }
             return {
                 error: message,
+                ...(networkError ? { networkError } : {}),
                 ok: false,
                 shouldTryDeviceApproval:
                     shouldTryDeviceApprovalAfterPasskeyFailure(err),
@@ -4652,11 +4660,29 @@ class VexService {
                 username: client.me.user().username,
             });
 
-            await withTimeout(
-                client.connect(),
-                REGISTER_STEP_TIMEOUT_MS,
-                "Signup stalled while opening realtime connection.",
-            );
+            try {
+                await withTimeout(
+                    client.connect(),
+                    REGISTER_STEP_TIMEOUT_MS,
+                    "Signup stalled while opening realtime connection.",
+                );
+            } catch (connectErr: unknown) {
+                if (
+                    !shouldSkipInitialPasskeySetup(config, options) &&
+                    isPasskeySetupRequiredError(connectErr)
+                ) {
+                    debugAuth("register:connect:passkeySetupRequired", {
+                        message: errorMessage(connectErr),
+                    });
+                    this.setAuthStatus("unauthorized");
+                    return {
+                        error: initialPasskeySetupErrorMessage(connectErr),
+                        ok: false,
+                        passkeySetupRequired: true,
+                    };
+                }
+                throw connectErr;
+            }
             debugAuth("register:connect:ok", undefined);
             $userWritable.set(client.me.user());
             this.setAuthStatus("authenticated");
