@@ -360,10 +360,20 @@ export interface VoiceCallResult extends OperationResult {
     event?: CallEvent;
 }
 
-interface ClientHttpLike {
-    get?: (...args: unknown[]) => Promise<unknown>;
-    post?: (...args: unknown[]) => Promise<unknown>;
+interface AuthSessionSnapshot {
+    exp: number;
+    user: User;
 }
+
+interface ClientHttpLike {
+    delete?: ClientHttpMethod;
+    get?: ClientHttpMethod;
+    patch?: ClientHttpMethod;
+    post?: ClientHttpMethod;
+    put?: ClientHttpMethod;
+}
+
+type ClientHttpMethod = (...args: unknown[]) => Promise<unknown>;
 
 interface ClientWithBillingLike {
     billing?: {
@@ -576,7 +586,7 @@ interface WebSocketDebugLike {
 
 const REGISTER_STEP_TIMEOUT_MS = 12000;
 const DEVICE_AUTH_REFRESH_THRESHOLD_MS = 10 * 60 * 1000;
-const DEVICE_AUTH_REFRESH_INTERVAL_MS = 60 * 1000;
+const DEVICE_AUTH_REFRESH_RETRY_MS = 60 * 1000;
 const LOCAL_DECRYPT_RECOVERY_ERROR =
     "Local encrypted data could not be recovered on this device. Please sign in again.";
 const INVALID_CREDENTIALS_ERROR = "Incorrect username or password.";
@@ -669,7 +679,6 @@ class VexService {
         Promise<InvitePreview | null>
     >();
     private lastConnectionRecoveryAt = 0;
-    private lastDeviceAuthRefreshAttemptAt = 0;
     private logoutInFlight: null | Promise<void> = null;
     private passkeyAccountSession: null | {
         deviceKey: string;
@@ -704,6 +713,11 @@ class VexService {
         ...DEFAULT_PRODUCT_FEATURES,
     };
     private readonly serverRefreshes = new Map<string, Promise<void>>();
+    private sessionRefreshInFlight: null | {
+        client: Client;
+        promise: Promise<AuthSessionSnapshot>;
+    } = null;
+    private sessionRefreshTimer: null | ReturnType<typeof setTimeout> = null;
     private wsDebugEnabled = shouldDebugAuth();
     private wsDebugFrameLogsEnabled = shouldDebugAuth();
     private wsDebugInboundListener: ((data: Uint8Array) => void) | null = null;
@@ -1113,6 +1127,7 @@ class VexService {
     }
 
     async close(): Promise<void> {
+        this.clearSessionRefreshTimer();
         this.passkeyDeviceApprovalRequestInFlight = null;
         this.pendingMessageEventMessages.clear();
         this.pendingReactionMessages.clear();
@@ -1132,6 +1147,7 @@ class VexService {
             const c = this.client;
             this.unwireEvents();
             this.client = null;
+            this.sessionRefreshInFlight = null;
             try {
                 await c.close(true);
             } catch {
@@ -1139,6 +1155,8 @@ class VexService {
                 // half-open WebSocket that throws on teardown.
             }
         }
+        this.sessionRefreshInFlight = null;
+        this.clearSessionRefreshTimer();
     }
 
     async completePendingApprovalWithExistingPasskey(): Promise<OperationResult> {
@@ -2001,18 +2019,42 @@ class VexService {
     }
 
     async probeAuthSession(): Promise<AuthProbeStatus> {
+        let owner: Client | null = null;
         try {
             const client = this.requireClient();
-            const auth = await client.whoami();
+            owner = client;
+            let auth: AuthSessionSnapshot;
+            try {
+                auth = await client.whoami();
+            } catch (err: unknown) {
+                if (!isUnauthorizedError(err)) {
+                    throw err;
+                }
+                debugAuth("session:probe:expired-token", {
+                    username: this.currentClientUsername(),
+                });
+                auth = await this.refreshSessionWithDeviceKey(client);
+            }
+            if (this.client !== client) {
+                return "offline";
+            }
             $userWritable.set(auth.user);
-            await this.refreshSessionTokenIfStale(auth.exp);
+            const refreshed = await this.refreshSessionTokenIfStale(auth.exp);
+            if (!refreshed) {
+                this.scheduleSessionRefresh(client, auth.exp);
+            }
             this.setAuthStatus("authenticated");
             return "authenticated";
         } catch (err: unknown) {
+            const currentOwner =
+                owner !== null && this.client === owner ? owner : null;
             if (isRateLimitedError(err)) {
                 // 429 should not cascade into forced logout flows.
                 this.markRateLimited("probeAuthSession");
-                this.setAuthStatus("authenticated");
+                if (currentOwner) {
+                    this.scheduleSessionRefreshRetry(currentOwner);
+                    this.setAuthStatus("authenticated");
+                }
                 return "authenticated";
             }
             // 404 here means the user record (or device record, depending on
@@ -2021,10 +2063,16 @@ class VexService {
             // caller's recovery path (refresh → fail → clear creds + bounce
             // to sign-in) fires the same way it does for an expired token.
             if (isStaleCredentialError(err)) {
-                this.setAuthStatus("unauthorized");
+                if (currentOwner) {
+                    this.clearSessionRefreshTimer();
+                    this.setAuthStatus("unauthorized");
+                }
                 return "unauthorized";
             }
-            this.setAuthStatus("offline");
+            if (currentOwner) {
+                this.scheduleSessionRefreshRetry(currentOwner);
+                this.setAuthStatus("offline");
+            }
             return "offline";
         }
     }
@@ -2142,22 +2190,7 @@ class VexService {
         }
         this.setAuthStatus("checking");
         const probe = await this.probeAuthSession();
-        if (probe === "unauthorized") {
-            const client = this.requireClient();
-            const username = this.currentClientUsername();
-            const { authErr } = await this.loginWithDeviceKeyWithPasskeyRetry(
-                client,
-                username,
-            );
-            if (authErr) {
-                this.setAuthStatus("unauthorized");
-                return "unauthorized";
-            }
-            const afterRelogin = await this.probeAuthSession();
-            if (afterRelogin !== "authenticated") {
-                return afterRelogin;
-            }
-        } else if (probe !== "authenticated") {
+        if (probe !== "authenticated") {
             return probe;
         }
 
@@ -2219,42 +2252,20 @@ class VexService {
         }
     }
 
-    async refreshSessionTokenIfStale(exp: number): Promise<void> {
+    async refreshSessionTokenIfStale(exp: number): Promise<boolean> {
         const expMs = jwtExpToEpochMs(exp);
         if (!Number.isFinite(expMs)) {
-            return;
+            return false;
         }
         const remainingMs = expMs - Date.now();
         if (remainingMs > DEVICE_AUTH_REFRESH_THRESHOLD_MS) {
-            return;
+            return false;
         }
-        const elapsedSinceAttempt =
-            Date.now() - this.lastDeviceAuthRefreshAttemptAt;
-        if (elapsedSinceAttempt < DEVICE_AUTH_REFRESH_INTERVAL_MS) {
-            return;
-        }
-        this.lastDeviceAuthRefreshAttemptAt = Date.now();
-        try {
-            const client = this.requireClient();
-            const username = this.currentClientUsername();
-            const { authErr } = await this.loginWithDeviceKeyWithPasskeyRetry(
-                client,
-                username,
-            );
-            if (authErr) {
-                debugAuth("session:refresh:failed", {
-                    message: errorMessage(authErr),
-                });
-                return;
-            }
-            debugAuth("session:refresh:ok", {
-                remainingHours: Math.floor(remainingMs / (1000 * 60 * 60)),
-            });
-        } catch (err: unknown) {
-            debugAuth("session:refresh:error", {
-                message: errorMessage(err),
-            });
-        }
+        await this.refreshSessionWithDeviceKey(this.requireClient());
+        debugAuth("session:refresh:ok", {
+            remainingMinutes: Math.floor(remainingMs / (1000 * 60)),
+        });
+        return true;
     }
 
     async refreshVoiceCalls(): Promise<
@@ -3308,6 +3319,15 @@ class VexService {
         }
     }
 
+    private canRecoverHttpSession(client: Client, args: unknown[]): boolean {
+        return (
+            this.client === client &&
+            $userWritable.get() !== null &&
+            this.currentDeviceID(client) !== undefined &&
+            !isSessionMaintenanceHttpRequest(args[0])
+        );
+    }
+
     private checkWebsocketWatchdog(): void {
         if (!this.client || this.wsWatchdogLastFrameAt === 0) {
             return;
@@ -3336,6 +3356,15 @@ class VexService {
         }
     }
 
+    private clearSessionRefreshTimer(): void {
+        if (this.sessionRefreshTimer !== null) {
+            clearTimeout(this.sessionRefreshTimer);
+            this.sessionRefreshTimer = null;
+        }
+    }
+
+    // ── Private ─────────────────────────────────────────────────────────
+
     private async clearStoredCredentials(
         keyStore: KeyStore,
         username: string,
@@ -3348,18 +3377,13 @@ class VexService {
     }
 
     private configureHttpForRuntime(client: Client): void {
-        if (!isReactNativeRuntime()) {
-            return;
-        }
         const internals = client as unknown as ClientWithInternalHttp;
         const http = internals.http;
         if (!http) {
             return;
         }
-        this.wrapHttpMethodsWithTimeout(http);
+        this.wrapHttpMethodsForRuntime(client, http, isReactNativeRuntime());
     }
-
-    // ── Private ─────────────────────────────────────────────────────────
 
     private async createClientWithRecovery(
         privateKey: string,
@@ -3386,6 +3410,17 @@ class VexService {
             return user.username;
         }
         return this.requireClient().me.user().username;
+    }
+
+    private currentDeviceID(client: Client): string | undefined {
+        try {
+            const deviceID = client.me.device().deviceID;
+            return typeof deviceID === "string" && deviceID.length > 0
+                ? deviceID
+                : undefined;
+        } catch {
+            return undefined;
+        }
     }
 
     private async deletePersistedMessage(mailID: string): Promise<void> {
@@ -3439,6 +3474,8 @@ class VexService {
         this.wsWatchdogSocket = null;
         this.wsWatchdogListener = null;
     }
+
+    // ── Private ─────────────────────────────────────────────────────────
 
     private ensureFamiliarCached(userID: string): void {
         if ($familiarsWritable.get()[userID]) return;
@@ -3507,8 +3544,6 @@ class VexService {
         }
         return null;
     }
-
-    // ── Private ─────────────────────────────────────────────────────────
 
     private async fetchInvitePreview(
         inviteID: string,
@@ -4594,6 +4629,77 @@ class VexService {
         return refresh;
     }
 
+    private refreshSessionWithDeviceKey(
+        client: Client,
+    ): Promise<AuthSessionSnapshot> {
+        const existing = this.sessionRefreshInFlight;
+        if (existing?.client === client) {
+            return existing.promise;
+        }
+
+        const run = async (): Promise<AuthSessionSnapshot> => {
+            if (this.client !== client) {
+                throw new Error("The active session changed during refresh.");
+            }
+            const username =
+                $userWritable.get()?.username ?? client.me.user().username;
+            const deviceID = this.currentDeviceID(client);
+            if (!deviceID) {
+                throw new Error(
+                    "No trusted device is available to refresh this session.",
+                );
+            }
+
+            debugAuth("session:refresh:start", { deviceID, username });
+            const { authErr } = await this.loginWithDeviceKeyWithPasskeyRetry(
+                client,
+                username,
+                deviceID,
+            );
+            if (authErr) {
+                throw authErr;
+            }
+
+            // Verify the replacement token and use its server-provided expiry
+            // to schedule the next renewal. /whoami is deliberately excluded
+            // from the HTTP retry wrapper, so this cannot recurse into itself.
+            const auth = await client.whoami();
+            if (this.client === client) {
+                $userWritable.set(auth.user);
+                this.scheduleSessionRefresh(client, auth.exp);
+                this.setAuthStatus("authenticated");
+            }
+            return auth;
+        };
+
+        const promise = run()
+            .catch((err: unknown) => {
+                debugAuth("session:refresh:failed", {
+                    message: errorMessage(err),
+                });
+                if (this.client === client) {
+                    if (isRateLimitedError(err)) {
+                        this.markRateLimited("sessionRefresh");
+                        this.scheduleSessionRefreshRetry(client);
+                    } else if (isStaleCredentialError(err)) {
+                        this.clearSessionRefreshTimer();
+                        this.setAuthStatus("unauthorized");
+                    } else {
+                        this.scheduleSessionRefreshRetry(client);
+                        this.setAuthStatus("offline");
+                    }
+                }
+                throw err;
+            })
+            .finally(() => {
+                if (this.sessionRefreshInFlight?.promise === promise) {
+                    this.sessionRefreshInFlight = null;
+                }
+            });
+        this.sessionRefreshInFlight = { client, promise };
+        return promise;
+    }
+
     private async registerInternal(
         username: string,
         password: string,
@@ -5071,6 +5177,8 @@ class VexService {
     }
 
     private resetAll(): void {
+        this.clearSessionRefreshTimer();
+        this.sessionRefreshInFlight = null;
         this.stopPendingApprovalWatcher();
         this.activePendingDeviceApproval = null;
         this.deferredDeviceApproval = null;
@@ -5100,7 +5208,6 @@ class VexService {
             totalSteps: 0,
         });
         $avatarVersionsWritable.set({});
-        this.lastDeviceAuthRefreshAttemptAt = 0;
         $familiarsWritable.set({});
         $devicesWritable.set({});
         $avatarHashWritable.set(0);
@@ -5803,6 +5910,28 @@ class VexService {
         }
     }
 
+    private scheduleSessionRefresh(client: Client, exp: number): void {
+        if (this.client !== client) {
+            return;
+        }
+        const expMs = jwtExpToEpochMs(exp);
+        if (!Number.isFinite(expMs)) {
+            return;
+        }
+        const delayMs = Math.max(
+            1,
+            expMs - Date.now() - DEVICE_AUTH_REFRESH_THRESHOLD_MS,
+        );
+        this.setSessionRefreshTimer(client, delayMs);
+    }
+
+    private scheduleSessionRefreshRetry(client: Client): void {
+        if (this.client !== client) {
+            return;
+        }
+        this.setSessionRefreshTimer(client, DEVICE_AUTH_REFRESH_RETRY_MS);
+    }
+
     private async sendMessageExtra(
         conversationKey: string,
         isGroup: boolean,
@@ -5858,6 +5987,16 @@ class VexService {
         if ($authStatusWritable.get() !== status) {
             $authStatusWritable.set(status);
         }
+    }
+
+    private setSessionRefreshTimer(client: Client, delayMs: number): void {
+        this.clearSessionRefreshTimer();
+        this.sessionRefreshTimer = setTimeout(() => {
+            this.sessionRefreshTimer = null;
+            if (this.client === client) {
+                void this.probeAuthSession();
+            }
+        }, delayMs);
     }
 
     private startPendingApprovalWatcher({
@@ -6236,26 +6375,76 @@ class VexService {
         this.attachWebsocketWatchdog();
     }
 
-    private wrapHttpMethodsWithTimeout(http: ClientHttpLike): void {
+    private wrapHttpMethodsForRuntime(
+        client: Client,
+        http: ClientHttpLike,
+        applyMobileTimeout: boolean,
+    ): void {
         const wrapMethod = (
-            method: (...args: unknown[]) => Promise<unknown>,
+            method: ClientHttpMethod,
             label: string,
-        ): ((...args: unknown[]) => Promise<unknown>) => {
+        ): ClientHttpMethod => {
             return async (...args: unknown[]): Promise<unknown> => {
-                return withTimeout(
-                    method(...args),
-                    15000,
-                    `HTTP ${label} timed out before dispatch/response.`,
-                );
+                const request = (): Promise<unknown> => {
+                    const pending = method(...args);
+                    if (!applyMobileTimeout) {
+                        return pending;
+                    }
+                    return withTimeout(
+                        pending,
+                        15000,
+                        `HTTP ${label} timed out before dispatch/response.`,
+                    );
+                };
+
+                try {
+                    return await request();
+                } catch (err: unknown) {
+                    if (
+                        !isUnauthorizedError(err) ||
+                        !this.canRecoverHttpSession(client, args)
+                    ) {
+                        throw err;
+                    }
+                    debugAuth("session:http-401:refresh", {
+                        method: label,
+                        path: httpRequestPath(args[0]),
+                    });
+                    try {
+                        await this.refreshSessionWithDeviceKey(client);
+                    } catch (refreshErr: unknown) {
+                        // Surface the refresh failure (network, rate limit, or
+                        // revoked device) instead of the expired-token 401.
+                        throw refreshErr;
+                    }
+                    if (this.client !== client) {
+                        throw err;
+                    }
+                    // One retry only. Calling the captured method directly
+                    // prevents a persistent 401 from entering a retry loop.
+                    return request();
+                }
             };
         };
+        if (typeof http.delete === "function") {
+            const original = http.delete.bind(http);
+            http.delete = wrapMethod(original, "DELETE");
+        }
         if (typeof http.get === "function") {
             const original = http.get.bind(http);
             http.get = wrapMethod(original, "GET");
         }
+        if (typeof http.patch === "function") {
+            const original = http.patch.bind(http);
+            http.patch = wrapMethod(original, "PATCH");
+        }
         if (typeof http.post === "function") {
             const original = http.post.bind(http);
             http.post = wrapMethod(original, "POST");
+        }
+        if (typeof http.put === "function") {
+            const original = http.put.bind(http);
+            http.put = wrapMethod(original, "PUT");
         }
     }
 }
@@ -6567,6 +6756,19 @@ function hasSyncInboxNow(client: Client): client is Client & {
     return typeof maybeClient.syncInboxNow === "function";
 }
 
+function httpRequestPath(value: unknown): null | string {
+    if (typeof value !== "string") {
+        return null;
+    }
+    const withoutQuery = value.split(/[?#]/u, 1)[0] ?? value;
+    const protocolIndex = withoutQuery.indexOf("://");
+    if (protocolIndex < 0) {
+        return withoutQuery;
+    }
+    const pathIndex = withoutQuery.indexOf("/", protocolIndex + 3);
+    return pathIndex < 0 ? "/" : withoutQuery.slice(pathIndex);
+}
+
 function isDecryptMismatchError(err: unknown): boolean {
     if (!(err instanceof Error)) {
         return false;
@@ -6656,17 +6858,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null;
 }
 
+function isSessionMaintenanceHttpRequest(value: unknown): boolean {
+    const path = httpRequestPath(value);
+    return (
+        path === "/auth" ||
+        path === "/auth/device" ||
+        path === "/auth/device/verify" ||
+        path === "/goodbye" ||
+        path === "/whoami"
+    );
+}
+
 /**
  * "These credentials no longer authenticate."
  *
- * Both 401 and 404 from the device-auth endpoints (`/auth/device`,
- * `/auth/device/verify`, and `whoami`) mean the same thing for the
- * caller: the stored deviceID/deviceKey on this client refers to
- * something the server will no longer let us in with. 401 is the
- * classic "token rejected" path (token expired, signature failed),
- * 404 is the "your device or its owning user has been removed
- * server-side" path. Either way the recovery is identical — drop the
- * stale keychain entry and bounce the user to the sign-in flow.
+ * A 401 from a bearer-token request can simply mean that the short-lived JWT
+ * expired, so callers must attempt device-key renewal before using this
+ * predicate. Once renewal itself returns 401 or 404, the stored device no
+ * longer authenticates and the user must return to the sign-in flow.
  *
  * Bundling them under one predicate keeps the auth flows in this
  * file from forgetting one of the two whenever they handle the other.
