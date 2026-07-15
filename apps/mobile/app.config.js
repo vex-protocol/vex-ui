@@ -77,6 +77,9 @@ module.exports = ({ config }) => {
     const iconPath = devMode
         ? "./assets/icon-dev.png"
         : "./assets/icon-prod.png";
+    const iosIconPath = devMode
+        ? "./assets/icon-dev-ios.png"
+        : "./assets/icon-prod-ios.png";
     const androidAdaptiveForegroundPath = devMode
         ? "./assets/icon-dev-android.png"
         : "./assets/icon-prod-android.png";
@@ -141,6 +144,7 @@ module.exports = ({ config }) => {
         },
         ios: {
             ...config.ios,
+            icon: iosIconPath,
             bundleIdentifier: iosBundleIdentifier,
             ...(iosRuntimeVersionOverride
                 ? { runtimeVersion: iosRuntimeVersionOverride }
