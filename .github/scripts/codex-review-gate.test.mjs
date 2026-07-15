@@ -4,6 +4,7 @@ import test from "node:test";
 import {
     evaluateReviewState,
     gateCommentBody,
+    hasActiveCodexReview,
     shouldRequestReview,
     statusContext,
     trustedReviewRequest,
@@ -15,17 +16,24 @@ const headSha = "a".repeat(40);
 const oldHeadSha = "b".repeat(40);
 
 function reviewRequest({
+    acknowledgedAt,
     author = "github-actions[bot]",
     base = baseRef,
     createdAt = "2026-07-15T12:00:00Z",
+    databaseId = 1,
     head = headSha,
     reactions = [],
 } = {}) {
+    const acknowledgement = acknowledgedAt
+        ? `\n\n<!-- codex-review-acknowledged:${base}:${head} -->`
+        : "";
     return {
         author: { login: author },
-        body: `@codex review\n\n<!-- codex-review-request:${base}:${head} -->`,
+        body: `@codex review\n\n<!-- codex-review-request:${base}:${head} -->${acknowledgement}`,
         createdAt,
+        databaseId,
         reactions: { nodes: reactions },
+        updatedAt: acknowledgedAt ?? createdAt,
     };
 }
 
@@ -147,9 +155,16 @@ test("accepts a thumbs-up on the scoped review request", () => {
     assert.equal(state.source, "review-request-reaction");
 });
 
-test("accepts Codex's standard pull request thumbs-up after the request", () => {
+test("accepts a PR thumbs-up after the exact request was acknowledged", () => {
     const state = evaluateReviewState(
         pullRequest({
+            comments: {
+                nodes: [
+                    reviewRequest({
+                        acknowledgedAt: "2026-07-15T12:01:00Z",
+                    }),
+                ],
+            },
             reactions: {
                 nodes: [
                     {
@@ -167,14 +182,14 @@ test("accepts Codex's standard pull request thumbs-up after the request", () => 
     assert.equal(state.source, "pull-request-reaction");
 });
 
-test("ignores a pull request thumbs-up from before the scoped request", () => {
+test("ignores a PR thumbs-up until the exact request is acknowledged", () => {
     const state = evaluateReviewState(
         pullRequest({
             reactions: {
                 nodes: [
                     {
                         content: "+1",
-                        createdAt: "2026-07-15T11:59:00Z",
+                        createdAt: "2026-07-15T12:03:00Z",
                         user: { login: "chatgpt-codex-connector" },
                     },
                 ],
@@ -184,6 +199,104 @@ test("ignores a pull request thumbs-up from before the scoped request", () => {
         baseRef,
     );
     assert.equal(state.kind, "pending");
+});
+
+test("ignores a PR thumbs-up while the acknowledged request is active", () => {
+    const state = evaluateReviewState(
+        pullRequest({
+            comments: {
+                nodes: [
+                    reviewRequest({
+                        acknowledgedAt: "2026-07-15T12:01:00Z",
+                        reactions: [
+                            {
+                                content: "EYES",
+                                createdAt: "2026-07-15T12:00:30Z",
+                                user: { login: "chatgpt-codex-connector" },
+                            },
+                        ],
+                    }),
+                ],
+            },
+            reactions: {
+                nodes: [
+                    {
+                        content: "+1",
+                        createdAt: "2026-07-15T12:03:00Z",
+                        user: { login: "chatgpt-codex-connector" },
+                    },
+                ],
+            },
+        }),
+        headSha,
+        baseRef,
+    );
+    assert.equal(state.kind, "pending");
+});
+
+test("ignores a PR thumbs-up from before the request acknowledgement", () => {
+    const state = evaluateReviewState(
+        pullRequest({
+            comments: {
+                nodes: [
+                    reviewRequest({
+                        acknowledgedAt: "2026-07-15T12:01:00Z",
+                    }),
+                ],
+            },
+            reactions: {
+                nodes: [
+                    {
+                        content: "+1",
+                        createdAt: "2026-07-15T12:00:30Z",
+                        user: { login: "chatgpt-codex-connector" },
+                    },
+                ],
+            },
+        }),
+        headSha,
+        baseRef,
+    );
+    assert.equal(state.kind, "pending");
+});
+
+test("detects active Codex work on the PR or a comment", () => {
+    assert.equal(
+        hasActiveCodexReview(
+            pullRequest({
+                reactions: {
+                    nodes: [
+                        {
+                            content: "EYES",
+                            user: { login: "chatgpt-codex-connector" },
+                        },
+                    ],
+                },
+            }),
+        ),
+        true,
+    );
+    assert.equal(
+        hasActiveCodexReview(
+            pullRequest({
+                comments: {
+                    nodes: [
+                        reviewRequest({
+                            reactions: [
+                                {
+                                    content: "EYES",
+                                    user: {
+                                        login: "chatgpt-codex-connector",
+                                    },
+                                },
+                            ],
+                        }),
+                    ],
+                },
+            }),
+        ),
+        true,
+    );
 });
 
 test("ignores a thumbs-up on a request for an older head", () => {
@@ -364,7 +477,7 @@ test("requires an LGTM comment to name the current target branch", () => {
     assert.equal(state.kind, "pending");
 });
 
-test("uses the latest Codex signal for the current review scope", () => {
+test("accepts a scoped Codex LGTM comment", () => {
     const state = evaluateReviewState(
         pullRequest({
             comments: {
@@ -378,11 +491,38 @@ test("uses the latest Codex signal for the current review scope", () => {
                     },
                 ],
             },
-            reviews: { nodes: [codexReview({ findings: 1 })] },
         }),
         headSha,
         baseRef,
     );
     assert.equal(state.kind, "clean");
     assert.equal(state.source, "codex-comment");
+});
+
+test("current-head findings outrank a later generic PR thumbs-up", () => {
+    const state = evaluateReviewState(
+        pullRequest({
+            comments: {
+                nodes: [
+                    reviewRequest({
+                        acknowledgedAt: "2026-07-15T12:00:30Z",
+                    }),
+                ],
+            },
+            reactions: {
+                nodes: [
+                    {
+                        content: "+1",
+                        createdAt: "2026-07-15T12:03:00Z",
+                        user: { login: "chatgpt-codex-connector" },
+                    },
+                ],
+            },
+            reviews: { nodes: [codexReview({ findings: 1 })] },
+        }),
+        headSha,
+        baseRef,
+    );
+    assert.equal(state.kind, "findings");
+    assert.equal(state.source, "review");
 });

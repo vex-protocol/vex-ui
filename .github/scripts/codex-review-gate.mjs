@@ -5,6 +5,7 @@ const COMMENT_MARKER = "<!-- codex-review-gate -->";
 const DEFAULT_INTERVAL_MS = 15_000;
 const DEFAULT_RETRY_MS = 20 * 60_000;
 const DEFAULT_TIMEOUT_MS = 40 * 60_000;
+const REVIEW_ACK_MARKER = "codex-review-acknowledged";
 const REVIEW_REQUEST_MARKER = "codex-review-request";
 const STATUS_CONTEXT_PREFIX = "Codex Review";
 const TARGET_BRANCHES = new Set(["development", "master"]);
@@ -47,6 +48,7 @@ query CodexReviewGate($owner: String!, $name: String!, $number: Int!) {
           body
           createdAt
           databaseId
+          updatedAt
           reactions(first: 50) {
             nodes {
               content
@@ -80,8 +82,16 @@ function isThumbsUp(content) {
     return content === "THUMBS_UP" || content === "+1";
 }
 
+function isEyes(content) {
+    return content === "EYES" || content === "eyes";
+}
+
 function reviewRequestMarker(headSha, baseRef) {
     return `<!-- ${REVIEW_REQUEST_MARKER}:${baseRef}:${headSha} -->`;
+}
+
+function reviewAcknowledgementMarker(headSha, baseRef) {
+    return `<!-- ${REVIEW_ACK_MARKER}:${baseRef}:${headSha} -->`;
 }
 
 export function statusContext(baseRef) {
@@ -115,6 +125,27 @@ function trustedReviewRequests(pullRequest, headSha, baseRef) {
 
 export function trustedReviewRequest(pullRequest, headSha, baseRef) {
     return trustedReviewRequests(pullRequest, headSha, baseRef).at(0);
+}
+
+function hasCodexEyes(reactions) {
+    return (reactions?.nodes ?? []).some(
+        (reaction) => isCodex(reaction.user?.login) && isEyes(reaction.content),
+    );
+}
+
+export function hasActiveCodexReview(pullRequest) {
+    return (
+        hasCodexEyes(pullRequest.reactions) ||
+        (pullRequest.comments?.nodes ?? []).some((comment) =>
+            hasCodexEyes(comment.reactions),
+        )
+    );
+}
+
+function isAcknowledgedRequest(request, headSha, baseRef) {
+    return request.body?.includes(
+        reviewAcknowledgementMarker(headSha, baseRef),
+    );
 }
 
 export function shouldRequestReview(
@@ -213,25 +244,44 @@ export function evaluateReviewState(
         }
     }
 
-    for (const reaction of pullRequest.reactions?.nodes ?? []) {
-        const reactionCreatedAt = Date.parse(reaction.createdAt ?? "");
-        if (
-            isCodex(reaction.user?.login) &&
-            isThumbsUp(reaction.content) &&
-            Number.isFinite(reactionCreatedAt) &&
-            reactionCreatedAt >= requestCreatedAt
-        ) {
-            signals.push({
-                at: reactionCreatedAt,
-                findingCount: 0,
-                kind: "clean",
-                source: "pull-request-reaction",
-            });
+    const acknowledgedRequest = requests
+        .filter(
+            (request) =>
+                isAcknowledgedRequest(
+                    request,
+                    expectedHeadSha,
+                    expectedBaseRef,
+                ) && !hasCodexEyes(request.reactions),
+        )
+        .at(-1);
+    if (acknowledgedRequest) {
+        const acknowledgedAt = Date.parse(
+            acknowledgedRequest.updatedAt ?? acknowledgedRequest.createdAt,
+        );
+        for (const reaction of pullRequest.reactions?.nodes ?? []) {
+            const reactionCreatedAt = Date.parse(reaction.createdAt ?? "");
+            if (
+                isCodex(reaction.user?.login) &&
+                isThumbsUp(reaction.content) &&
+                Number.isFinite(reactionCreatedAt) &&
+                reactionCreatedAt >= acknowledgedAt
+            ) {
+                signals.push({
+                    at: reactionCreatedAt,
+                    findingCount: 0,
+                    kind: "clean",
+                    source: "pull-request-reaction",
+                });
+            }
         }
     }
 
     signals.sort((left, right) => left.at - right.at);
+    const latestFinding = signals
+        .filter((signal) => signal.kind === "findings")
+        .at(-1);
     return (
+        latestFinding ??
         signals.at(-1) ?? {
             kind: "pending",
             reason: "Codex has not reviewed the current head commit yet.",
@@ -387,6 +437,9 @@ async function ensureReviewRequest(
     retryMs,
 ) {
     const marker = reviewRequestMarker(headSha, baseRef);
+    if (hasActiveCodexReview(pullRequest)) {
+        return;
+    }
     if (
         !shouldRequestReview(pullRequest, headSha, baseRef, Date.now(), retryMs)
     ) {
@@ -402,6 +455,46 @@ async function ensureReviewRequest(
             body: `@codex review\n\n${marker}\nReview commit \`${headSha}\` against \`${baseRef}\`. If there are no actionable findings, react with a thumbs-up on this request or post an LGTM comment with \`Reviewed commit: ${headSha}\` and \`Target branch: ${baseRef}\`.`,
         }),
     });
+}
+
+async function acknowledgeReviewRequests(
+    repository,
+    pullRequest,
+    headSha,
+    baseRef,
+) {
+    let changed = false;
+    const marker = reviewAcknowledgementMarker(headSha, baseRef);
+
+    for (const request of trustedReviewRequests(
+        pullRequest,
+        headSha,
+        baseRef,
+    )) {
+        if (
+            !request.databaseId ||
+            isAcknowledgedRequest(request, headSha, baseRef) ||
+            !hasCodexEyes(request.reactions)
+        ) {
+            continue;
+        }
+        changed = true;
+        if (process.env.CODEX_REVIEW_DRY_RUN === "1") {
+            console.log(
+                `[dry run] Would acknowledge Codex review request ${request.databaseId}.`,
+            );
+            continue;
+        }
+        await githubRequest(
+            `/repos/${repository}/issues/comments/${request.databaseId}`,
+            {
+                method: "PATCH",
+                body: JSON.stringify({ body: `${request.body}\n\n${marker}` }),
+            },
+        );
+    }
+
+    return changed;
 }
 
 async function publishLgtm(repository, number, pullRequest, headSha, baseRef) {
@@ -438,13 +531,27 @@ async function recoverOpenPullRequests(repository, owner, name, retryMs) {
             continue;
         }
         try {
-            const pullRequest = await fetchPullRequest(
+            let pullRequest = await fetchPullRequest(
                 owner,
                 name,
                 summary.number,
             );
             const headSha = pullRequest.headRefOid;
             const baseRef = pullRequest.baseRefName;
+            if (
+                await acknowledgeReviewRequests(
+                    repository,
+                    pullRequest,
+                    headSha,
+                    baseRef,
+                )
+            ) {
+                pullRequest = await fetchPullRequest(
+                    owner,
+                    name,
+                    summary.number,
+                );
+            }
             const state = evaluateReviewState(pullRequest, headSha, baseRef);
             if (state.kind === "clean") {
                 await publishLgtm(
@@ -549,7 +656,7 @@ export async function main() {
     }
     try {
         while (Date.now() < deadline) {
-            const pullRequest = await fetchPullRequest(owner, name, number);
+            let pullRequest = await fetchPullRequest(owner, name, number);
             if (
                 pullRequest.headRefOid !== headSha ||
                 pullRequest.baseRefName !== baseRef ||
@@ -559,6 +666,16 @@ export async function main() {
                     "The pull request review scope changed; a newer run will handle it.",
                 );
                 return;
+            }
+            if (
+                await acknowledgeReviewRequests(
+                    repository,
+                    pullRequest,
+                    headSha,
+                    baseRef,
+                )
+            ) {
+                pullRequest = await fetchPullRequest(owner, name, number);
             }
             const state = evaluateReviewState(pullRequest, headSha, baseRef);
 
