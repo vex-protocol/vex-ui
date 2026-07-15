@@ -2,12 +2,12 @@ import { push } from "svelte-spa-router";
 
 import { parseVexLink } from "@vex-chat/store";
 
-import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
-
 /**
  * Registers the deep-link listener. Returns an unsubscribe function.
  */
 export async function setupDeepLinks(): Promise<() => void> {
+    if (!("__TAURI_INTERNALS__" in window)) return () => undefined;
+    const { onOpenUrl } = await import("@tauri-apps/plugin-deep-link");
     const unlisten = await onOpenUrl((urls) => {
         for (const url of urls) {
             handleDeepLink(url);

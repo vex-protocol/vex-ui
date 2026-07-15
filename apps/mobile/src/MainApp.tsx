@@ -49,6 +49,7 @@ import {
 } from "./lib/foregroundService";
 import { $incomingShare } from "./lib/incomingShareState";
 import {
+    clearActiveUsername,
     clearCredentials,
     keychainKeyStore,
     setUserIDForUsername,
@@ -222,6 +223,7 @@ function MainApp() {
             );
         }
         await vexService.logout();
+        await clearActiveUsername();
     }, [userID]);
 
     useEffect(() => {

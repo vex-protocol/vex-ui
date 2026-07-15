@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { Message } from "@vex-chat/libvex";
 
-    import { onMount } from "svelte";
+    import { onMount, tick } from "svelte";
 
     import { messageEmbed, type MessageEmbed } from "@vex-chat/store";
 
@@ -20,12 +20,14 @@
     const serverUrl = getServerUrl();
 
     let {
+        contextKey,
         messages,
         onDeleteMessageForEveryone,
         onDeleteMessageForMe,
         onEditMessage,
         usernames,
     }: {
+        contextKey?: string;
         messages: Message[];
         onDeleteMessageForEveryone?: (message: Message) => void;
         onDeleteMessageForMe?: (message: Message) => void;
@@ -36,10 +38,29 @@
     // silently strips destructure defaults on svelte files.
     const usernameMap = $derived(usernames ?? {});
 
-    const chunks = $derived(chunkMessages(messages));
+    const MESSAGE_PAGE_SIZE = 250;
+    let visibleLimit = $state(MESSAGE_PAGE_SIZE);
+    let activeContext: string | undefined = $state(undefined);
+    const visibleMessages = $derived(
+        messages.length > visibleLimit
+            ? messages.slice(messages.length - visibleLimit)
+            : messages,
+    );
+    const hiddenMessageCount = $derived(
+        Math.max(0, messages.length - visibleMessages.length),
+    );
+    const chunks = $derived(chunkMessages(visibleMessages));
 
     let containerEl: HTMLDivElement | null = $state(null);
     let autoScroll = true;
+
+    $effect(() => {
+        if (contextKey === activeContext) return;
+        activeContext = contextKey;
+        visibleLimit = MESSAGE_PAGE_SIZE;
+        autoScroll = true;
+        setTimeout(scrollToBottom, 0);
+    });
 
     function scrollToBottom(): void {
         if (containerEl && autoScroll) {
@@ -54,6 +75,14 @@
             containerEl.scrollTop -
             containerEl.clientHeight;
         autoScroll = distFromBottom < 120;
+    }
+
+    async function loadOlderMessages(): Promise<void> {
+        if (!containerEl || hiddenMessageCount === 0) return;
+        const previousHeight = containerEl.scrollHeight;
+        visibleLimit += MESSAGE_PAGE_SIZE;
+        await tick();
+        containerEl.scrollTop += containerEl.scrollHeight - previousHeight;
     }
 
     // Scroll to bottom whenever messages change
@@ -90,6 +119,16 @@
 >
     {#if chunks.length === 0}
         <div class="message-box__empty">No messages yet.</div>
+    {/if}
+
+    {#if hiddenMessageCount > 0}
+        <button
+            class="message-box__older"
+            type="button"
+            onclick={() => void loadOlderMessages()}
+        >
+            Load {Math.min(hiddenMessageCount, MESSAGE_PAGE_SIZE)} older messages
+        </button>
     {/if}
 
     {#each chunks as chunk (chunk.messages[0]?.mailID ?? chunk.firstTime + chunk.authorID)}
@@ -207,15 +246,20 @@
         font-style: italic;
     }
 
-    .message-system {
-        padding: 4px 16px;
-        text-align: center;
+    .message-box__older {
+        align-self: center;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text-secondary);
+        font-size: 12px;
+        margin: 2px 0 10px;
+        padding: 6px 12px;
     }
 
-    .message-system__text {
-        font-size: 12px;
-        color: var(--text-muted);
-        font-style: italic;
+    .message-box__older:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
     }
 
     .message-chunk {
@@ -351,61 +395,6 @@
         font-family: "SF Mono", "Fira Code", monospace;
         font-size: 11px;
         line-height: 1.3;
-    }
-
-    /* ── File attachment styles ── */
-    .message__image {
-        max-width: 400px;
-        max-height: 300px;
-        border-radius: 6px;
-        margin: 4px 0;
-        display: block;
-        cursor: pointer;
-    }
-
-    .message__file {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        background: var(--bg-surface);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        margin: 4px 0;
-        text-decoration: none;
-        cursor: pointer;
-        transition: background 0.1s;
-    }
-
-    .message__file:hover {
-        background: var(--bg-hover);
-    }
-
-    .message__file-icon {
-        font-size: 20px;
-        filter: grayscale(1);
-        flex-shrink: 0;
-    }
-
-    .message__file-info {
-        display: flex;
-        flex-direction: column;
-        gap: 1px;
-        min-width: 0;
-    }
-
-    .message__file-name {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--accent);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .message__file-size {
-        font-size: 11px;
-        color: var(--text-muted);
     }
 
     /* ── Markdown element styles ── */

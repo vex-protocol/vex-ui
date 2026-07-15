@@ -28,8 +28,8 @@ Trigger          →  Key Generation  →  Server Handshake  →  Account Ready
 | **Password** | Types password + confirmation | Validates match and minimum length | Routine |
 | **Key generation** | Invisible (no user action) | Generates Ed25519 signing key pair + X25519 pre-key pair locally. Private key stored on device, never transmitted | Unaware (good) |
 | **Token exchange** | Invisible | `GET /token/register` → receives UUID token. Client NaCl-signs the token bytes with the new device key | Unaware |
-| **Submit** | Clicks "Chat" / "Register" | `POST /register` with signed payload. Server verifies signature, derives userID from token UUID, hashes password with argon2id (new) or PBKDF2 (old), creates user + device + pre-key records | Waiting (loading spinner) |
-| **Auto-login** | Invisible | Immediately calls `POST /auth` or uses returned JWT. Saves device credentials to local storage | Unaware |
+| **Submit** | Clicks "Chat" / "Register" | `POST /register` with an explicit `create-account` intent and signed payload. Server verifies the signature, validates the password, hashes it with Argon2id, and atomically creates the user, device, and pre-key records | Waiting (loading spinner) |
+| **Auto-login** | Invisible | Uses the returned one-hour bearer, then saves the device key and local database key in separate platform keychain slots | Unaware |
 | **Ready** | Sees main app | Bootstraps state (see Journey 3) | Satisfied, ready to explore |
 
 ### Differences: Old vs New
@@ -38,7 +38,7 @@ Trigger          →  Key Generation  →  Server Handshake  →  Account Ready
 |--------|-------------------|----------------|
 | Username check | Real-time availability via HTTP as user types | Deferred to submit (server rejects 409) |
 | Password hash | PBKDF2-SHA512, 1000 iterations | argon2id (memory-hard, brute-force resistant) |
-| Key storage | Keyfile on disk (encrypted with optional password via NaCl secretbox) | localStorage (desktop), SecureStore (mobile, planned) |
+| Key storage | Keyfile on disk (encrypted with optional password via NaCl secretbox) | Platform keychain/SecureStore with separate device and database keys |
 | Random username | BIP39 mnemonic button | Not implemented |
 | Sound effects | `unlockFX` on success, `errorFX` on failure | Not implemented |
 | Pre-key submission | Included in registration payload | Same |
@@ -46,16 +46,14 @@ Trigger          →  Key Generation  →  Server Handshake  →  Account Ready
 
 ### Pain Points
 
-- **No password strength validation.** New server accepts single-character passwords (story `auth-rate-limit` in roadmap tracks the auth rate-limit fix, but password policy itself is a design decision — the real security model is key-based).
-- **Key storage on desktop.** localStorage is not encrypted at rest. Old client used an encrypted keyfile with optional password. Need to decide on Tauri keychain integration.
 - **No username availability feedback.** New client doesn't tell you the name is taken until you submit. The old client checked in real-time.
-- **No recovery path.** If you lose your device key, you lose your account. There is no "forgot password" because the server can't restore your identity — it's cryptographically bound to your device. This is by design, but users need to understand it.
+- **Recovery has an intentional hard boundary.** A passkey or another approved device can recover access. Losing every approved device and every passkey leaves no operator recovery path.
 
 ### Opportunities
 
 - Add real-time username availability check back (low effort, high UX impact)
-- Implement encrypted keyfile export/import for device migration
-- Show a one-time warning: "Your device key IS your identity. Back it up."
+- Implement an encrypted device-transfer flow for users who prefer direct migration
+- Explain the recovery boundary when the user removes their last passkey
 
 ---
 
@@ -75,7 +73,7 @@ Trigger          →  Credential Check  →  WebSocket Connect  →  Ready
 | Stage | User Action | System Action | Emotional State |
 |-------|-------------|---------------|-----------------|
 | **Trigger** | Opens app or navigates to `/login` | Checks for existing JWT in cookie/storage. If valid, skips to bootstrap | Anticipation |
-| **Credentials** | Types username + password | Sends `POST /auth`. Server verifies against stored argon2id hash. Returns JWT (7-day expiry) | Routine |
+| **Credentials** | Types username + password, or explicitly chooses a passkey | Password uses `POST /auth`. Passkey uses a user-verified WebAuthn ceremony and then proves or enrolls the local device. User/device bearers expire after one hour | Routine |
 | **Device auth** | Invisible | If device key exists: server sends 32-byte NaCl challenge over WebSocket. Client signs with Ed25519 device key. Server verifies against stored public key | Unaware |
 | **Ready** | Sees conversations | Bootstraps state (see Journey 3) | Satisfied |
 
@@ -90,9 +88,8 @@ Trigger          →  Credential Check  →  WebSocket Connect  →  Ready
 
 ### Pain Points
 
-- **No "forgot password" flow.** By design — the server can't reset your identity. But there's no UX for explaining this.
 - **No auto-retry.** Old client retried on 502; new client shows error and stops.
-- **No session expiry warning.** JWT expires after 7 days. User gets silently logged out.
+- **No out-of-band recovery.** The forgot-password flow requires an enrolled passkey because Vex has no verified email or phone channel.
 
 ---
 
@@ -194,10 +191,10 @@ Compose  →  Key Exchange (if first msg)  →  Encrypt  →  Send  →  Confirm
 | Aspect | Old | New |
 |--------|-----|-----|
 | Multi-device delivery | Sends to ALL devices of recipient (fan-out) + forwards to sender's other devices | Same — `Promise.allSettled` over all devices + forwards to sender's other devices |
-| Session management | Full double-ratchet with HMAC verification, auto-healing, and DB-persisted sessions | Each message uses fresh ephemeral keys (no persistent sessions) |
+| Session management | Full double-ratchet with HMAC verification, auto-healing, and DB-persisted sessions | Ratcheted send/receive chains with authenticated envelopes and persisted local session state |
 | Message forwarding | Forwarded to sender's other devices so they see their own sent messages | Same — forwards to sender's other devices (excludes current device via `loadCredentials().deviceID`) |
 | Optimistic UI | Message added to outbox immediately, removed on confirm | Message only appears after server confirms |
-| File embedding | `{{name:fileID:key:mimeType}}` syntax in message body | Not implemented in UI |
+| File embedding | `{{name:fileID:key:mimeType}}` syntax in message body | Implemented with attachment previews and retry-safe composer state |
 | Sound | `notifyFX` on send | None |
 
 ### Pain Points

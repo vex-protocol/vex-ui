@@ -1,5 +1,6 @@
 <script lang="ts">
     import Router, { location, push } from "svelte-spa-router";
+    import { wrap } from "svelte-spa-router/wrap";
 
     import ChannelBar from "./lib/ChannelBar.svelte";
     import { setupDeepLinks } from "./lib/deeplink.js";
@@ -16,27 +17,36 @@
     } from "./lib/store/index.js";
     import UserMenu from "./lib/UserMenu.svelte";
     import VoiceCallOverlay from "./lib/VoiceCallOverlay.svelte";
-    import Home from "./routes/Home.svelte";
     import Launch from "./routes/Launch.svelte";
-    import Login from "./routes/Login.svelte";
-    import Messaging from "./routes/Messaging.svelte";
-    import Register from "./routes/Register.svelte";
-    import ServerChannel from "./routes/ServerChannel.svelte";
-    import Settings from "./routes/Settings.svelte";
 
     const routes = {
         "/": Launch,
-        "/home": Home,
+        "/home": wrap({
+            asyncComponent: () => import("./routes/Home.svelte"),
+        }),
         "/launch": Launch,
-        "/login": Login,
-        "/messaging/:userID": Messaging,
-        "/register": Register,
-        "/server/:serverID/:channelID": ServerChannel,
-        "/settings": Settings,
+        "/login": wrap({
+            asyncComponent: () => import("./routes/Login.svelte"),
+        }),
+        "/messaging/:userID": wrap({
+            asyncComponent: () => import("./routes/Messaging.svelte"),
+        }),
+        "/recover": wrap({
+            asyncComponent: () => import("./routes/RecoverPassword.svelte"),
+        }),
+        "/register": wrap({
+            asyncComponent: () => import("./routes/Register.svelte"),
+        }),
+        "/server/:serverID/:channelID": wrap({
+            asyncComponent: () => import("./routes/ServerChannel.svelte"),
+        }),
+        "/settings": wrap({
+            asyncComponent: () => import("./routes/Settings.svelte"),
+        }),
     };
 
     // Auth routes show no sidebars
-    const AUTH_ROUTES = ["/", "/login", "/register", "/launch"];
+    const AUTH_ROUTES = ["/", "/login", "/recover", "/register", "/launch"];
     const isAuthRoute = $derived(AUTH_ROUTES.some((p) => $location === p));
 
     // Derive active server/channel from URL

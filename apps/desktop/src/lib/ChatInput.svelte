@@ -2,6 +2,7 @@
     import { tick } from "svelte";
 
     let {
+        contextKey,
         disabled,
         editing,
         onCancelEdit,
@@ -11,11 +12,12 @@
         sending,
         value: controlledValue,
     }: {
+        contextKey?: string;
         disabled?: boolean;
         editing?: boolean;
         onCancelEdit?: () => void;
         onChange?: (value: string) => void;
-        onSend: (content: string, attachment?: File) => Promise<void> | void;
+        onSend: (content: string, attachment?: File) => unknown;
         placeholder?: string;
         sending?: boolean;
         value?: string;
@@ -27,7 +29,10 @@
     let attachment: File | null = $state(null);
     let previewUrl: null | string = $state(null);
     let dragActive = $state(false);
+    let submitting = $state(false);
+    let attachmentContext: string | undefined = $state(undefined);
     const value = $derived(controlledValue ?? draftValue);
+    const busy = $derived(sending === true || submitting);
 
     function setValue(next: string): void {
         if (controlledValue !== undefined) {
@@ -45,7 +50,7 @@
     }
 
     function handleKeyDown(e: KeyboardEvent): void {
-        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
             e.preventDefault();
             void send();
         }
@@ -54,21 +59,19 @@
     async function send(): Promise<void> {
         const trimmed = value.trim();
         const pendingAttachment = attachment ?? undefined;
-        if ((!trimmed && !pendingAttachment) || disabled || sending) return;
-        setValue("");
-        clearAttachment();
-        if (textareaEl) textareaEl.style.height = "auto";
-        await tick();
-        await waitForNextFrame();
-        await onSend(trimmed, pendingAttachment);
-    }
-
-    function waitForNextFrame(): Promise<void> {
-        return new Promise((resolve) => {
-            requestAnimationFrame(() => {
-                resolve();
-            });
-        });
+        if ((!trimmed && !pendingAttachment) || disabled || busy) return;
+        submitting = true;
+        try {
+            const sent = await onSend(trimmed, pendingAttachment);
+            if (sent === false) return;
+            setValue("");
+            clearAttachment();
+            if (textareaEl) textareaEl.style.height = "auto";
+            await tick();
+            textareaEl?.focus();
+        } finally {
+            submitting = false;
+        }
     }
 
     function openFilePicker(): void {
@@ -125,6 +128,12 @@
         }
     });
 
+    $effect(() => {
+        if (contextKey === attachmentContext) return;
+        attachmentContext = contextKey;
+        clearAttachment();
+    });
+
     function formatSize(bytes: number): string {
         if (bytes < 1024) return `${bytes} B`;
         if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -175,7 +184,7 @@
             <button
                 class="chat-input__preview-remove"
                 onclick={onCancelEdit}
-                disabled={disabled || sending}
+                disabled={disabled || busy}
                 title="Cancel edit"
                 aria-label="Cancel edit">✕</button
             >
@@ -202,7 +211,7 @@
             <button
                 class="chat-input__preview-remove"
                 onclick={clearAttachment}
-                disabled={disabled || sending}
+                disabled={disabled || busy}
                 title="Remove attachment"
                 aria-label="Remove attachment">✕</button
             >
@@ -225,7 +234,7 @@
             {value}
             rows={1}
             {placeholder}
-            {disabled}
+            disabled={disabled || busy}
             onkeydown={handleKeyDown}
             onpaste={handlePaste}
             oninput={(event) => {
@@ -249,13 +258,7 @@
                 title="Attach file"
                 aria-label="Attach file"
                 onclick={openFilePicker}
-                disabled={disabled || sending || editing}>📎</button
-            >
-            <button
-                class="chat-input__icon"
-                title="Emoji"
-                aria-label="Emoji"
-                disabled>😊</button
+                disabled={disabled || busy || editing}>📎</button
             >
             {#if value.trim() || attachment}
                 <button
@@ -265,7 +268,7 @@
                     }}
                     disabled={(!value.trim() && !attachment) ||
                         disabled ||
-                        sending}
+                        busy}
                     aria-label="Send message"
                     title="Send">↑</button
                 >

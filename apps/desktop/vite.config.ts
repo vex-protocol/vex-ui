@@ -5,6 +5,23 @@ const DEV_SPIRE_URL = "https://dev.vex.wtf";
 const PROD_SPIRE_URL = "https://api.vex.wtf";
 const LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|10\.0\.2\.2|192\.168\.|100\.)/i;
 
+function desktopManualChunk(id: string): string | undefined {
+    const normalized = id.replaceAll("\\", "/");
+    if (normalized.includes("/vex-protocol/packages/crypto/")) {
+        return "vex-crypto";
+    }
+    if (
+        normalized.includes("/vex-protocol/packages/libvex/") &&
+        !normalized.includes("/packages/libvex/src/storage/")
+    ) {
+        return "vex-protocol";
+    }
+    if (normalized.includes("/vex-ui/packages/store/")) {
+        return "vex-store";
+    }
+    return undefined;
+}
+
 function hostOnly(raw: string): string {
     const trimmed = raw.trim().replace(/\/+$/, "");
     if (/^https?:\/\//i.test(trimmed)) {
@@ -73,6 +90,11 @@ export default defineConfig(({ mode }) => {
         build: {
             // Don't minify for debug builds
             minify: isTauriDebug ? false : "esbuild",
+            rollupOptions: {
+                output: {
+                    manualChunks: desktopManualChunk,
+                },
+            },
             sourcemap: !!isTauriDebug,
             // Tauri supports es2021
             target: "es2021",
@@ -85,6 +107,8 @@ export default defineConfig(({ mode }) => {
             port: 5180,
             // Proxy API requests to spire so the WebView never makes cross-origin HTTP requests
             proxy: {
+                // Vite matches proxy prefixes in declaration order. Keep the
+                // root websocket fallback after every HTTP API prefix.
                 "/": rootWebsocketOnly,
                 "/auth": spire,
                 "/avatar": spire,

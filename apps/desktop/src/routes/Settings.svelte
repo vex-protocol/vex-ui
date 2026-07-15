@@ -1,7 +1,8 @@
 <script lang="ts">
-    import type { StoredCredentials } from "@vex-chat/libvex";
-    import type { Device } from "@vex-chat/libvex";
+    import type { Device, Passkey, StoredCredentials } from "@vex-chat/libvex";
+    import type { DeviceApprovalRequest } from "@vex-chat/store";
 
+    import { onMount } from "svelte";
     import { push } from "svelte-spa-router";
 
     import Avatar from "../lib/Avatar.svelte";
@@ -11,6 +12,7 @@
         getNotificationsEnabled,
         setNotificationsEnabled,
     } from "../lib/notifications.js";
+    import { registerPasskey } from "../lib/passkey.js";
     import {
         getSoundsEnabled,
         playNotify,
@@ -32,17 +34,207 @@
     let deleteConfirmID: null | string = $state(null);
     let deleteError = $state("");
 
-    // TODO: device management — needs Devices.list() and proper delete API
-    function loadDevices(): void {
-        devicesLoading = false;
-        devicesError = "Device listing not yet supported by SDK";
+    async function loadDevices(): Promise<void> {
+        devicesLoading = true;
+        devicesError = "";
+        try {
+            devices = await vexService.listMyDevices();
+        } catch (err: unknown) {
+            devicesError =
+                err instanceof Error ? err.message : "Could not load devices.";
+        } finally {
+            devicesLoading = false;
+        }
     }
 
-    function handleDeleteDevice(_deviceID: string): void {
-        deleteError = "Device deletion not yet supported by SDK";
+    async function handleDeleteDevice(deviceID: string): Promise<void> {
+        deleteError = "";
+        const result = await vexService.removeDevice(deviceID);
+        if (!result.ok) {
+            deleteError = result.error ?? "Could not remove device.";
+            return;
+        }
+        deleteConfirmID = null;
+        await loadDevices();
     }
 
-    loadDevices();
+    // ── Pending device approvals ─────────────────────────────────────────────
+
+    let deviceRequests: DeviceApprovalRequest[] = $state([]);
+    let deviceRequestsLoading = $state(false);
+    let deviceRequestsError = $state("");
+    let deviceRequestBusy: Record<string, boolean> = $state({});
+
+    async function loadDeviceRequests(): Promise<void> {
+        deviceRequestsLoading = true;
+        deviceRequestsError = "";
+        try {
+            const requests = await vexService.listPendingDeviceRequests();
+            deviceRequests = requests.filter(
+                (request) => request.status === "pending",
+            );
+        } catch (err: unknown) {
+            deviceRequestsError =
+                err instanceof Error
+                    ? err.message
+                    : "Could not load device requests.";
+        } finally {
+            deviceRequestsLoading = false;
+        }
+    }
+
+    async function handleDeviceRequest(
+        requestID: string,
+        action: "approve" | "reject",
+    ): Promise<void> {
+        deviceRequestBusy = { ...deviceRequestBusy, [requestID]: true };
+        deviceRequestsError = "";
+        try {
+            const result =
+                action === "approve"
+                    ? await vexService.approveDeviceRequest(requestID)
+                    : await vexService.rejectDeviceRequest(requestID);
+            if (!result.ok) {
+                deviceRequestsError =
+                    result.error ?? `Could not ${action} device request.`;
+                return;
+            }
+            await Promise.all([loadDeviceRequests(), loadDevices()]);
+        } finally {
+            deviceRequestBusy = {
+                ...deviceRequestBusy,
+                [requestID]: false,
+            };
+        }
+    }
+
+    function matchingCode(signKey: string): string {
+        return signKey.slice(0, 4).toUpperCase();
+    }
+
+    // ── Passkeys ─────────────────────────────────────────────────────────────
+
+    let passkeys: Passkey[] = $state([]);
+    let passkeysLoading = $state(false);
+    let passkeysError = $state("");
+    let passkeyName = $state("");
+    let passkeyBusy = $state(false);
+    let passkeyDeleteConfirmID: null | string = $state(null);
+
+    async function loadPasskeys(): Promise<void> {
+        passkeysLoading = true;
+        passkeysError = "";
+        try {
+            passkeys = [...(await vexService.listPasskeys())].sort(
+                (a: Passkey, b: Passkey) =>
+                    new Date(b.lastUsedAt ?? b.createdAt).getTime() -
+                    new Date(a.lastUsedAt ?? a.createdAt).getTime(),
+            );
+        } catch (err: unknown) {
+            passkeysError =
+                err instanceof Error ? err.message : "Could not load passkeys.";
+        } finally {
+            passkeysLoading = false;
+        }
+    }
+
+    async function handleAddPasskey(): Promise<void> {
+        const name = passkeyName.trim();
+        if (!name) {
+            passkeysError = "Give the passkey a name you will recognize.";
+            return;
+        }
+        passkeyBusy = true;
+        passkeysError = "";
+        try {
+            const begin = await vexService.beginPasskeyRegistration(name);
+            const response = await registerPasskey(begin.options);
+            const result = await vexService.finishPasskeyRegistration({
+                name,
+                requestID: begin.requestID,
+                response,
+            });
+            if (!result.ok) {
+                passkeysError =
+                    result.error ?? "Could not register the passkey.";
+                return;
+            }
+            passkeyName = "";
+            await loadPasskeys();
+        } catch (err: unknown) {
+            passkeysError =
+                err instanceof Error
+                    ? err.message
+                    : "Could not register the passkey.";
+        } finally {
+            passkeyBusy = false;
+        }
+    }
+
+    async function handleDeletePasskey(passkeyID: string): Promise<void> {
+        passkeysError = "";
+        const result = await vexService.deletePasskey(passkeyID);
+        if (!result.ok) {
+            passkeysError = result.error ?? "Could not remove the passkey.";
+            return;
+        }
+        passkeyDeleteConfirmID = null;
+        await loadPasskeys();
+    }
+
+    // ── Password ─────────────────────────────────────────────────────────────
+
+    let currentPassword = $state("");
+    let newPassword = $state("");
+    let confirmPassword = $state("");
+    let passwordBusy = $state(false);
+    let passwordError = $state("");
+    let passwordNotice = $state("");
+    let showPasswords = $state(false);
+
+    async function handleChangePassword(event: SubmitEvent): Promise<void> {
+        event.preventDefault();
+        passwordError = "";
+        passwordNotice = "";
+        if (!currentPassword) {
+            passwordError = "Enter your current password.";
+            return;
+        }
+        if (newPassword.length < 15) {
+            passwordError = "Use at least 15 characters for the new password.";
+            return;
+        }
+        if (newPassword.length > 1024) {
+            passwordError = "The new password is too long.";
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            passwordError = "New passwords do not match.";
+            return;
+        }
+
+        passwordBusy = true;
+        const result = await vexService.changePassword(
+            currentPassword,
+            newPassword,
+        );
+        passwordBusy = false;
+        if (!result.ok) {
+            passwordError = result.error ?? "Could not change password.";
+            return;
+        }
+        currentPassword = "";
+        newPassword = "";
+        confirmPassword = "";
+        passwordNotice = "Password updated.";
+    }
+
+    onMount(() => {
+        void Promise.all([loadDevices(), loadDeviceRequests(), loadPasskeys()]);
+        return vexService.onDeviceRequestQueueChanged(() => {
+            void loadDeviceRequests();
+        });
+    });
 
     // ── Sounds ──────────────────────────────────────────────────────────────────
 
@@ -154,6 +346,7 @@
         }
         // Clear the stored JWT so auto-login won't fire, but keep device keys
         if (creds) await keyStore.save({ ...creds, token: undefined });
+        await keyStore.deactivate();
         clearSession();
         void push("/login");
     }
@@ -377,6 +570,260 @@
             </div>
         </section>
 
+        <!-- ── Password ── -->
+        <section class="settings-section">
+            <h2 class="settings-section__title">Password</h2>
+            <form
+                class="settings-row settings-row--column settings-security-form"
+                onsubmit={handleChangePassword}
+            >
+                <span class="settings-row__desc"
+                    >Use 15 or more characters. Vex does not require arbitrary
+                    symbol or capitalization rules.</span
+                >
+                <div class="settings-field-grid">
+                    <label class="settings-field">
+                        <span class="settings-row__label">Current password</span
+                        >
+                        <input
+                            class="settings-input"
+                            type={showPasswords ? "text" : "password"}
+                            autocomplete="current-password"
+                            bind:value={currentPassword}
+                            disabled={passwordBusy}
+                            required
+                        />
+                    </label>
+                    <label class="settings-field">
+                        <span class="settings-row__label">New password</span>
+                        <input
+                            class="settings-input"
+                            type={showPasswords ? "text" : "password"}
+                            autocomplete="new-password"
+                            minlength={15}
+                            maxlength={1024}
+                            bind:value={newPassword}
+                            disabled={passwordBusy}
+                            required
+                        />
+                    </label>
+                    <label class="settings-field">
+                        <span class="settings-row__label"
+                            >Confirm new password</span
+                        >
+                        <input
+                            class="settings-input"
+                            type={showPasswords ? "text" : "password"}
+                            autocomplete="new-password"
+                            minlength={15}
+                            maxlength={1024}
+                            bind:value={confirmPassword}
+                            disabled={passwordBusy}
+                            required
+                        />
+                    </label>
+                </div>
+                <div class="settings-form-actions">
+                    <label class="settings-check">
+                        <input type="checkbox" bind:checked={showPasswords} />
+                        <span>Show passwords</span>
+                    </label>
+                    <button
+                        class="settings-btn settings-btn--primary"
+                        type="submit"
+                        disabled={passwordBusy}
+                    >
+                        {passwordBusy ? "Updating…" : "Update password"}
+                    </button>
+                </div>
+                {#if passwordError}
+                    <span class="settings-row__desc settings-row__desc--error"
+                        >{passwordError}</span
+                    >
+                {:else if passwordNotice}
+                    <span class="settings-row__desc settings-row__desc--success"
+                        >{passwordNotice}</span
+                    >
+                {/if}
+            </form>
+        </section>
+
+        <!-- ── Passkeys ── -->
+        <section class="settings-section">
+            <h2 class="settings-section__title">Passkeys</h2>
+            <div class="settings-row">
+                <div class="settings-row__info">
+                    <span class="settings-row__label"
+                        >Optional sign-in method</span
+                    >
+                    <span class="settings-row__desc"
+                        >Passkeys supplement your password and can also verify a
+                        password reset.</span
+                    >
+                </div>
+                <button class="settings-btn" onclick={loadPasskeys}
+                    >Refresh</button
+                >
+            </div>
+            {#if passkeysLoading && passkeys.length === 0}
+                <div class="settings-row">
+                    <span class="settings-row__desc">Loading passkeys…</span>
+                </div>
+            {:else if passkeys.length === 0}
+                <div class="settings-row">
+                    <span class="settings-row__desc"
+                        >No passkeys added. Your password remains the required
+                        account credential.</span
+                    >
+                </div>
+            {:else}
+                {#each passkeys as passkey (passkey.passkeyID)}
+                    <div class="settings-row settings-row--device">
+                        <div class="settings-row__info">
+                            <span class="settings-row__label"
+                                >{passkey.name}</span
+                            >
+                            <span class="settings-row__desc">
+                                {passkey.lastUsedAt
+                                    ? `Last used ${new Date(passkey.lastUsedAt).toLocaleString()}`
+                                    : `Added ${new Date(passkey.createdAt).toLocaleString()}`}
+                            </span>
+                        </div>
+                        {#if passkeyDeleteConfirmID === passkey.passkeyID}
+                            <div class="settings-confirm">
+                                <span class="settings-confirm__msg"
+                                    >Remove?</span
+                                >
+                                <button
+                                    class="settings-btn settings-btn--danger"
+                                    onclick={() =>
+                                        handleDeletePasskey(passkey.passkeyID)}
+                                    >Yes</button
+                                >
+                                <button
+                                    class="settings-btn"
+                                    onclick={() => {
+                                        passkeyDeleteConfirmID = null;
+                                    }}>No</button
+                                >
+                            </div>
+                        {:else}
+                            <button
+                                class="settings-btn settings-btn--danger"
+                                onclick={() => {
+                                    passkeyDeleteConfirmID = passkey.passkeyID;
+                                }}>Remove</button
+                            >
+                        {/if}
+                    </div>
+                {/each}
+            {/if}
+            <div class="settings-row settings-row--column">
+                <label class="settings-row__label" for="passkey-name"
+                    >Add a passkey</label
+                >
+                <div class="settings-row__input-row">
+                    <input
+                        id="passkey-name"
+                        class="settings-input"
+                        type="text"
+                        maxlength={64}
+                        bind:value={passkeyName}
+                        placeholder="This Mac, security key, etc."
+                        disabled={passkeyBusy}
+                    />
+                    <button
+                        class="settings-btn settings-btn--primary"
+                        onclick={handleAddPasskey}
+                        disabled={passkeyBusy || !passkeyName.trim()}
+                    >
+                        {passkeyBusy ? "Verifying…" : "Add passkey"}
+                    </button>
+                </div>
+                {#if passkeysError}
+                    <span class="settings-row__desc settings-row__desc--error"
+                        >{passkeysError}</span
+                    >
+                {/if}
+            </div>
+        </section>
+
+        <!-- ── Device approvals ── -->
+        <section class="settings-section">
+            <h2 class="settings-section__title">Device Requests</h2>
+            {#if deviceRequestsLoading && deviceRequests.length === 0}
+                <div class="settings-row">
+                    <span class="settings-row__desc"
+                        >Checking for requests…</span
+                    >
+                </div>
+            {:else if deviceRequests.length === 0}
+                <div class="settings-row">
+                    <div class="settings-row__info">
+                        <span class="settings-row__label"
+                            >No pending requests</span
+                        >
+                        <span class="settings-row__desc"
+                            >New devices appear here after they verify your
+                            password or passkey.</span
+                        >
+                    </div>
+                    <button class="settings-btn" onclick={loadDeviceRequests}
+                        >Refresh</button
+                    >
+                </div>
+            {:else}
+                {#each deviceRequests as request (request.requestID)}
+                    <div class="settings-row settings-row--device-request">
+                        <div class="settings-row__info">
+                            <span class="settings-row__label"
+                                >{request.deviceName || "New device"}</span
+                            >
+                            <span class="settings-row__desc"
+                                >Only approve if this code matches the new
+                                device.</span
+                            >
+                            <span class="device-code"
+                                >{matchingCode(request.signKey)}</span
+                            >
+                        </div>
+                        <div class="settings-confirm">
+                            <button
+                                class="settings-btn settings-btn--danger"
+                                onclick={() =>
+                                    handleDeviceRequest(
+                                        request.requestID,
+                                        "reject",
+                                    )}
+                                disabled={deviceRequestBusy[request.requestID]}
+                                >Reject</button
+                            >
+                            <button
+                                class="settings-btn settings-btn--primary"
+                                onclick={() =>
+                                    handleDeviceRequest(
+                                        request.requestID,
+                                        "approve",
+                                    )}
+                                disabled={deviceRequestBusy[request.requestID]}
+                            >
+                                {deviceRequestBusy[request.requestID]
+                                    ? "Working…"
+                                    : "Approve"}
+                            </button>
+                        </div>
+                    </div>
+                {/each}
+            {/if}
+            {#if deviceRequestsError}
+                <div class="settings-row">
+                    <span class="settings-row__desc settings-row__desc--error"
+                        >{deviceRequestsError}</span
+                    >
+                </div>
+            {/if}
+        </section>
+
         <!-- ── Devices ── -->
         <section class="settings-section">
             <h2 class="settings-section__title">Devices</h2>
@@ -558,15 +1005,19 @@
 
     .settings-page__body {
         flex: 1;
+        min-height: 0;
+        width: 100%;
+        box-sizing: border-box;
         overflow-y: auto;
         padding: 24px;
         display: flex;
         flex-direction: column;
         gap: 24px;
-        max-width: 560px;
+        max-width: 640px;
     }
 
     .settings-section {
+        flex: 0 0 auto;
         display: flex;
         flex-direction: column;
         gap: 2px;
@@ -584,7 +1035,7 @@
         font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0;
         color: var(--text-muted);
         padding: 10px 16px 6px;
         border-bottom: 1px solid var(--border);
@@ -691,6 +1142,16 @@
         border-color: var(--accent);
     }
 
+    .settings-btn--primary {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+    }
+
+    .settings-btn--primary:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--accent) 82%, white);
+    }
+
     .settings-btn--danger {
         background: transparent;
         color: var(--danger);
@@ -704,6 +1165,46 @@
 
     .settings-row__desc--error {
         color: var(--danger);
+    }
+
+    .settings-row__desc--success {
+        color: var(--success);
+    }
+
+    .settings-security-form {
+        gap: 12px;
+    }
+
+    .settings-field-grid {
+        display: grid;
+        gap: 10px;
+        width: 100%;
+    }
+
+    .settings-field {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .settings-form-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        width: 100%;
+    }
+
+    .settings-check {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--text-secondary);
+        font-size: 12px;
+    }
+
+    .settings-check input {
+        accent-color: var(--accent);
     }
 
     .settings-avatar-actions {
@@ -731,7 +1232,7 @@
         font-size: 10px;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
+        letter-spacing: 0;
         padding: 1px 6px;
         margin-left: 6px;
         border-radius: 3px;
@@ -742,5 +1243,39 @@
 
     .settings-row--device {
         align-items: flex-start;
+    }
+
+    .settings-row--device-request {
+        align-items: center;
+    }
+
+    .device-code {
+        align-self: flex-start;
+        margin-top: 6px;
+        padding: 5px 9px;
+        border: 1px solid var(--accent);
+        border-radius: 4px;
+        color: var(--text-primary);
+        background: color-mix(in srgb, var(--accent) 10%, transparent);
+        font-family: monospace;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0;
+    }
+
+    @media (max-width: 700px) {
+        .settings-page__body {
+            padding: 16px;
+        }
+
+        .settings-row--device-request,
+        .settings-form-actions {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .settings-confirm {
+            flex-wrap: wrap;
+        }
     }
 </style>

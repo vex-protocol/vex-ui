@@ -15,6 +15,9 @@
     let creating = $state(false);
     let error = $state("");
     let copied = $state("");
+    function focusOnMount(node: HTMLElement): void {
+        node.focus();
+    }
 
     async function loadInvites(): Promise<void> {
         try {
@@ -60,17 +63,24 @@
 
 <svelte:window {onkeydown} />
 
-<div class="modal-backdrop" onclick={onclose}>
+<div class="modal-layer">
+    <button
+        class="modal-backdrop"
+        type="button"
+        aria-label="Close invite dialog"
+        onclick={onclose}
+    ></button>
     <div
         class="modal"
-        onclick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Invite people"
+        tabindex="-1"
     >
         <h2 class="modal__title">Invite people to {serverName}</h2>
 
         <button
+            use:focusOnMount
             class="invite__create-btn"
             onclick={createInvite}
             disabled={creating}
@@ -113,14 +123,21 @@
 </div>
 
 <style>
-    .modal-backdrop {
+    .modal-layer {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.6);
         display: flex;
         align-items: center;
         justify-content: center;
         z-index: 100;
+    }
+
+    .modal-backdrop {
+        background: rgba(0, 0, 0, 0.6);
+        border: 0;
+        inset: 0;
+        padding: 0;
+        position: absolute;
     }
 
     .modal {
@@ -133,6 +150,8 @@
         display: flex;
         flex-direction: column;
         gap: 14px;
+        position: relative;
+        z-index: 1;
     }
 
     .modal__title {

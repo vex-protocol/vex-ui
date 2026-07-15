@@ -66,6 +66,7 @@ import {
     startAlwaysOn,
     stopAlwaysOn,
 } from "../lib/foregroundService";
+import { clearActiveUsername } from "../lib/keychain";
 import { requestNotificationPermission } from "../lib/notifications";
 import {
     $pushNotificationsEnabled,
@@ -304,6 +305,7 @@ export function SettingsSectionScreen({
                                     }
                                 }
                                 await vexService.logout();
+                                await clearActiveUsername();
                             } catch {
                                 /* ignore */
                             } finally {
@@ -1010,6 +1012,14 @@ export function SettingsSectionScreen({
                                 label="Encryption keys"
                                 onPress={() => {
                                     navigation.navigate("SessionDetails");
+                                }}
+                            />
+                            <MenuRow
+                                description="Change your account password"
+                                icon="lock-closed-outline"
+                                label="Password"
+                                onPress={() => {
+                                    navigation.navigate("Password");
                                 }}
                             />
                             <MenuRow

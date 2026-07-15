@@ -8,6 +8,9 @@
     let name = $state("");
     let error = $state("");
     let submitting = $state(false);
+    function focusOnMount(node: HTMLElement): void {
+        node.focus();
+    }
 
     async function submit(e: Event): Promise<void> {
         e.preventDefault();
@@ -54,18 +57,25 @@
 
 <svelte:window {onkeydown} />
 
-<div class="modal-backdrop" onclick={onclose}>
+<div class="modal-layer">
+    <button
+        class="modal-backdrop"
+        type="button"
+        aria-label="Close create server dialog"
+        onclick={onclose}
+    ></button>
     <div
         class="modal"
-        onclick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Create server"
+        tabindex="-1"
     >
         <h2 class="modal__title">Create a Server</h2>
         <form onsubmit={submit}>
             <label class="modal__label" for="server-name">Server Name</label>
             <input
+                use:focusOnMount
                 id="server-name"
                 class="modal__input"
                 type="text"
@@ -74,7 +84,6 @@
                 maxlength={64}
                 disabled={submitting}
                 autocomplete="off"
-                autofocus
             />
             {#if error}
                 <p class="modal__error">{error}</p>
@@ -101,14 +110,21 @@
 </div>
 
 <style>
-    .modal-backdrop {
+    .modal-layer {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.6);
         display: flex;
         align-items: center;
         justify-content: center;
         z-index: 100;
+    }
+
+    .modal-backdrop {
+        background: rgba(0, 0, 0, 0.6);
+        border: 0;
+        inset: 0;
+        padding: 0;
+        position: absolute;
     }
 
     .modal {
@@ -121,6 +137,8 @@
         display: flex;
         flex-direction: column;
         gap: 16px;
+        position: relative;
+        z-index: 1;
     }
 
     .modal__title {

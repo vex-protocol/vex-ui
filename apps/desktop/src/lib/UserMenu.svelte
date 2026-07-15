@@ -22,6 +22,7 @@
         // Clear JWT so auto-login won't fire, but keep device keys
         const creds = await keyStore.loadActive();
         if (creds) await keyStore.save({ ...creds, token: undefined });
+        await keyStore.deactivate();
         // VexService.logout() resets all state internally.
         // SQLite storage is per-device-key; no manual clear needed on logout
         clearSession();
