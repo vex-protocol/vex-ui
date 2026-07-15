@@ -1,0 +1,48 @@
+name: Codex Review Gate
+
+on:
+    # This event executes the trusted base-branch workflow instead of code from
+    # the pull request, which keeps the write-scoped status token isolated.
+    pull_request_target:
+        branches:
+            - development
+            - master
+        types:
+            - opened
+            - reopened
+            - synchronize
+            - ready_for_review
+concurrency:
+    group: codex-review-${{ github.event.pull_request.number }}
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+    issues: write
+    pull-requests: read
+    statuses: write
+
+jobs:
+    codex-review:
+        name: Codex Review
+        if: github.event.pull_request.draft == false
+        runs-on: ubuntu-latest
+        timeout-minutes: 32
+        steps:
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+              with:
+                  persist-credentials: false
+                  ref: ${{ github.event.pull_request.base.sha }}
+
+            - name: Test review gate
+              run: node --test .github/scripts/codex-review-gate.test.mjs
+
+            - name: Wait for a clean Codex review
+              env:
+                  CODEX_REVIEW_INTERVAL_MS: "15000"
+                  CODEX_REVIEW_TIMEOUT_MS: "1200000"
+                  GH_TOKEN: ${{ github.token }}
+                  PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+                  PR_NUMBER: ${{ github.event.pull_request.number }}
+                  REPOSITORY: ${{ github.repository }}
+              run: node .github/scripts/codex-review-gate.mjs
