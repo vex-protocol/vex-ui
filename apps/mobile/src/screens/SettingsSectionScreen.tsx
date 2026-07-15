@@ -892,7 +892,7 @@ export function SettingsSectionScreen({
                                 label="Version"
                                 monoValue
                                 onPress={handleVersionTap}
-                                value={buildInfo.displayVersion}
+                                value={buildInfo.nativeDisplayVersion}
                             />
                             <MenuRow
                                 accessory={renderUpdateAccessory()}
@@ -1060,7 +1060,15 @@ export function SettingsSectionScreen({
                                 icon="pricetag-outline"
                                 label="Version"
                                 monoValue
-                                value={buildInfo.label}
+                                value={buildInfo.nativeDisplayVersion}
+                            />
+                            <MenuRow
+                                icon="layers-outline"
+                                label="Native build"
+                                monoValue
+                                value={
+                                    buildInfo.nativeBuildVersion ?? "unknown"
+                                }
                             />
                             <MenuRow
                                 icon="git-commit-outline"

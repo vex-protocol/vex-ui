@@ -1,3 +1,4 @@
+import * as Application from "expo-application";
 import Constants from "expo-constants";
 import * as Updates from "expo-updates";
 
@@ -29,6 +30,10 @@ const environment =
             ? vexExtra["environment"]
             : undefined,
     ) ?? "production";
+const iosAssociatedDomainMode =
+    vexExtra?.["iosAssociatedDomainMode"] === "developer"
+        ? "developer"
+        : "normal";
 const configuredUpdateChannel = normalize(
     typeof vexExtra?.["updateChannel"] === "string"
         ? vexExtra["updateChannel"]
@@ -44,6 +49,10 @@ const displayVersion =
     (releaseTarget === "development"
         ? `${version}RC-${shortCommit}`
         : `${version}-${shortCommit}`);
+const nativeBuildVersion = normalize(Application.nativeBuildVersion);
+const nativeDisplayVersion = nativeBuildVersion
+    ? `${displayVersion} (${nativeBuildVersion})`
+    : displayVersion;
 
 export const buildInfo = {
     androidPackage: Constants.expoConfig?.android?.package,
@@ -53,8 +62,11 @@ export const buildInfo = {
     displayVersion,
     environment,
     fingerprint: runtimeVersion,
+    iosAssociatedDomainMode,
     isEmbeddedLaunch: Updates.isEmbeddedLaunch,
     label: displayVersion,
+    nativeBuildVersion,
+    nativeDisplayVersion,
     runtimeVersion,
     shortCommit,
     shortFingerprint: shortRuntimeVersion,

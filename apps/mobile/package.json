@@ -43,6 +43,7 @@
         "@react-navigation/native-stack": "^7.3.0",
         "@vex-chat/store": "workspace:*",
         "expo": "^55.0.13",
+        "expo-application": "catalog:",
         "expo-audio": "catalog:",
         "expo-background-fetch": "catalog:",
         "expo-background-task": "catalog:",
