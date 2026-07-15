@@ -4,6 +4,7 @@ import test from "node:test";
 import {
     evaluateReviewState,
     gateCommentBody,
+    shouldRequestReview,
     statusContext,
     trustedReviewRequest,
 } from "./codex-review-gate.mjs";
@@ -191,6 +192,68 @@ test("ignores a spoofed request marker from a contributor", () => {
         evaluateReviewState(candidate, headSha, baseRef).kind,
         "pending",
     );
+    assert.equal(
+        shouldRequestReview(
+            candidate,
+            headSha,
+            baseRef,
+            Date.parse("2026-07-15T12:10:00Z"),
+            20 * 60_000,
+        ),
+        true,
+    );
+});
+
+test("retries an unanswered trusted request after the retry window", () => {
+    const candidate = pullRequest();
+    assert.equal(
+        shouldRequestReview(
+            candidate,
+            headSha,
+            baseRef,
+            Date.parse("2026-07-15T12:19:59Z"),
+            20 * 60_000,
+        ),
+        false,
+    );
+    assert.equal(
+        shouldRequestReview(
+            candidate,
+            headSha,
+            baseRef,
+            Date.parse("2026-07-15T12:20:00Z"),
+            20 * 60_000,
+        ),
+        true,
+    );
+});
+
+test("accepts a clean reaction on a retried request", () => {
+    const state = evaluateReviewState(
+        pullRequest({
+            comments: {
+                nodes: [
+                    reviewRequest(),
+                    reviewRequest({
+                        createdAt: "2026-07-15T12:20:00Z",
+                        reactions: [
+                            {
+                                content: "THUMBS_UP",
+                                createdAt: "2026-07-15T12:21:00Z",
+                                user: {
+                                    login: "chatgpt-codex-connector",
+                                },
+                            },
+                        ],
+                    }),
+                ],
+            },
+        }),
+        headSha,
+        baseRef,
+    );
+    assert.equal(state.kind, "clean");
+    assert.equal(state.source, "review-request-reaction");
 });
 
 test("ignores a reaction timestamped before its review request", () => {

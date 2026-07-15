@@ -3,7 +3,8 @@ import { pathToFileURL } from "node:url";
 const CODEX_LOGIN = "chatgpt-codex-connector";
 const COMMENT_MARKER = "<!-- codex-review-gate -->";
 const DEFAULT_INTERVAL_MS = 15_000;
-const DEFAULT_TIMEOUT_MS = 30 * 60_000;
+const DEFAULT_RETRY_MS = 20 * 60_000;
+const DEFAULT_TIMEOUT_MS = 40 * 60_000;
 const REVIEW_REQUEST_MARKER = "codex-review-request";
 const STATUS_CONTEXT_PREFIX = "Codex Review";
 const TARGET_BRANCHES = new Set(["development", "master"]);
@@ -88,14 +89,34 @@ function isLgtmForScope(body, headSha, baseRef) {
     );
 }
 
-export function trustedReviewRequest(pullRequest, headSha, baseRef) {
+function trustedReviewRequests(pullRequest, headSha, baseRef) {
     const marker = reviewRequestMarker(headSha, baseRef);
-    return (pullRequest.comments?.nodes ?? []).find(
-        (comment) =>
-            isGitHubActions(comment.author?.login) &&
-            comment.body?.includes(marker) &&
-            Number.isFinite(Date.parse(comment.createdAt ?? "")),
-    );
+    return (pullRequest.comments?.nodes ?? [])
+        .filter(
+            (comment) =>
+                isGitHubActions(comment.author?.login) &&
+                comment.body?.includes(marker) &&
+                Number.isFinite(Date.parse(comment.createdAt ?? "")),
+        )
+        .sort(
+            (left, right) =>
+                Date.parse(left.createdAt) - Date.parse(right.createdAt),
+        );
+}
+
+export function trustedReviewRequest(pullRequest, headSha, baseRef) {
+    return trustedReviewRequests(pullRequest, headSha, baseRef).at(0);
+}
+
+export function shouldRequestReview(
+    pullRequest,
+    headSha,
+    baseRef,
+    now,
+    retryMs,
+) {
+    const latest = trustedReviewRequests(pullRequest, headSha, baseRef).at(-1);
+    return !latest || now - Date.parse(latest.createdAt) >= retryMs;
 }
 
 export function evaluateReviewState(
@@ -114,18 +135,18 @@ export function evaluateReviewState(
         };
     }
 
-    const request = trustedReviewRequest(
+    const requests = trustedReviewRequests(
         pullRequest,
         expectedHeadSha,
         expectedBaseRef,
     );
-    if (!request) {
+    if (requests.length === 0) {
         return {
             kind: "pending",
             reason: "A trusted Codex review request has not been posted yet.",
         };
     }
-    const requestCreatedAt = Date.parse(request.createdAt);
+    const requestCreatedAt = Date.parse(requests[0].createdAt);
 
     const signals = [];
 
@@ -164,20 +185,22 @@ export function evaluateReviewState(
         }
     }
 
-    for (const reaction of request.reactions?.nodes ?? []) {
-        const reactionCreatedAt = Date.parse(reaction.createdAt ?? "");
-        if (
-            isCodex(reaction.user?.login) &&
-            isThumbsUp(reaction.content) &&
-            Number.isFinite(reactionCreatedAt) &&
-            reactionCreatedAt >= requestCreatedAt
-        ) {
-            signals.push({
-                at: reactionCreatedAt,
-                findingCount: 0,
-                kind: "clean",
-                source: "review-request-reaction",
-            });
+    for (const request of requests) {
+        for (const reaction of request.reactions?.nodes ?? []) {
+            const reactionCreatedAt = Date.parse(reaction.createdAt ?? "");
+            if (
+                isCodex(reaction.user?.login) &&
+                isThumbsUp(reaction.content) &&
+                Number.isFinite(reactionCreatedAt) &&
+                reactionCreatedAt >= Date.parse(request.createdAt)
+            ) {
+                signals.push({
+                    at: reactionCreatedAt,
+                    findingCount: 0,
+                    kind: "clean",
+                    source: "review-request-reaction",
+                });
+            }
         }
     }
 
@@ -335,9 +358,12 @@ async function ensureReviewRequest(
     pullRequest,
     headSha,
     baseRef,
+    retryMs,
 ) {
     const marker = reviewRequestMarker(headSha, baseRef);
-    if (trustedReviewRequest(pullRequest, headSha, baseRef)) {
+    if (
+        !shouldRequestReview(pullRequest, headSha, baseRef, Date.now(), retryMs)
+    ) {
         return;
     }
     if (process.env.CODEX_REVIEW_DRY_RUN === "1") {
@@ -375,7 +401,7 @@ async function publishLgtm(repository, number, pullRequest, headSha, baseRef) {
     );
 }
 
-async function recoverOpenPullRequests(repository, owner, name) {
+async function recoverOpenPullRequests(repository, owner, name, retryMs) {
     const summaries = await githubRequest(
         `/repos/${repository}/pulls?state=open&per_page=100`,
     );
@@ -431,6 +457,7 @@ async function recoverOpenPullRequests(repository, owner, name) {
                     pullRequest,
                     headSha,
                     baseRef,
+                    retryMs,
                 );
             }
         } catch (error) {
@@ -449,8 +476,12 @@ export async function main() {
     if (!owner || !name) {
         throw new Error("REPOSITORY must use the owner/name format.");
     }
+    const retryMs = positiveIntegerEnv(
+        "CODEX_REVIEW_RETRY_MS",
+        DEFAULT_RETRY_MS,
+    );
     if (process.env.CODEX_REVIEW_RECOVERY === "1") {
-        await recoverOpenPullRequests(repository, owner, name);
+        await recoverOpenPullRequests(repository, owner, name, retryMs);
         return;
     }
     const number = Number(requiredEnv("PR_NUMBER"));
@@ -490,19 +521,6 @@ export async function main() {
         );
         return;
     }
-    if (
-        evaluateReviewState(initialPullRequest, headSha, baseRef).kind ===
-        "pending"
-    ) {
-        await ensureReviewRequest(
-            repository,
-            number,
-            initialPullRequest,
-            headSha,
-            baseRef,
-        );
-    }
-
     try {
         while (Date.now() < deadline) {
             const pullRequest = await fetchPullRequest(owner, name, number);
@@ -572,12 +590,21 @@ export async function main() {
                 markedPending = true;
             }
 
+            await ensureReviewRequest(
+                repository,
+                number,
+                pullRequest,
+                headSha,
+                baseRef,
+                retryMs,
+            );
+
             console.log(`${state.reason} Checking again in ${intervalMs}ms.`);
             await sleep(intervalMs);
         }
 
         throw new Error(
-            `Timed out waiting for Codex to review ${headSha.slice(0, 7)}. Request a new review with "@codex review", then re-run this check.`,
+            `Timed out waiting for Codex to review ${headSha.slice(0, 7)}. Scheduled recovery will retry the review automatically.`,
         );
     } catch (error) {
         if (publishedStatus === "pending") {
