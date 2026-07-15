@@ -14,4 +14,5 @@
     LGTM
 
     Reviewed commit: <full commit SHA>
+    Target branch: <base branch>
     ```

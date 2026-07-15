@@ -12,6 +12,8 @@ on:
             - reopened
             - synchronize
             - ready_for_review
+            - converted_to_draft
+            - edited
     schedule:
         - cron: "7,22,37,52 * * * *"
 
@@ -45,6 +47,7 @@ jobs:
                   CODEX_REVIEW_INTERVAL_MS: "15000"
                   CODEX_REVIEW_TIMEOUT_MS: "1800000"
                   GH_TOKEN: ${{ github.token }}
+                  PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
                   PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
                   PR_NUMBER: ${{ github.event.pull_request.number }}
                   REPOSITORY: ${{ github.repository }}

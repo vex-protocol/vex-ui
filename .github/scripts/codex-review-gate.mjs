@@ -5,14 +5,16 @@ const COMMENT_MARKER = "<!-- codex-review-gate -->";
 const DEFAULT_INTERVAL_MS = 15_000;
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 const REVIEW_REQUEST_MARKER = "codex-review-request";
-const STATUS_CONTEXT = "Codex Review";
+const STATUS_CONTEXT_PREFIX = "Codex Review";
 const TARGET_BRANCHES = new Set(["development", "master"]);
 
 const REVIEW_QUERY = `
 query CodexReviewGate($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
+      baseRefName
       headRefOid
+      isDraft
       reviews(last: 50) {
         nodes {
           author {
@@ -68,34 +70,77 @@ function isThumbsUp(content) {
     return content === "THUMBS_UP" || content === "+1";
 }
 
-function reviewRequestMarker(headSha) {
-    return `<!-- ${REVIEW_REQUEST_MARKER}:${headSha} -->`;
+function reviewRequestMarker(headSha, baseRef) {
+    return `<!-- ${REVIEW_REQUEST_MARKER}:${baseRef}:${headSha} -->`;
 }
 
-function isLgtmForHead(body, headSha) {
+export function statusContext(baseRef) {
+    return `${STATUS_CONTEXT_PREFIX} / ${baseRef}`;
+}
+
+function isLgtmForScope(body, headSha, baseRef) {
     const normalizedBody = String(body ?? "").toLowerCase();
     return (
         /^\s*LGTM\b/i.test(normalizedBody) &&
         (normalizedBody.includes(headSha.toLowerCase()) ||
-            normalizedBody.includes(headSha.slice(0, 10).toLowerCase()))
+            normalizedBody.includes(headSha.slice(0, 10).toLowerCase())) &&
+        normalizedBody.includes(`target branch: ${baseRef}`.toLowerCase())
     );
 }
 
-export function evaluateReviewState(pullRequest, expectedHeadSha) {
-    if (!pullRequest || pullRequest.headRefOid !== expectedHeadSha) {
-        return { kind: "pending", reason: "The pull request head changed." };
+export function trustedReviewRequest(pullRequest, headSha, baseRef) {
+    const marker = reviewRequestMarker(headSha, baseRef);
+    return (pullRequest.comments?.nodes ?? []).find(
+        (comment) =>
+            isGitHubActions(comment.author?.login) &&
+            comment.body?.includes(marker) &&
+            Number.isFinite(Date.parse(comment.createdAt ?? "")),
+    );
+}
+
+export function evaluateReviewState(
+    pullRequest,
+    expectedHeadSha,
+    expectedBaseRef,
+) {
+    if (
+        !pullRequest ||
+        pullRequest.headRefOid !== expectedHeadSha ||
+        pullRequest.baseRefName !== expectedBaseRef
+    ) {
+        return {
+            kind: "pending",
+            reason: "The pull request review scope changed.",
+        };
     }
+
+    const request = trustedReviewRequest(
+        pullRequest,
+        expectedHeadSha,
+        expectedBaseRef,
+    );
+    if (!request) {
+        return {
+            kind: "pending",
+            reason: "A trusted Codex review request has not been posted yet.",
+        };
+    }
+    const requestCreatedAt = Date.parse(request.createdAt);
 
     const signals = [];
 
     for (const review of pullRequest.reviews?.nodes ?? []) {
         if (
             !isCodex(review.author?.login) ||
-            review.commit?.oid !== expectedHeadSha
+            review.commit?.oid !== expectedHeadSha ||
+            (Date.parse(review.submittedAt ?? "") || 0) < requestCreatedAt
         ) {
             continue;
         }
         const findingCount = review.comments?.totalCount ?? 0;
+        if (findingCount === 0) {
+            continue;
+        }
         signals.push({
             at: Date.parse(review.submittedAt ?? "") || 0,
             findingCount,
@@ -107,7 +152,8 @@ export function evaluateReviewState(pullRequest, expectedHeadSha) {
     for (const comment of pullRequest.comments?.nodes ?? []) {
         if (
             isCodex(comment.author?.login) &&
-            isLgtmForHead(comment.body, expectedHeadSha)
+            isLgtmForScope(comment.body, expectedHeadSha, expectedBaseRef) &&
+            (Date.parse(comment.createdAt ?? "") || 0) >= requestCreatedAt
         ) {
             signals.push({
                 at: Date.parse(comment.createdAt ?? "") || 0,
@@ -116,32 +162,22 @@ export function evaluateReviewState(pullRequest, expectedHeadSha) {
                 source: "codex-comment",
             });
         }
+    }
 
+    for (const reaction of request.reactions?.nodes ?? []) {
+        const reactionCreatedAt = Date.parse(reaction.createdAt ?? "");
         if (
-            !isGitHubActions(comment.author?.login) ||
-            !comment.body?.includes(reviewRequestMarker(expectedHeadSha))
+            isCodex(reaction.user?.login) &&
+            isThumbsUp(reaction.content) &&
+            Number.isFinite(reactionCreatedAt) &&
+            reactionCreatedAt >= requestCreatedAt
         ) {
-            continue;
-        }
-        const requestCreatedAt = Date.parse(comment.createdAt ?? "");
-        if (!Number.isFinite(requestCreatedAt)) {
-            continue;
-        }
-        for (const reaction of comment.reactions?.nodes ?? []) {
-            const reactionCreatedAt = Date.parse(reaction.createdAt ?? "");
-            if (
-                isCodex(reaction.user?.login) &&
-                isThumbsUp(reaction.content) &&
-                Number.isFinite(reactionCreatedAt) &&
-                reactionCreatedAt >= requestCreatedAt
-            ) {
-                signals.push({
-                    at: reactionCreatedAt,
-                    findingCount: 0,
-                    kind: "clean",
-                    source: "review-request-reaction",
-                });
-            }
+            signals.push({
+                at: reactionCreatedAt,
+                findingCount: 0,
+                kind: "clean",
+                source: "review-request-reaction",
+            });
         }
     }
 
@@ -214,14 +250,16 @@ function sleep(milliseconds) {
     return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-export function gateCommentBody(repository, headSha) {
+export function gateCommentBody(repository, headSha, baseRef) {
     const shortSha = headSha.slice(0, 7);
-    return `LGTM\n\n${COMMENT_MARKER}\nCodex reviewed [\`${shortSha}\`](https://github.com/${repository}/commit/${headSha}) and reported no actionable findings.`;
+    return `LGTM\n\n${COMMENT_MARKER}\nCodex reviewed [\`${shortSha}\`](https://github.com/${repository}/commit/${headSha}) against \`${baseRef}\` and reported no actionable findings.`;
 }
 
 function existingGateComment(pullRequest) {
-    return (pullRequest.comments?.nodes ?? []).find((comment) =>
-        comment.body?.includes(COMMENT_MARKER),
+    return (pullRequest.comments?.nodes ?? []).find(
+        (comment) =>
+            isGitHubActions(comment.author?.login) &&
+            comment.body?.includes(COMMENT_MARKER),
     );
 }
 
@@ -255,19 +293,26 @@ async function publishGateComment(
     }
 }
 
-async function publishCommitStatus(repository, headSha, state, description) {
+async function publishCommitStatus(
+    repository,
+    headSha,
+    baseRef,
+    state,
+    description,
+) {
+    const context = statusContext(baseRef);
     if (process.env.CODEX_REVIEW_DRY_RUN === "1") {
-        console.log(`[dry run] ${STATUS_CONTEXT}: ${state} - ${description}`);
+        console.log(`[dry run] ${context}: ${state} - ${description}`);
         return;
     }
     const combinedStatus = await githubRequest(
         `/repos/${repository}/commits/${headSha}/status`,
     );
     const current = combinedStatus.statuses?.find(
-        (status) => status.context === STATUS_CONTEXT,
+        (status) => status.context === context,
     );
     if (current?.state === state && current.description === description) {
-        console.log(`${STATUS_CONTEXT} is already ${state}; no update needed.`);
+        console.log(`${context} is already ${state}; no update needed.`);
         return;
     }
     const runUrl = process.env.GITHUB_RUN_ID
@@ -276,7 +321,7 @@ async function publishCommitStatus(repository, headSha, state, description) {
     await githubRequest(`/repos/${repository}/statuses/${headSha}`, {
         method: "POST",
         body: JSON.stringify({
-            context: STATUS_CONTEXT,
+            context,
             description,
             state,
             target_url: runUrl,
@@ -284,13 +329,15 @@ async function publishCommitStatus(repository, headSha, state, description) {
     });
 }
 
-async function ensureReviewRequest(repository, number, pullRequest, headSha) {
-    const marker = reviewRequestMarker(headSha);
-    if (
-        (pullRequest.comments?.nodes ?? []).some((comment) =>
-            comment.body?.includes(marker),
-        )
-    ) {
+async function ensureReviewRequest(
+    repository,
+    number,
+    pullRequest,
+    headSha,
+    baseRef,
+) {
+    const marker = reviewRequestMarker(headSha, baseRef);
+    if (trustedReviewRequest(pullRequest, headSha, baseRef)) {
         return;
     }
     if (process.env.CODEX_REVIEW_DRY_RUN === "1") {
@@ -300,13 +347,16 @@ async function ensureReviewRequest(repository, number, pullRequest, headSha) {
     await githubRequest(`/repos/${repository}/issues/${number}/comments`, {
         method: "POST",
         body: JSON.stringify({
-            body: `@codex review\n\n${marker}\nReview the current head commit \`${headSha}\`. If there are no actionable findings, react with a thumbs-up on this request or post an LGTM comment that names this commit.`,
+            body: `@codex review\n\n${marker}\nReview commit \`${headSha}\` against \`${baseRef}\`. If there are no actionable findings, react with a thumbs-up on this request or post an LGTM comment with \`Reviewed commit: ${headSha}\` and \`Target branch: ${baseRef}\`.`,
         }),
     });
 }
 
-async function publishLgtm(repository, number, pullRequest, headSha) {
-    if (evaluateReviewState(pullRequest, headSha).source === "codex-comment") {
+async function publishLgtm(repository, number, pullRequest, headSha, baseRef) {
+    if (
+        evaluateReviewState(pullRequest, headSha, baseRef).source ===
+        "codex-comment"
+    ) {
         await publishGateComment(
             repository,
             number,
@@ -320,7 +370,7 @@ async function publishLgtm(repository, number, pullRequest, headSha) {
         repository,
         number,
         pullRequest,
-        gateCommentBody(repository, headSha),
+        gateCommentBody(repository, headSha, baseRef),
         { create: true },
     );
 }
@@ -342,17 +392,20 @@ async function recoverOpenPullRequests(repository, owner, name) {
                 summary.number,
             );
             const headSha = pullRequest.headRefOid;
-            const state = evaluateReviewState(pullRequest, headSha);
+            const baseRef = pullRequest.baseRefName;
+            const state = evaluateReviewState(pullRequest, headSha, baseRef);
             if (state.kind === "clean") {
                 await publishLgtm(
                     repository,
                     summary.number,
                     pullRequest,
                     headSha,
+                    baseRef,
                 );
                 await publishCommitStatus(
                     repository,
                     headSha,
+                    baseRef,
                     "success",
                     "Codex reviewed this commit and found no actionable issues.",
                 );
@@ -360,6 +413,7 @@ async function recoverOpenPullRequests(repository, owner, name) {
                 await publishCommitStatus(
                     repository,
                     headSha,
+                    baseRef,
                     "failure",
                     `Codex found ${state.findingCount} actionable issue${state.findingCount === 1 ? "" : "s"}.`,
                 );
@@ -367,6 +421,7 @@ async function recoverOpenPullRequests(repository, owner, name) {
                 await publishCommitStatus(
                     repository,
                     headSha,
+                    baseRef,
                     "pending",
                     "Waiting for Codex to review the current head commit.",
                 );
@@ -375,6 +430,7 @@ async function recoverOpenPullRequests(repository, owner, name) {
                     summary.number,
                     pullRequest,
                     headSha,
+                    baseRef,
                 );
             }
         } catch (error) {
@@ -399,6 +455,10 @@ export async function main() {
     }
     const number = Number(requiredEnv("PR_NUMBER"));
     const headSha = requiredEnv("PR_HEAD_SHA");
+    const baseRef = requiredEnv("PR_BASE_REF");
+    if (!TARGET_BRANCHES.has(baseRef)) {
+        throw new Error(`Unsupported target branch ${baseRef}.`);
+    }
     const intervalMs = positiveIntegerEnv(
         "CODEX_REVIEW_INTERVAL_MS",
         DEFAULT_INTERVAL_MS,
@@ -414,36 +474,62 @@ export async function main() {
     await publishCommitStatus(
         repository,
         headSha,
+        baseRef,
         "pending",
         "Waiting for Codex to review the current head commit.",
     );
 
     const initialPullRequest = await fetchPullRequest(owner, name, number);
-    if (initialPullRequest.headRefOid !== headSha) {
+    if (
+        initialPullRequest.headRefOid !== headSha ||
+        initialPullRequest.baseRefName !== baseRef ||
+        initialPullRequest.isDraft
+    ) {
         console.log(
-            "The pull request head changed; a newer run will review it.",
+            "The pull request review scope changed; a newer run will handle it.",
         );
         return;
     }
-    if (evaluateReviewState(initialPullRequest, headSha).kind === "pending") {
+    if (
+        evaluateReviewState(initialPullRequest, headSha, baseRef).kind ===
+        "pending"
+    ) {
         await ensureReviewRequest(
             repository,
             number,
             initialPullRequest,
             headSha,
+            baseRef,
         );
     }
 
     try {
         while (Date.now() < deadline) {
             const pullRequest = await fetchPullRequest(owner, name, number);
-            const state = evaluateReviewState(pullRequest, headSha);
+            if (
+                pullRequest.headRefOid !== headSha ||
+                pullRequest.baseRefName !== baseRef ||
+                pullRequest.isDraft
+            ) {
+                console.log(
+                    "The pull request review scope changed; a newer run will handle it.",
+                );
+                return;
+            }
+            const state = evaluateReviewState(pullRequest, headSha, baseRef);
 
             if (state.kind === "clean") {
-                await publishLgtm(repository, number, pullRequest, headSha);
+                await publishLgtm(
+                    repository,
+                    number,
+                    pullRequest,
+                    headSha,
+                    baseRef,
+                );
                 await publishCommitStatus(
                     repository,
                     headSha,
+                    baseRef,
                     "success",
                     "Codex reviewed this commit and found no actionable issues.",
                 );
@@ -464,6 +550,7 @@ export async function main() {
                 await publishCommitStatus(
                     repository,
                     headSha,
+                    baseRef,
                     "failure",
                     `Codex found ${state.findingCount} actionable issue${state.findingCount === 1 ? "" : "s"}.`,
                 );
@@ -497,6 +584,7 @@ export async function main() {
             await publishCommitStatus(
                 repository,
                 headSha,
+                baseRef,
                 "failure",
                 "Codex review did not complete successfully.",
             );
