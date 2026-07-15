@@ -1,17 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { evaluateReviewState } from "./codex-review-gate.mjs";
+import { evaluateReviewState, gateCommentBody } from "./codex-review-gate.mjs";
 
 const headSha = "a".repeat(40);
-const committedDate = "2026-07-15T12:00:00Z";
+const oldHeadSha = "b".repeat(40);
 
 function pullRequest(overrides = {}) {
     return {
         comments: { nodes: [] },
-        commits: { nodes: [{ commit: { committedDate } }] },
         headRefOid: headSha,
-        reactions: { nodes: [] },
         reviews: { nodes: [] },
         ...overrides,
     };
@@ -19,6 +17,13 @@ function pullRequest(overrides = {}) {
 
 test("waits until Codex reviews the current head", () => {
     assert.equal(evaluateReviewState(pullRequest(), headSha).kind, "pending");
+});
+
+test("puts LGTM on the first line of the generated clean comment", () => {
+    assert.equal(
+        gateCommentBody("vex-protocol/vex-ui", headSha).split("\n")[0],
+        "LGTM",
+    );
 });
 
 test("fails when the current Codex review contains findings", () => {
@@ -65,15 +70,26 @@ test("passes a current Codex review without findings", () => {
     assert.equal(state.source, "review");
 });
 
-test("accepts Codex's documented thumbs-up signal", () => {
+test("accepts a thumbs-up on the SHA-stamped review request", () => {
     const state = evaluateReviewState(
         pullRequest({
-            reactions: {
+            comments: {
                 nodes: [
                     {
-                        content: "THUMBS_UP",
+                        author: { login: "github-actions[bot]" },
+                        body: `@codex review\n\n<!-- codex-review-request:${headSha} -->`,
                         createdAt: "2026-07-15T12:02:00Z",
-                        user: { login: "chatgpt-codex-connector" },
+                        reactions: {
+                            nodes: [
+                                {
+                                    content: "THUMBS_UP",
+                                    createdAt: "2026-07-15T12:03:00Z",
+                                    user: {
+                                        login: "chatgpt-codex-connector",
+                                    },
+                                },
+                            ],
+                        },
                     },
                 ],
             },
@@ -81,18 +97,48 @@ test("accepts Codex's documented thumbs-up signal", () => {
         headSha,
     );
     assert.equal(state.kind, "clean");
-    assert.equal(state.source, "pull-request-reaction");
+    assert.equal(state.source, "review-request-reaction");
 });
 
-test("ignores a no-findings reaction from an older commit", () => {
+test("ignores a thumbs-up on a request for an older head", () => {
     const state = evaluateReviewState(
         pullRequest({
-            reactions: {
+            comments: {
                 nodes: [
                     {
-                        content: "THUMBS_UP",
-                        createdAt: "2026-07-15T11:59:00Z",
-                        user: { login: "chatgpt-codex-connector" },
+                        author: { login: "github-actions[bot]" },
+                        body: `@codex review\n\n<!-- codex-review-request:${oldHeadSha} -->`,
+                        createdAt: "2026-07-15T12:02:00Z",
+                        reactions: {
+                            nodes: [
+                                {
+                                    content: "THUMBS_UP",
+                                    createdAt: "2026-07-15T12:03:00Z",
+                                    user: {
+                                        login: "chatgpt-codex-connector",
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+            },
+        }),
+        headSha,
+    );
+    assert.equal(state.kind, "pending");
+});
+
+test("requires an LGTM comment to name the current head", () => {
+    const state = evaluateReviewState(
+        pullRequest({
+            comments: {
+                nodes: [
+                    {
+                        author: { login: "chatgpt-codex-connector" },
+                        body: `LGTM\n\nReviewed commit: ${oldHeadSha}`,
+                        createdAt: "2026-07-15T12:03:00Z",
+                        reactions: { nodes: [] },
                     },
                 ],
             },
@@ -109,7 +155,7 @@ test("uses the latest Codex signal for the current head", () => {
                 nodes: [
                     {
                         author: { login: "chatgpt-codex-connector" },
-                        body: "LGTM\n\nNo actionable findings.",
+                        body: `LGTM\n\nReviewed commit: ${headSha}`,
                         createdAt: "2026-07-15T12:03:00Z",
                         reactions: { nodes: [] },
                     },

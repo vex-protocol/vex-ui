@@ -7,5 +7,11 @@
   encryption changes extra scrutiny.
 - Review the current pull request head commit, including whether earlier Codex
   findings were actually addressed.
-- If no actionable findings remain, leave a top-level comment whose first line
-  is exactly `LGTM` instead of only adding a reaction.
+- If no actionable findings remain, leave a top-level comment in this format
+  instead of only adding a reaction. Use the full current commit SHA.
+
+    ```text
+    LGTM
+
+    Reviewed commit: <full commit SHA>
+    ```

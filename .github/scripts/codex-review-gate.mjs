@@ -3,30 +3,16 @@ import { pathToFileURL } from "node:url";
 const CODEX_LOGIN = "chatgpt-codex-connector";
 const COMMENT_MARKER = "<!-- codex-review-gate -->";
 const DEFAULT_INTERVAL_MS = 15_000;
-const DEFAULT_TIMEOUT_MS = 20 * 60_000;
+const DEFAULT_TIMEOUT_MS = 30 * 60_000;
+const REVIEW_REQUEST_MARKER = "codex-review-request";
 const STATUS_CONTEXT = "Codex Review";
+const TARGET_BRANCHES = new Set(["development", "master"]);
 
 const REVIEW_QUERY = `
 query CodexReviewGate($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       headRefOid
-      commits(last: 1) {
-        nodes {
-          commit {
-            committedDate
-          }
-        }
-      }
-      reactions(first: 100) {
-        nodes {
-          content
-          createdAt
-          user {
-            login
-          }
-        }
-      }
       reviews(last: 50) {
         nodes {
           author {
@@ -78,13 +64,17 @@ function isThumbsUp(content) {
     return content === "THUMBS_UP" || content === "+1";
 }
 
-function timestamp(value) {
-    const parsed = Date.parse(value ?? "");
-    return Number.isFinite(parsed) ? parsed : 0;
+function reviewRequestMarker(headSha) {
+    return `<!-- ${REVIEW_REQUEST_MARKER}:${headSha} -->`;
 }
 
-function isLgtm(body) {
-    return /^\s*LGTM\b/i.test(body ?? "");
+function isLgtmForHead(body, headSha) {
+    const normalizedBody = String(body ?? "").toLowerCase();
+    return (
+        /^\s*LGTM\b/i.test(normalizedBody) &&
+        (normalizedBody.includes(headSha.toLowerCase()) ||
+            normalizedBody.includes(headSha.slice(0, 10).toLowerCase()))
+    );
 }
 
 export function evaluateReviewState(pullRequest, expectedHeadSha) {
@@ -92,9 +82,6 @@ export function evaluateReviewState(pullRequest, expectedHeadSha) {
         return { kind: "pending", reason: "The pull request head changed." };
     }
 
-    const committedAt = timestamp(
-        pullRequest.commits?.nodes?.at(-1)?.commit?.committedDate,
-    );
     const signals = [];
 
     for (const review of pullRequest.reviews?.nodes ?? []) {
@@ -106,53 +93,33 @@ export function evaluateReviewState(pullRequest, expectedHeadSha) {
         }
         const findingCount = review.comments?.totalCount ?? 0;
         signals.push({
-            at: timestamp(review.submittedAt),
+            at: Date.parse(review.submittedAt ?? "") || 0,
             findingCount,
             kind: findingCount > 0 ? "findings" : "clean",
             source: "review",
         });
     }
 
-    for (const reaction of pullRequest.reactions?.nodes ?? []) {
-        if (
-            isCodex(reaction.user?.login) &&
-            isThumbsUp(reaction.content) &&
-            timestamp(reaction.createdAt) >= committedAt
-        ) {
-            signals.push({
-                at: timestamp(reaction.createdAt),
-                findingCount: 0,
-                kind: "clean",
-                source: "pull-request-reaction",
-            });
-        }
-    }
-
     for (const comment of pullRequest.comments?.nodes ?? []) {
         if (
             isCodex(comment.author?.login) &&
-            isLgtm(comment.body) &&
-            timestamp(comment.createdAt) >= committedAt
+            isLgtmForHead(comment.body, expectedHeadSha)
         ) {
             signals.push({
-                at: timestamp(comment.createdAt),
+                at: Date.parse(comment.createdAt ?? "") || 0,
                 findingCount: 0,
                 kind: "clean",
                 source: "codex-comment",
             });
         }
 
-        if (!/@codex\s+review\b/i.test(comment.body ?? "")) {
+        if (!comment.body?.includes(reviewRequestMarker(expectedHeadSha))) {
             continue;
         }
         for (const reaction of comment.reactions?.nodes ?? []) {
-            if (
-                isCodex(reaction.user?.login) &&
-                isThumbsUp(reaction.content) &&
-                timestamp(reaction.createdAt) >= committedAt
-            ) {
+            if (isCodex(reaction.user?.login) && isThumbsUp(reaction.content)) {
                 signals.push({
-                    at: timestamp(reaction.createdAt),
+                    at: Date.parse(reaction.createdAt ?? "") || 0,
                     findingCount: 0,
                     kind: "clean",
                     source: "review-request-reaction",
@@ -230,9 +197,9 @@ function sleep(milliseconds) {
     return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function gateCommentBody(repository, headSha) {
+export function gateCommentBody(repository, headSha) {
     const shortSha = headSha.slice(0, 7);
-    return `${COMMENT_MARKER}\nLGTM\n\nCodex reviewed [\`${shortSha}\`](https://github.com/${repository}/commit/${headSha}) and reported no actionable findings.`;
+    return `LGTM\n\n${COMMENT_MARKER}\nCodex reviewed [\`${shortSha}\`](https://github.com/${repository}/commit/${headSha}) and reported no actionable findings.`;
 }
 
 function existingGateComment(pullRequest) {
@@ -290,6 +257,27 @@ async function publishCommitStatus(repository, headSha, state, description) {
     });
 }
 
+async function ensureReviewRequest(repository, number, pullRequest, headSha) {
+    const marker = reviewRequestMarker(headSha);
+    if (
+        (pullRequest.comments?.nodes ?? []).some((comment) =>
+            comment.body?.includes(marker),
+        )
+    ) {
+        return;
+    }
+    if (process.env.CODEX_REVIEW_DRY_RUN === "1") {
+        console.log(`[dry run] Would request Codex review for ${headSha}.`);
+        return;
+    }
+    await githubRequest(`/repos/${repository}/issues/${number}/comments`, {
+        method: "POST",
+        body: JSON.stringify({
+            body: `@codex review\n\n${marker}\nReview the current head commit \`${headSha}\`. If there are no actionable findings, react with a thumbs-up on this request or post an LGTM comment that names this commit.`,
+        }),
+    });
+}
+
 async function publishLgtm(repository, number, pullRequest, headSha) {
     if (evaluateReviewState(pullRequest, headSha).source === "codex-comment") {
         await publishGateComment(
@@ -310,11 +298,77 @@ async function publishLgtm(repository, number, pullRequest, headSha) {
     );
 }
 
+async function recoverOpenPullRequests(repository, owner, name) {
+    const summaries = await githubRequest(
+        `/repos/${repository}/pulls?state=open&per_page=100`,
+    );
+    const failures = [];
+
+    for (const summary of summaries) {
+        if (!TARGET_BRANCHES.has(summary.base?.ref)) {
+            continue;
+        }
+        try {
+            const pullRequest = await fetchPullRequest(
+                owner,
+                name,
+                summary.number,
+            );
+            const headSha = pullRequest.headRefOid;
+            const state = evaluateReviewState(pullRequest, headSha);
+            if (state.kind === "clean") {
+                await publishLgtm(
+                    repository,
+                    summary.number,
+                    pullRequest,
+                    headSha,
+                );
+                await publishCommitStatus(
+                    repository,
+                    headSha,
+                    "success",
+                    "Codex reviewed this commit and found no actionable issues.",
+                );
+            } else if (state.kind === "findings") {
+                await publishCommitStatus(
+                    repository,
+                    headSha,
+                    "failure",
+                    `Codex found ${state.findingCount} actionable issue${state.findingCount === 1 ? "" : "s"}.`,
+                );
+            } else {
+                await publishCommitStatus(
+                    repository,
+                    headSha,
+                    "pending",
+                    "Waiting for Codex to review the current head commit.",
+                );
+                await ensureReviewRequest(
+                    repository,
+                    summary.number,
+                    pullRequest,
+                    headSha,
+                );
+            }
+        } catch (error) {
+            failures.push(`#${summary.number}: ${error.message}`);
+        }
+    }
+
+    if (failures.length > 0) {
+        throw new Error(`Codex review recovery failed: ${failures.join("; ")}`);
+    }
+}
+
 export async function main() {
     const repository = requiredEnv("REPOSITORY");
     const [owner, name] = repository.split("/");
     if (!owner || !name) {
         throw new Error("REPOSITORY must use the owner/name format.");
+    }
+    if (process.env.CODEX_REVIEW_RECOVERY === "1") {
+        await recoverOpenPullRequests(repository, owner, name);
+        return;
     }
     const number = Number(requiredEnv("PR_NUMBER"));
     const headSha = requiredEnv("PR_HEAD_SHA");
@@ -336,6 +390,22 @@ export async function main() {
         "pending",
         "Waiting for Codex to review the current head commit.",
     );
+
+    const initialPullRequest = await fetchPullRequest(owner, name, number);
+    if (initialPullRequest.headRefOid !== headSha) {
+        console.log(
+            "The pull request head changed; a newer run will review it.",
+        );
+        return;
+    }
+    if (evaluateReviewState(initialPullRequest, headSha).kind === "pending") {
+        await ensureReviewRequest(
+            repository,
+            number,
+            initialPullRequest,
+            headSha,
+        );
+    }
 
     try {
         while (Date.now() < deadline) {
