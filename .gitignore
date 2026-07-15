@@ -6,8 +6,6 @@ node_modules
 .cursor
 .agents
 
-AGENTS.md
-
 # Mobile native dirs (Expo Prebuild / CNG generates these)
 apps/mobile/ios/
 apps/mobile/android/
