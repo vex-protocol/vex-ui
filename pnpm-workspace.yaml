@@ -14,8 +14,8 @@ catalog:
     "@tauri-apps/plugin-http": ^2.5.9
     "@types/node": ^24.10.1
     "@vex-chat/crypto": 11.0.0
-    "@vex-chat/libvex": 9.1.0
-    "@vex-chat/spire": 4.1.0
+    "@vex-chat/libvex": 9.1.1
+    "@vex-chat/spire": 4.1.1
     "@vex-chat/types": 4.3.3
     dompurify: ^3.4.11
     expo-audio: ~55.0.14
