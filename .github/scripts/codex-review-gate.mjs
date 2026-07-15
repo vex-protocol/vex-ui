@@ -133,11 +133,29 @@ function hasCodexEyes(reactions) {
     );
 }
 
-export function hasActiveCodexReview(pullRequest) {
+function hasRecentCodexEyes(reactions, now, activeWindowMs) {
+    return (reactions?.nodes ?? []).some((reaction) => {
+        const createdAt = Date.parse(reaction.createdAt ?? "");
+        return (
+            isCodex(reaction.user?.login) &&
+            isEyes(reaction.content) &&
+            Number.isFinite(createdAt) &&
+            createdAt >= now - activeWindowMs
+        );
+    });
+}
+
+export function hasActiveCodexReview(
+    pullRequest,
+    headSha,
+    baseRef,
+    now = Date.now(),
+    activeWindowMs = DEFAULT_RETRY_MS,
+) {
     return (
-        hasCodexEyes(pullRequest.reactions) ||
-        (pullRequest.comments?.nodes ?? []).some((comment) =>
-            hasCodexEyes(comment.reactions),
+        hasRecentCodexEyes(pullRequest.reactions, now, activeWindowMs) ||
+        trustedReviewRequests(pullRequest, headSha, baseRef).some((request) =>
+            hasRecentCodexEyes(request.reactions, now, activeWindowMs),
         )
     );
 }
@@ -441,7 +459,9 @@ async function ensureReviewRequest(
     retryMs,
 ) {
     const marker = reviewRequestMarker(headSha, baseRef);
-    if (hasActiveCodexReview(pullRequest)) {
+    if (
+        hasActiveCodexReview(pullRequest, headSha, baseRef, Date.now(), retryMs)
+    ) {
         return;
     }
     if (
