@@ -14,6 +14,7 @@ import { haptic } from "../lib/haptics";
 import { $leftSidebarOpen, $rightSidebarOpen } from "../lib/sidebarState";
 import { AddServerScreen } from "../screens/AddServerScreen";
 import { AvatarCropScreen } from "../screens/AvatarCropScreen";
+import { CameraCaptureScreen } from "../screens/CameraCaptureScreen";
 import { ChannelListScreen } from "../screens/ChannelListScreen";
 import { ChannelScreen } from "../screens/ChannelScreen";
 import { ConversationScreen } from "../screens/ConversationScreen";
@@ -26,6 +27,7 @@ import { InviteScreen } from "../screens/InviteScreen";
 import { JoinGroupScreen } from "../screens/JoinGroupScreen";
 import { OnboardingEmptyScreen } from "../screens/OnboardingEmptyScreen";
 import { PasskeysScreen } from "../screens/PasskeysScreen";
+import { PasswordScreen } from "../screens/PasswordScreen";
 import { PendingApprovalsScreen } from "../screens/PendingApprovalsScreen";
 import { ServerSettingsScreen } from "../screens/ServerSettingsScreen";
 import { SessionDetailsScreen } from "../screens/SessionDetailsScreen";
@@ -37,7 +39,7 @@ import { colors } from "../theme";
 import { navigationRef } from "./navigationRef";
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
-const SIDEBAR_WIDTH = 304;
+const SIDEBAR_WIDTH = 288;
 // "Machined slot-in" feel: aggressive ease-out so the drawer
 // decelerates into place without bounce. Cubic-bezier modeled on
 // Material's "decelerate emphasized" curve (fast in, hard land).
@@ -54,6 +56,7 @@ const SIDEBAR_SLOT_HAPTIC_INTERVAL_MS = 95;
 const TOP_LEFT_BACK_ROUTES: ReadonlyArray<keyof AppStackParamList> = [
     "AddServer",
     "AvatarCrop",
+    "CameraCapture",
     "DeviceDetails",
     "DeviceManager",
     "DeviceRequests",
@@ -62,6 +65,7 @@ const TOP_LEFT_BACK_ROUTES: ReadonlyArray<keyof AppStackParamList> = [
     "InvitePreview",
     "JoinGroup",
     "Passkeys",
+    "Password",
     "ServerSettings",
     "SessionDetails",
     "Settings",
@@ -120,12 +124,13 @@ export function AppTabs() {
     // currently in".
     const [paneServerId, setPaneServerId] = useState<null | string>(null);
     const rightSidebarOpen = useStore($rightSidebarOpen);
+    const topLeftHidden = currentRoute === "CameraCapture";
     const topLeftShowsBack = TOP_LEFT_BACK_ROUTES.includes(currentRoute);
     const isChatRoute = CHAT_ROUTES.includes(currentRoute);
     const sidebarX = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
     const backdropOpacity = sidebarX.interpolate({
         inputRange: [-SIDEBAR_WIDTH, 0],
-        outputRange: [0, 0.32],
+        outputRange: [0, 0.5],
     });
     const toggleX = sidebarX.interpolate({
         inputRange: [-SIDEBAR_WIDTH, 0],
@@ -345,67 +350,69 @@ export function AppTabs() {
                 />
             </View>
 
-            <Animated.View
-                style={[
-                    styles.toggleButtonWrap,
-                    {
-                        top: insets.top + 10,
-                        transform: [{ translateX: toggleX }],
-                    },
-                ]}
-            >
-                <View
+            {topLeftHidden ? null : (
+                <Animated.View
                     style={[
-                        styles.toggleButtonFrame,
-                        sidebarOpen
-                            ? styles.toggleButtonFrameOpen
-                            : styles.toggleButtonFrameClosed,
+                        styles.toggleButtonWrap,
+                        {
+                            top: insets.top + 10,
+                            transform: [{ translateX: toggleX }],
+                        },
                     ]}
                 >
-                    <Pressable
-                        onPress={handleTopLeftPress}
-                        style={styles.hamburgerButton}
+                    <View
+                        style={[
+                            styles.toggleButtonFrame,
+                            sidebarOpen
+                                ? styles.toggleButtonFrameOpen
+                                : styles.toggleButtonFrameClosed,
+                        ]}
                     >
-                        {topLeftShowsBack ? (
-                            <>
-                                <View
-                                    style={[
-                                        styles.chevronBar,
-                                        styles.backBarTop,
-                                    ]}
-                                />
-                                <View
-                                    style={[
-                                        styles.chevronBar,
-                                        styles.backBarBottom,
-                                    ]}
-                                />
-                            </>
-                        ) : sidebarOpen ? (
-                            <>
-                                <View
-                                    style={[
-                                        styles.chevronBar,
-                                        styles.chevronBarTop,
-                                    ]}
-                                />
-                                <View
-                                    style={[
-                                        styles.chevronBar,
-                                        styles.chevronBarBottom,
-                                    ]}
-                                />
-                            </>
-                        ) : (
-                            <>
-                                <View style={styles.hamburgerLine} />
-                                <View style={styles.hamburgerLine} />
-                                <View style={styles.hamburgerLine} />
-                            </>
-                        )}
-                    </Pressable>
-                </View>
-            </Animated.View>
+                        <Pressable
+                            onPress={handleTopLeftPress}
+                            style={styles.hamburgerButton}
+                        >
+                            {topLeftShowsBack ? (
+                                <>
+                                    <View
+                                        style={[
+                                            styles.chevronBar,
+                                            styles.backBarTop,
+                                        ]}
+                                    />
+                                    <View
+                                        style={[
+                                            styles.chevronBar,
+                                            styles.backBarBottom,
+                                        ]}
+                                    />
+                                </>
+                            ) : sidebarOpen ? (
+                                <>
+                                    <View
+                                        style={[
+                                            styles.chevronBar,
+                                            styles.chevronBarTop,
+                                        ]}
+                                    />
+                                    <View
+                                        style={[
+                                            styles.chevronBar,
+                                            styles.chevronBarBottom,
+                                        ]}
+                                    />
+                                </>
+                            ) : (
+                                <>
+                                    <View style={styles.hamburgerLine} />
+                                    <View style={styles.hamburgerLine} />
+                                    <View style={styles.hamburgerLine} />
+                                </>
+                            )}
+                        </Pressable>
+                    </View>
+                </Animated.View>
+            )}
 
             {sidebarOpen && (
                 <Animated.View
@@ -491,38 +498,14 @@ export function AppTabs() {
                         });
                     }}
                     onSelectHome={() => {
-                        // Peek-then-commit:
-                        //   - if home is *not* currently shown in the
-                        //     pane, swap the pane to DMs *and*
-                        //     navigate the background view to the
-                        //     last-visited DM (or DMList if none) so
-                        //     closing the drawer lands the user on a
-                        //     useful place.
-                        //   - if home *is* already in the pane (which
-                        //     means we already routed on a previous
-                        //     peek or via the rail), just close the
-                        //     drawer.
                         if (paneServerId !== null) {
                             setPaneServerId(null);
                             setActiveServerId(null);
                             navigateHome();
-                            return;
                         }
                         closeSidebar();
                     }}
                     onSelectServer={(id) => {
-                        // Peek-then-commit, with eager background nav:
-                        //   - first tap on a server whose channels are
-                        //     not yet in the pane: swap the pane *and*
-                        //     navigate the background view to that
-                        //     server's last/first channel. Drawer
-                        //     stays open so the user can pick a
-                        //     specific channel; backdrop-tap or
-                        //     re-tapping the same server now just
-                        //     reveals the already-loaded view.
-                        //   - re-tap the server whose channels are in
-                        //     the pane: drawer closes (we're already
-                        //     on its view).
                         if (id === paneServerId) {
                             closeSidebar();
                             return;
@@ -554,6 +537,7 @@ export function AppTabs() {
                             });
                             setActiveChannelId(null);
                         }
+                        closeSidebar();
                     }}
                     onSettings={() => {
                         closeSidebar();
@@ -667,6 +651,12 @@ function ContentStack({
                 options={{ presentation: "modal" }}
             />
             <Stack.Screen
+                component={CameraCaptureScreen}
+                listeners={withFocus("CameraCapture")}
+                name="CameraCapture"
+                options={{ presentation: "modal" }}
+            />
+            <Stack.Screen
                 component={PendingApprovalsScreen}
                 listeners={withFocus("Devices")}
                 name="Devices"
@@ -696,6 +686,11 @@ function ContentStack({
                 listeners={withFocus("Passkeys")}
                 name="Passkeys"
             />
+            <Stack.Screen
+                component={PasswordScreen}
+                listeners={withFocus("Password")}
+                name="Password"
+            />
         </Stack.Navigator>
     );
 }
@@ -716,7 +711,7 @@ const styles = StyleSheet.create({
         ],
     },
     backdrop: {
-        backgroundColor: "rgba(0,0,0,0.32)",
+        backgroundColor: colors.overlay,
         left: 0,
         position: "absolute",
         right: 0,
@@ -752,7 +747,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     content: {
-        backgroundColor: colors.surfaceLight,
+        backgroundColor: colors.bg,
         flex: 1,
     },
     hamburgerButton: {
@@ -770,6 +765,7 @@ const styles = StyleSheet.create({
         width: 14,
     },
     sidebarDrawer: {
+        backgroundColor: colors.rail,
         left: 0,
         position: "absolute",
         top: 0,
@@ -782,13 +778,13 @@ const styles = StyleSheet.create({
         width: 36,
     },
     toggleButtonFrameClosed: {
-        backgroundColor: "rgba(17,17,19,0.92)",
-        borderColor: "rgba(255,255,255,0.14)",
+        backgroundColor: colors.panel,
+        borderColor: colors.border,
         borderWidth: 1,
     },
     toggleButtonFrameOpen: {
-        backgroundColor: "rgba(9,9,11,0.98)",
-        borderColor: "rgba(255,255,255,0.22)",
+        backgroundColor: colors.rail,
+        borderColor: colors.border,
         borderWidth: 1,
     },
     toggleButtonWrap: {

@@ -24,10 +24,12 @@ import {
 import { $dmUnreadCounts } from "@vex-chat/store";
 import { $familiars, $messages, vexService } from "@vex-chat/store";
 
+import { Ionicons } from "@expo/vector-icons";
 import { useStore } from "@nanostores/react";
 
 import { Avatar } from "../components/Avatar";
 import { ChatHeader } from "../components/ChatHeader";
+import { VexField } from "../components/VexField";
 import { colors, typography } from "../theme";
 
 const FRIENDS_DRAWER_WIDTH = 232;
@@ -344,11 +346,7 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
     }
 
     return (
-        <View style={styles.container}>
-            <View pointerEvents="none" style={styles.blackoutLayer} />
-            <View pointerEvents="none" style={styles.glowTop} />
-            <View pointerEvents="none" style={styles.glowBottom} />
-
+        <VexField glows style={styles.container}>
             <ChatHeader
                 onOverflow={() => {
                     toggleFriendsBar();
@@ -358,13 +356,20 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
             />
 
             <View style={styles.searchWrap}>
-                <TextInput
-                    onChangeText={onSearch}
-                    placeholder="Find users by exact username"
-                    placeholderTextColor={colors.mutedDark}
-                    style={styles.searchInput}
-                    value={query}
-                />
+                <View style={styles.searchBox}>
+                    <Ionicons
+                        color={colors.mutedDark}
+                        name="search-outline"
+                        size={16}
+                    />
+                    <TextInput
+                        onChangeText={onSearch}
+                        placeholder="Find users by exact username"
+                        placeholderTextColor={colors.mutedDark}
+                        style={styles.searchInput}
+                        value={query}
+                    />
+                </View>
             </View>
 
             {results.length > 0 && (
@@ -449,38 +454,30 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
                     </Animated.View>
                 </>
             )}
-        </View>
+        </VexField>
     );
 }
 
 const styles = StyleSheet.create({
-    blackoutLayer: {
-        ...StyleSheet.absoluteFill,
-        backgroundColor: "#000000",
-        opacity: 0.72,
-    },
     container: {
-        backgroundColor: "#11131a",
+        backgroundColor: colors.bg,
         flex: 1,
     },
     empty: {
         alignItems: "center",
-        borderColor: "rgba(255,255,255,0.08)",
-        borderWidth: 1,
         marginTop: 8,
         paddingHorizontal: 16,
         paddingVertical: 18,
     },
     emptyHint: {
         ...typography.body,
-        color: "rgba(255,255,255,0.62)",
+        color: colors.muted,
         marginTop: 4,
         textAlign: "center",
     },
     emptyText: {
         ...typography.button,
         color: colors.textSecondary,
-        letterSpacing: 0.4,
         textTransform: "uppercase",
     },
     friendAvatarWrap: {
@@ -488,8 +485,9 @@ const styles = StyleSheet.create({
     },
     friendChip: {
         alignItems: "center",
-        backgroundColor: "rgba(255,255,255,0.04)",
-        borderColor: "rgba(255,255,255,0.08)",
+        backgroundColor: colors.surfaceLight,
+        borderColor: colors.borderSubtle,
+        borderRadius: 6,
         borderWidth: 1,
         flexDirection: "row",
         gap: 8,
@@ -508,7 +506,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
     },
     friendPresenceDot: {
-        borderColor: "rgba(12,14,20,0.98)",
+        borderColor: colors.panel,
         borderRadius: 999,
         borderWidth: 2,
         bottom: -1,
@@ -525,14 +523,14 @@ const styles = StyleSheet.create({
     },
     friendsBackdrop: {
         ...StyleSheet.absoluteFill,
-        backgroundColor: "rgba(0,0,0,0.36)",
+        backgroundColor: colors.overlay,
     },
     friendsBackdropPressable: {
         ...StyleSheet.absoluteFill,
     },
     friendsDrawer: {
-        backgroundColor: "rgba(12,14,20,0.98)",
-        borderLeftColor: "rgba(255,255,255,0.1)",
+        backgroundColor: colors.panel,
+        borderLeftColor: colors.borderSubtle,
         borderLeftWidth: 1,
         bottom: 0,
         paddingTop: 56,
@@ -550,7 +548,7 @@ const styles = StyleSheet.create({
     },
     friendSubtext: {
         ...typography.body,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.mutedDark,
         fontSize: 10,
     },
     friendUnreadDot: {
@@ -567,46 +565,28 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: "700",
     },
-    glowBottom: {
-        backgroundColor: colors.accent,
-        borderRadius: 120,
-        bottom: -36,
-        height: 130,
-        left: "36%",
-        opacity: 0.07,
-        position: "absolute",
-        width: 130,
-    },
-    glowTop: {
-        backgroundColor: colors.accent,
-        borderRadius: 120,
-        height: 130,
-        opacity: 0.08,
-        position: "absolute",
-        right: -36,
-        top: -24,
-        width: 130,
-    },
     noFriendsText: {
         ...typography.body,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.mutedDark,
         marginTop: 6,
         paddingHorizontal: 14,
     },
     noResults: {
         ...typography.body,
-        color: "rgba(255,255,255,0.62)",
+        color: colors.muted,
         paddingHorizontal: 12,
         paddingVertical: 8,
     },
     preview: {
         ...typography.body,
-        color: "rgba(255,255,255,0.58)",
+        color: colors.muted,
+        lineHeight: 18,
         marginTop: 2,
     },
     previewEmpty: {
         ...typography.body,
-        color: "rgba(255,255,255,0.42)",
+        color: colors.mutedDark,
+        lineHeight: 18,
         marginTop: 2,
     },
     resultName: {
@@ -615,8 +595,9 @@ const styles = StyleSheet.create({
     },
     resultRow: {
         alignItems: "center",
-        backgroundColor: "rgba(255,255,255,0.04)",
-        borderColor: "rgba(255,255,255,0.08)",
+        backgroundColor: colors.surfaceLight,
+        borderColor: colors.borderSubtle,
+        borderRadius: 6,
         borderWidth: 1,
         flexDirection: "row",
         gap: 10,
@@ -625,64 +606,75 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
     },
     resultsList: {
-        marginHorizontal: 14,
+        marginHorizontal: 16,
         maxHeight: 220,
     },
     row: {
         alignItems: "center",
-        backgroundColor: "rgba(255,255,255,0.02)",
-        borderColor: "rgba(255,255,255,0.08)",
-        borderWidth: 1,
+        backgroundColor: colors.transparent,
+        borderRadius: 6,
         flexDirection: "row",
         gap: 12,
-        marginBottom: 8,
-        marginHorizontal: 14,
-        paddingHorizontal: 10,
+        marginBottom: 2,
+        marginHorizontal: 16,
+        paddingHorizontal: 12,
         paddingVertical: 10,
     },
     rowContent: {
         flex: 1,
     },
     rowUnread: {
-        backgroundColor: "rgba(231,0,0,0.08)",
-        borderColor: "rgba(231,0,0,0.35)",
+        backgroundColor: colors.surfaceLight,
+        borderLeftColor: colors.accent,
+        borderLeftWidth: 2,
     },
-    searchInput: {
-        backgroundColor: "rgba(255,255,255,0.03)",
-        borderColor: "rgba(255,255,255,0.1)",
+    searchBox: {
+        alignItems: "center",
+        backgroundColor: colors.input,
+        borderColor: colors.borderSubtle,
+        borderRadius: 6,
         borderWidth: 1,
-        color: colors.textSecondary,
-        fontSize: 14,
+        flexDirection: "row",
+        gap: 8,
+        minHeight: 42,
         paddingHorizontal: 12,
         paddingVertical: 10,
     },
+    searchInput: {
+        ...typography.body,
+        color: colors.textSecondary,
+        flex: 1,
+        fontSize: 14,
+        padding: 0,
+    },
     searchWrap: {
-        paddingHorizontal: 14,
+        paddingHorizontal: 16,
         paddingVertical: 10,
     },
     sectionHeader: {
         alignItems: "center",
         flexDirection: "row",
         justifyContent: "space-between",
-        paddingHorizontal: 14,
+        marginBottom: 8,
+        paddingHorizontal: 16,
     },
     sectionMeta: {
         ...typography.body,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.mutedDark,
         fontSize: 11,
     },
     sectionTitle: {
         ...typography.label,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.mutedDark,
     },
     unreadBadge: {
         alignItems: "center",
         backgroundColor: colors.error,
         borderRadius: 12,
+        height: 22,
         justifyContent: "center",
         minWidth: 24,
         paddingHorizontal: 6,
-        paddingVertical: 3,
     },
     unreadText: {
         color: "#fff",

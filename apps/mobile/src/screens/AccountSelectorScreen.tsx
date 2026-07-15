@@ -3,34 +3,29 @@ import type { AuthScreenProps } from "../navigation/types";
 import React, { useCallback, useState } from "react";
 import {
     Alert,
-    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
     View,
-    type ViewStyle,
 } from "react-native";
 
-import { vexService } from "@vex-chat/store";
-
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import { BlurView } from "expo-blur";
 
 import { Avatar } from "../components/Avatar";
+import { CornerBracketBox } from "../components/CornerBracketBox";
 import { ScreenLayout } from "../components/ScreenLayout";
+import { SectionDivider } from "../components/SectionDivider";
 import { VexButton } from "../components/VexButton";
 import { VexLogo } from "../components/VexLogo";
-import { getServerOptions } from "../lib/config";
 import { haptic } from "../lib/haptics";
 import {
     clearCredentials,
-    keychainKeyStore,
     type KnownAccount,
     listKnownAccounts,
 } from "../lib/keychain";
-import { mobileConfig } from "../lib/platform";
-import { colors, typography } from "../theme";
+import { colors, fontFamilies, typography } from "../theme";
 
 interface AccountRowProps {
     account: KnownAccount;
@@ -43,17 +38,12 @@ interface AccountRowProps {
 type Props = AuthScreenProps<"AccountSelector">;
 
 /**
- * Account picker: saved slots on this device. Choosing one starts passkey
- * account auth first, then the provisioning screen uses the saved Vex device
- * key to enter the identity cluster. Long-press removes key material for that
- * slot.
+ * Account picker: saved slots on this device. Choosing one opens credential
+ * entry for that account. Long-press removes key material for that slot.
  */
 export function AccountSelectorScreen({ navigation, route }: Props) {
     const [accounts, setAccounts] = useState<KnownAccount[]>([]);
     const [hydrated, setHydrated] = useState(false);
-    const [signingInUsername, setSigningInUsername] = useState<null | string>(
-        null,
-    );
     const [errorText, setErrorText] = useState<null | string>(null);
     const routeError = route.params?.error ?? null;
 
@@ -71,49 +61,17 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
     );
 
     const handleSelect = useCallback(
-        async (account: KnownAccount) => {
-            if (signingInUsername !== null) {
-                return;
-            }
+        (account: KnownAccount) => {
             haptic("confirm");
             setErrorText(null);
-            setSigningInUsername(account.username);
-            try {
-                const result = await vexService.authenticateAccountWithPasskey(
-                    account.username,
-                    mobileConfig(),
-                    getServerOptions(),
-                    keychainKeyStore,
-                );
-                if (!result.ok || !result.username) {
-                    setErrorText(
-                        result.userCancelled
-                            ? "Passkey sign-in was cancelled."
-                            : (result.error ??
-                                  "Could not sign in with passkey."),
-                    );
-                    await refresh();
-                    return;
-                }
-                navigation.replace("ProvisionDevice", {
-                    hasLocalDevice: result.hasLocalDevice === true,
-                    ...(result.userID !== undefined
-                        ? { userID: result.userID }
-                        : {}),
-                    username: result.username,
-                });
-            } catch (err: unknown) {
-                setErrorText(
-                    err instanceof Error
-                        ? err.message
-                        : "Could not activate this account.",
-                );
-                await refresh();
-            } finally {
-                setSigningInUsername(null);
-            }
+            navigation.navigate("HangTight", {
+                force: true,
+                fromAccountPicker: true,
+                mode: "signin",
+                username: account.username,
+            });
         },
-        [navigation, refresh, signingInUsername],
+        [navigation],
     );
 
     const handleRemove = useCallback(
@@ -145,7 +103,19 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
     const handleAddAccount = useCallback(() => {
         haptic("tap");
         setErrorText(null);
-        navigation.navigate("HangTight", { force: true });
+        navigation.navigate("HangTight", {
+            force: true,
+            mode: "signin",
+        });
+    }, [navigation]);
+
+    const handleCreateAccount = useCallback(() => {
+        haptic("tap");
+        setErrorText(null);
+        navigation.navigate("HangTight", {
+            force: true,
+            mode: "signup",
+        });
     }, [navigation]);
 
     if (!hydrated) {
@@ -158,32 +128,37 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
 
     if (accounts.length === 0) {
         return (
-            <ScreenLayout style={styles.layout}>
+            <ScreenLayout glows>
                 <ScrollView
                     contentContainerStyle={styles.zeroScroll}
                     showsVerticalScrollIndicator={false}
                 >
-                    <GlassSurface style={styles.heroGlass}>
-                        <View style={styles.heroInner}>
-                            <VexLogo size={40} />
-                            <Text style={styles.heading}>Welcome to Vex</Text>
-                            <Text style={styles.subtitle}>
-                                No accounts on this device yet.
-                            </Text>
-                        </View>
-                    </GlassSurface>
+                    <View style={styles.zeroHero}>
+                        <VexLogo size={40} />
+                        <Text style={styles.heading}>Welcome to Vex</Text>
+                        <Text style={styles.subtitle}>
+                            No accounts on this device yet.
+                        </Text>
+                    </View>
                     {errorText ? (
-                        <View style={styles.errorGlass}>
+                        <View style={styles.errorBox}>
                             <Text style={styles.errorText}>{errorText}</Text>
                         </View>
                     ) : null}
                     <VexButton
-                        disabled={signingInUsername !== null}
                         glow
+                        icon="log-in-outline"
                         onPress={handleAddAccount}
                         style={styles.addButton}
-                        title="Get started"
+                        title="Sign in"
                         variant="primary"
+                    />
+                    <VexButton
+                        icon="person-add-outline"
+                        onPress={handleCreateAccount}
+                        style={styles.addButton}
+                        title="Create account"
+                        variant="outline"
                     />
                 </ScrollView>
             </ScreenLayout>
@@ -191,19 +166,14 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
     }
 
     return (
-        <ScreenLayout style={styles.layout}>
-            <GlassSurface style={styles.headerGlass}>
-                <View style={styles.headerInner}>
-                    <VexLogo size={30} />
-                    <Text style={styles.heading}>Choose account</Text>
-                    <Text style={styles.subtitle}>
-                        Tap to sign in · Long-press to remove from device
-                    </Text>
-                </View>
-            </GlassSurface>
+        <ScreenLayout glows>
+            <View style={styles.header}>
+                <Text style={styles.kicker}>SAVED ACCOUNTS</Text>
+                <Text style={styles.heading}>Choose account</Text>
+            </View>
 
             {errorText ? (
-                <View style={styles.errorGlass}>
+                <View style={styles.errorBox}>
                     <Text style={styles.errorText}>{errorText}</Text>
                 </View>
             ) : null}
@@ -216,33 +186,33 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
                 {accounts.map((account) => (
                     <AccountRow
                         account={account}
-                        busy={signingInUsername === account.username}
-                        disabled={
-                            signingInUsername !== null &&
-                            signingInUsername !== account.username
-                        }
+                        busy={false}
+                        disabled={false}
                         key={account.username}
                         onLongPress={() => {
                             handleRemove(account);
                         }}
                         onPress={() => {
-                            void handleSelect(account);
+                            handleSelect(account);
                         }}
                     />
                 ))}
+                <SectionDivider label="Or" />
+                <VexButton
+                    icon="add"
+                    onPress={handleAddAccount}
+                    style={styles.addButton}
+                    title="Add another account"
+                    variant="outline"
+                />
+                <VexButton
+                    icon="person-add-outline"
+                    onPress={handleCreateAccount}
+                    style={styles.createButton}
+                    title="Create account"
+                    variant="outline"
+                />
             </ScrollView>
-
-            <GlassSurface style={styles.footerGlass}>
-                <View style={styles.footerInner}>
-                    <VexButton
-                        disabled={signingInUsername !== null}
-                        onPress={handleAddAccount}
-                        style={styles.addButton}
-                        title="Add another account"
-                        variant="outline"
-                    />
-                </View>
-            </GlassSurface>
         </ScreenLayout>
     );
 }
@@ -268,32 +238,23 @@ function AccountRow({
                 disabled && styles.rowDisabled,
             ]}
         >
-            <View style={styles.glassOuter}>
-                <BlurView
-                    intensity={Platform.OS === "ios" ? 32 : 48}
-                    style={StyleSheet.absoluteFill}
-                    tint={
-                        busy
-                            ? "prominent"
-                            : Platform.OS === "ios"
-                              ? "systemThinMaterialDark"
-                              : "dark"
-                    }
-                />
+            <CornerBracketBox
+                color={busy ? colors.success : colors.border}
+                size={8}
+            >
                 <View
-                    style={[
-                        styles.rowInner,
-                        busy && { borderColor: "rgba(231, 0, 0, 0.45)" },
-                    ]}
+                    style={[styles.accountCard, busy && styles.accountCardBusy]}
                 >
                     {userID ? (
                         <Avatar
                             displayName={account.username}
                             ring={{
-                                color: busy ? colors.accent : colors.accentDark,
+                                color: busy
+                                    ? colors.success
+                                    : colors.accentDark,
                                 width: busy ? 2 : 1,
                             }}
-                            size={56}
+                            size={42}
                             userID={userID}
                         />
                     ) : (
@@ -308,33 +269,41 @@ function AccountRow({
                             @{account.username}
                         </Text>
                         <Text numberOfLines={1} style={styles.deviceLine}>
-                            {busy
-                                ? "Opening…"
-                                : `device · ${shortDeviceID(account.deviceID)}`}
+                            device {shortDeviceID(account.deviceID)}
                         </Text>
                     </View>
+                    {busy ? (
+                        <View style={styles.currentBadge}>
+                            <Text style={styles.currentBadgeText}>Opening</Text>
+                        </View>
+                    ) : (
+                        <View style={styles.rowActions}>
+                            <Pressable
+                                accessibilityLabel={`Remove @${account.username} from this device`}
+                                accessibilityRole="button"
+                                hitSlop={8}
+                                onPress={(event) => {
+                                    event.stopPropagation();
+                                    onLongPress();
+                                }}
+                                style={styles.removeButton}
+                            >
+                                <Ionicons
+                                    color="rgba(255,255,255,0.48)"
+                                    name="trash-outline"
+                                    size={17}
+                                />
+                            </Pressable>
+                            <Ionicons
+                                color="rgba(255,255,255,0.48)"
+                                name="chevron-forward"
+                                size={18}
+                            />
+                        </View>
+                    )}
                 </View>
-            </View>
+            </CornerBracketBox>
         </Pressable>
-    );
-}
-
-function GlassSurface({
-    children,
-    style,
-}: {
-    children: React.ReactNode;
-    style?: ViewStyle;
-}): React.ReactElement {
-    return (
-        <View style={[styles.glassOuter, style]}>
-            <BlurView
-                intensity={Platform.OS === "ios" ? 36 : 52}
-                style={StyleSheet.absoluteFill}
-                tint={Platform.OS === "ios" ? "systemThinMaterialDark" : "dark"}
-            />
-            <View style={styles.glassInner}>{children}</View>
-        </View>
     );
 }
 
@@ -344,21 +313,48 @@ function shortDeviceID(deviceID: string): string {
 }
 
 const styles = StyleSheet.create({
+    accountCard: {
+        alignItems: "center",
+        backgroundColor: colors.surface,
+        flexDirection: "row",
+        gap: 12,
+        padding: 16,
+    },
+    accountCardBusy: {
+        backgroundColor: colors.successBg,
+    },
     addButton: {
         width: "100%",
+    },
+    createButton: {
+        marginTop: 10,
+        width: "100%",
+    },
+    currentBadge: {
+        backgroundColor: colors.successBg,
+        borderColor: colors.successBorder,
+        borderRadius: 10,
+        borderWidth: 1,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+    },
+    currentBadgeText: {
+        ...typography.button,
+        color: colors.successText,
+        fontSize: 12,
     },
     deviceLine: {
         ...typography.body,
         color: "rgba(255,255,255,0.55)",
+        fontFamily: fontFamilies.mono,
         fontSize: 12,
         marginTop: 3,
     },
     empty: { flex: 1 },
-    errorGlass: {
+    errorBox: {
         backgroundColor: colors.dangerBg,
         borderColor: colors.dangerBorder,
-        borderRadius: 14,
-        borderWidth: StyleSheet.hairlineWidth,
+        borderWidth: 1,
         marginBottom: 12,
         paddingHorizontal: 12,
         paddingVertical: 10,
@@ -371,89 +367,56 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: "rgba(231, 0, 0, 0.22)",
         borderColor: "rgba(255,255,255,0.2)",
-        borderRadius: 28,
+        borderRadius: 21,
         borderWidth: StyleSheet.hairlineWidth,
-        height: 56,
+        height: 42,
         justifyContent: "center",
-        width: 56,
+        width: 42,
     },
     fallbackInitial: {
         ...typography.headingSmall,
         color: colors.text,
-        fontSize: 22,
-    },
-    footerGlass: {
-        marginTop: 4,
-    },
-    footerInner: {
-        gap: 10,
-        paddingHorizontal: 4,
-        paddingVertical: 12,
-    },
-    glassInner: {
-        paddingHorizontal: 18,
-        paddingVertical: 16,
-    },
-    glassOuter: {
-        borderColor: "rgba(255,255,255,0.12)",
-        borderRadius: 20,
-        borderWidth: StyleSheet.hairlineWidth,
-        overflow: "hidden",
-        position: "relative",
+        fontSize: 18,
     },
     handle: {
         ...typography.button,
         color: colors.text,
-        fontSize: 17,
-        letterSpacing: 0.2,
+        fontSize: 14,
     },
-    headerGlass: {
-        marginBottom: 8,
-    },
-    headerInner: {
-        alignItems: "center",
-        gap: 8,
-        paddingBottom: 4,
-        paddingTop: 8,
+    header: {
+        alignItems: "flex-start",
+        gap: 6,
+        marginBottom: 18,
+        marginTop: 20,
     },
     heading: {
-        ...typography.heading,
+        ...typography.headingSmall,
         color: colors.text,
-        fontSize: 22,
-        textAlign: "center",
     },
-    heroGlass: {
-        marginBottom: 20,
-        width: "100%",
-    },
-    heroInner: {
-        alignItems: "center",
-        gap: 12,
-        paddingVertical: 8,
-    },
-    layout: {
-        backgroundColor: colors.bg,
+    kicker: {
+        ...typography.label,
+        color: colors.accent,
     },
     list: {
         flex: 1,
     },
     listContent: {
-        gap: 14,
+        gap: 8,
         paddingBottom: 8,
-        paddingTop: 8,
+    },
+    removeButton: {
+        alignItems: "center",
+        height: 36,
+        justifyContent: "center",
+        width: 36,
+    },
+    rowActions: {
+        alignItems: "center",
+        flexDirection: "row",
+        gap: 2,
     },
     rowDisabled: {
         opacity: 0.38,
-    },
-    rowInner: {
-        alignItems: "center",
-        borderColor: "rgba(255,255,255,0.06)",
-        borderRadius: 20,
-        borderWidth: StyleSheet.hairlineWidth,
-        flexDirection: "row",
-        gap: 16,
-        paddingHorizontal: 18,
-        paddingVertical: 16,
     },
     rowPressable: {},
     rowPressed: {
@@ -468,6 +431,11 @@ const styles = StyleSheet.create({
         color: "rgba(255,255,255,0.52)",
         lineHeight: 20,
         textAlign: "center",
+    },
+    zeroHero: {
+        alignItems: "center",
+        gap: 12,
+        marginBottom: 20,
     },
     zeroScroll: {
         flexGrow: 1,

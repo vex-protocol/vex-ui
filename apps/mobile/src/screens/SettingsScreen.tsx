@@ -2,14 +2,16 @@ import type { AppScreenProps } from "../navigation/types";
 import type { Ionicons } from "@expo/vector-icons";
 
 import React from "react";
-import { Platform, ScrollView, StyleSheet, View } from "react-native";
+import { Platform, ScrollView, StyleSheet } from "react-native";
 
 import { useStore } from "@nanostores/react";
 
 import { ChatHeader } from "../components/ChatHeader";
 import { MenuRow, MenuSection } from "../components/MenuRow";
+import { VexField } from "../components/VexField";
 import { $appUpdateState } from "../lib/appUpdates";
 import { $devOptionsUnlocked } from "../lib/devMode";
+import { productFeatures } from "../lib/features";
 import { isAlwaysOnSupported } from "../lib/foregroundService";
 import { colors } from "../theme";
 
@@ -42,6 +44,20 @@ export function SettingsScreen({ navigation }: AppScreenProps<"Settings">) {
                 navigation.navigate("SettingsSection", { section: "account" });
             },
         },
+        ...(productFeatures.premiumTiers
+            ? [
+                  {
+                      description: "Free, Plus, Pro",
+                      icon: "sparkles-outline" as const,
+                      label: "Plan",
+                      onPress: () => {
+                          navigation.navigate("SettingsSection", {
+                              section: "billing",
+                          });
+                      },
+                  },
+              ]
+            : []),
         {
             description: "Manage your devices",
             icon: "phone-portrait-outline",
@@ -51,8 +67,15 @@ export function SettingsScreen({ navigation }: AppScreenProps<"Settings">) {
             },
         },
         {
-            description:
-                "Recover and manage your account if you lose every device",
+            description: "Change your account password",
+            icon: "lock-closed-outline",
+            label: "Password",
+            onPress: () => {
+                navigation.navigate("Password");
+            },
+        },
+        {
+            description: "Optional sign-in and recovery methods",
             icon: "key-outline",
             label: "Passkeys",
             onPress: () => {
@@ -124,7 +147,7 @@ export function SettingsScreen({ navigation }: AppScreenProps<"Settings">) {
     ];
 
     return (
-        <View style={styles.container}>
+        <VexField style={styles.container}>
             <ChatHeader title="Settings" />
             <ScrollView contentContainerStyle={styles.content}>
                 <MenuSection title="Account">
@@ -150,7 +173,7 @@ export function SettingsScreen({ navigation }: AppScreenProps<"Settings">) {
                     ))}
                 </MenuSection>
             </ScrollView>
-        </View>
+        </VexField>
     );
 }
 

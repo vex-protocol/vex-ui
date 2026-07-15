@@ -8,14 +8,53 @@
 import type { Storage } from "@vex-chat/libvex";
 import type { BootstrapConfig } from "@vex-chat/store";
 
-import { getServerIdentity } from "./config.js";
+import {
+    decodeVexDbAtRestKey,
+    encodeVexDbAtRestKey,
+    generateVexDbAtRestKey,
+    MemoryStorage,
+} from "@vex-chat/store";
+
+import { getDesktopAppEnvironment, getServerIdentity } from "./config.js";
+import {
+    deleteKeyringPassword,
+    getKeyringPassword,
+    setKeyringPassword,
+} from "./nativeKeyring.js";
+
+const DB_KEY_SERVICE_PREFIX =
+    getDesktopAppEnvironment() === "development"
+        ? "com.vex-chat.desktop.dev.db-key"
+        : "com.vex-chat.desktop.db-key";
+const STABLE_KEYRING_SCHEMA = "signed-v1";
+const ephemeralDbKeys = new Map<string, Uint8Array>();
+
+export async function clearDesktopDatabaseKey(username: string): Promise<void> {
+    const key = databaseKeyID(username);
+    ephemeralDbKeys.delete(key);
+    if (!isTauriRuntime()) return;
+    for (const service of databaseKeyServiceNames()) {
+        try {
+            await deleteKeyringPassword(service, username);
+        } catch {
+            // The key may already be absent or inaccessible.
+        }
+    }
+}
 
 export function desktopConfig(): BootstrapConfig {
     return {
         async createStorage(
-            privateKey: string,
+            _privateKey: string,
             username: string,
         ): Promise<Storage> {
+            const atRestAes = await resolveDesktopDatabaseKey(username);
+            if (!isTauriRuntime()) {
+                const storage = new MemoryStorage(atRestAes);
+                await storage.init();
+                return storage;
+            }
+
             const { Kysely } = await import("kysely");
             const { TauriSqliteDialect } = await import("kysely-dialect-tauri");
             const { default: Database } =
@@ -33,7 +72,6 @@ export function desktopConfig(): BootstrapConfig {
             // module and isn't re-exported from the sqlite subpath; cast
             // via `never` to satisfy the Kysely<ClientDatabase> parameter
             // without pulling in an internal import.
-            const atRestAes = deriveAtRestAesKey(privateKey);
             const storage = new SqliteStorage(db as never, atRestAes);
             await storage.init();
             return storage;
@@ -50,28 +88,68 @@ export function desktopConfig(): BootstrapConfig {
     };
 }
 
-function decodeHex(hex: string): Uint8Array {
-    const normalized = hex.trim().toLowerCase();
-    const evenHex = normalized.length % 2 === 0 ? normalized : `0${normalized}`;
-    const out = new Uint8Array(evenHex.length / 2);
-    for (let i = 0; i < out.length; i += 1) {
-        const start = i * 2;
-        out[i] = Number.parseInt(evenHex.slice(start, start + 2), 16);
-    }
-    return out;
+function databaseKeyID(username: string): string {
+    return `${sanitize(getServerIdentity())}\0${username}`;
 }
 
-function deriveAtRestAesKey(privateKeyHex: string): Uint8Array {
-    const raw = decodeHex(privateKeyHex);
-    if (raw.length === 32) {
-        return raw;
+function databaseKeyServiceName(): string {
+    return `${DB_KEY_SERVICE_PREFIX}.${STABLE_KEYRING_SCHEMA}.${sanitize(getServerIdentity())}`;
+}
+
+function databaseKeyServiceNames(): string[] {
+    return [databaseKeyServiceName(), legacyDatabaseKeyServiceName()];
+}
+
+function isTauriRuntime(): boolean {
+    return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function legacyDatabaseKeyServiceName(): string {
+    return `${DB_KEY_SERVICE_PREFIX}.${sanitize(getServerIdentity())}`;
+}
+
+async function resolveDesktopDatabaseKey(
+    username: string,
+): Promise<Uint8Array> {
+    const id = databaseKeyID(username);
+    if (!isTauriRuntime()) {
+        const existing = ephemeralDbKeys.get(id);
+        if (existing) return existing;
+        const generated = generateVexDbAtRestKey();
+        ephemeralDbKeys.set(id, generated);
+        return generated;
     }
-    if (raw.length > 32) {
-        return raw.subarray(0, 32);
+
+    const service = databaseKeyServiceName();
+    let stored = await getKeyringPassword(service, username);
+    let migrated = false;
+    if (!stored) {
+        stored = await getKeyringPassword(
+            legacyDatabaseKeyServiceName(),
+            username,
+        );
+        migrated = stored !== null;
     }
-    const out = new Uint8Array(32);
-    out.set(raw);
-    return out;
+    if (stored) {
+        let decoded: Uint8Array;
+        try {
+            decoded = decodeVexDbAtRestKey(stored);
+        } catch {
+            throw new Error("Stored local database key is invalid.");
+        }
+        if (migrated) {
+            await setKeyringPassword(service, username, stored);
+        }
+        return decoded;
+    }
+
+    const generated = generateVexDbAtRestKey();
+    await setKeyringPassword(
+        service,
+        username,
+        encodeVexDbAtRestKey(generated),
+    );
+    return generated;
 }
 
 function sanitize(s: string): string {

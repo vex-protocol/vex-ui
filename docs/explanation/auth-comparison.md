@@ -1,315 +1,126 @@
-# Auth: Spire Authentication Design
+# Spire Authentication Model
 
-> For background on the Vex platform and its cryptographic protocol, see [`vex-overview.md`](../vex-overview.md).
+This document describes the current greenfield authentication design shared by
+Spire, `@vex-chat/libvex`, and the Vex clients. It is a description of the
+implemented system, not a migration plan for older servers.
 
-Authentication design in the [vex-chat/spire](https://github.com/vex-chat/spire) server (`src/Spire.ts`, `src/Database.ts`).
+## Authenticator Roles
 
----
+Vex deliberately separates three authenticators:
 
-## Password Hashing
-
-Spire supports dual-algorithm password hashing with lazy migration:
-
-| | Legacy (v1) | Current (v2) |
+| Authenticator | Purpose | Result |
 |---|---|---|
-| Algorithm | PBKDF2-SHA512, 1000 iterations, 32-byte output | **argon2id** (m=19MiB, t=2, p=1) |
-| Library | `pbkdf2` npm package (sync) | `argon2` npm package (async) |
-| Salt source | `xMakeNonce()` from `@vex-chat/crypto` — 24-byte NaCl nonce | Embedded by argon2 (random per hash) |
-| Output encoding | hex string | PHC format string (`$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`) |
-
-**Lazy migration:** When a user with a PBKDF2 hash (v1) logs in successfully, spire automatically re-hashes their password with argon2id (v2) and updates the stored hash. The `hashVersion` column tracks which algorithm each user's hash uses. Over time, all active users migrate to argon2id without any manual intervention.
-
-The legacy PBKDF2 implementation uses 1000 iterations — **210x below the OWASP 2025 minimum of 210,000** for PBKDF2-SHA512. Argon2id is the OWASP-preferred algorithm for new projects, which is memory-hard (resists GPU/ASIC attacks) and handles salt generation internally.
-
----
-
-## JWT Signing
-
-| | Current | Target |
-|---|---|---|
-| Library | `jsonwebtoken` (CJS) | `jose` (ESM-native) |
-| Secret env var | `process.env.SPK` (the NaCl server signing key — same key for signing and crypto ops) | `process.env.JWT_SECRET` (dedicated secret) |
-| Login payload | `{ user: { userID, username, lastSeen } }` — nested under `user` key | `{ userID, username }` — top-level claims |
-| Login expiry | `"7d"` string | 7 days (numeric seconds) |
-| Delivery | HTTP cookie `auth` + JSON body `{ user, token }` | Return value only (no cookies) |
-
-**Upstream** (`Spire.ts:420`):
-```ts
-const token = jwt.sign(
-    { user: censorUser(userEntry) },
-    process.env.SPK!,
-    { expiresIn: JWT_EXPIRY }  // "7d"
-);
-res.cookie("auth", token, { path: "/", sameSite: "none", secure: true });
-res.send(msgpack.encode({ user: censorUser(userEntry), token }));
-```
-
-The upstream uses the same `SPK` (server private key) for both NaCl cryptographic operations and JWT HMAC signing. This is a security coupling concern — our implementation separates these into `JWT_SECRET`.
-
----
-
-## Action Tokens (Scoped Short-lived Tokens)
-
-This is the biggest architectural divergence.
-
-### Upstream: In-memory UUID store
-
-Action tokens are **not JWTs**. They are UUID strings stored in a `private actionTokens: IActionToken[]` array on the `Spire` class instance.
-
-```ts
-// Spire.ts:131
-private createActionToken(scope: TokenScopes): IActionToken {
-    const token: IActionToken = {
-        key: uuid.v4(),      // random UUID
-        time: new Date(),
-        scope,
-    };
-    this.actionTokens.push(token);  // stored in memory
-    return token;
-}
-
-private validateToken(key: string, scope: TokenScopes): boolean {
-    for (const rKey of this.actionTokens) {
-        if (rKey.key === key && rKey.scope === scope) {
-            const age = Date.now() - rKey.time.getTime();
-            if (age < TOKEN_EXPIRY) {        // 10 minutes
-                this.deleteActionToken(rKey); // single-use: consumed on validation
-                return true;
-            }
-        }
-    }
-    return false;
-}
-```
-
-**Properties of upstream tokens:**
-- Single-use — consumed (deleted from array) on first valid use
-- In-process only — tokens are lost on server restart
-- Token itself is just a UUID, no signature
-- Client must NaCl-sign the token UUID with their device signing key before submitting it, so the server can verify device ownership as part of redemption
-
-### Target: Stateless JWTs
-
-```ts
-// Our approach
-generateToken(userID, tokenType) → JWT signed with JWT_SECRET
-validateToken(token, tokenType) → verify signature + check exp + check tokenType claim
-```
-
-**Implications of our approach:**
-- Stateless — no server-side storage, survives restarts
-- Not single-use — a token can be reused until expiry (10 min window)
-- No NaCl signature requirement — simpler client integration
-- Token type is a claim inside the JWT, not a server-side enum check
-
-If single-use tokens are needed in the future, a small Redis/DB-backed token revocation list can be added.
-
----
-
-## Registration Flow
-
-| | Current | Target |
-|---|---|---|
-| Requires action token | Yes (type: Register) | Yes (type: register) |
-| Token redemption | Client NaCl-signs the token UUID with their device signing key; server verifies signature | Client presents JWT token directly |
-| userID source | `uuid.stringify(regKey)` — derived from the NaCl-signed registration token | Fresh `uuid.v4()` |
-| Device creation | Bundled into registration — creates user + device + preKeys atomically | Separate (`/devices` endpoint) |
-| Duplicate errors | Detects `ER_DUP_ENTRY` MySQL error codes by string matching (`users_username_unique`, `users_signkey_unique`) | Kysely catches constraint violations; we translate |
+| Username and password | Account registration and explicit sign-in | One-hour user JWT |
+| Approved device key | Restore a trusted local device session and approve another device | One-hour user JWT after Ed25519 challenge-response |
+| Passkey | Optional sign-in assistance, password recovery, and device recovery/admin | Five-minute passkey-scoped JWT after user-verified WebAuthn |
 
-**Upstream registration payload** (`XTypes.HTTP.IRegistrationPayload`):
-```ts
-{
-    username: string
-    password: string
-    signKey: string        // device NaCl signing public key (hex)
-    signed: string         // NaCl signature of the registration token UUID
-    preKey: string         // medium-term preKey (hex)
-    preKeySignature: string
-    preKeyIndex: number
-    deviceName: string
-}
-```
+Password sign-in never silently creates an account. Account creation and device
+enrollment use explicit protocol intents. A passkey is optional and can be added
+only after an account exists.
 
-The target `registerUser(db, username, password)` takes only username and password — device registration is a separate step. This simplifies the auth boundary but requires an additional request for a new device.
+The clients keep the methods visually distinct. Password is the default sign-in
+form, passkey use is an explicit action, and selecting a saved account after
+sign-out opens credential entry instead of authenticating immediately. Normal
+startup may restore a session with the approved local device key unless the user
+explicitly signed out.
 
----
+## Passwords
 
-## JWT Verification Middleware
+Spire hashes passwords with Argon2id using 64 MiB of memory, three iterations,
+and one lane. The encoded PHC string includes a random salt.
 
-**Upstream** (`server/index.ts:51`):
-```ts
-const checkAuth = (req, res, next) => {
-    if (req.cookies.auth) {
-        try {
-            const result = jwt.verify(req.cookies.auth, process.env.SPK!);
-            req.user = result.user;   // nested under "user" key
-            req.exp  = result.exp;
-        } catch (err) { /* silently ignored */ }
-    }
-    next(); // always continues — protect() enforces auth
-};
-```
+New passwords:
 
-Authentication is cookie-based. The `protect` middleware is a separate guard that checks `req.user` is set. The target implementation uses Authorization header Bearer tokens (standard REST pattern, no cookies).
+- must contain 15 to 1024 characters;
+- are rejected when they match compact common-password, repeated-character, or
+  account-name checks;
+- have no uppercase, lowercase, digit, or symbol composition rule;
+- are not subject to periodic forced rotation.
 
----
+Unknown usernames still run a dummy Argon2id verification before returning 401,
+which reduces username enumeration through timing. Authentication and password
+replacement have account/IP rate limits.
 
-## Database Layer
+Changing a password requires an approved device session plus the current
+password. Reusing the existing password is rejected.
 
-| | Current |
-|---|---|
-| Query builder | Kysely |
-| Default DB | SQLite (also supports MySQL) |
-| Schema management | Kysely `Migrator` + `FileMigrationProvider` — migrations in `src/migrations/`, run on startup via `migrateToLatest()` |
-| Type safety | Runtime types from `@vex-chat/types` |
+## Passkeys and Recovery
 
-Schema management now uses Kysely's `Migrator` with `FileMigrationProvider`. Migrations live in `src/migrations/` and run automatically on startup via `migrateToLatest()`. The initial migration is the existing schema verbatim; future changes are new migration files.
+Passkeys use WebAuthn with user verification required. Authentication challenges
+are short-lived and single-use. Credential ownership is checked against the
+requested account, every passkey-scoped request rechecks that the credential is
+still bound, and nonzero authenticator counters must increase atomically.
 
----
+A fresh passkey session can:
 
-## Alignment: Full Fidelity
+- reset a forgotten password;
+- list account passkeys;
+- inspect or remove approved devices;
+- recover or reject a pending device enrollment.
 
-This project is **privacy-first**. We match the upstream privacy model exactly. The table below reflects decisions for the planned improvements to the spire server (in its own repo).
+It cannot act as a general device bearer. To enter chat, the client must also
+prove an already approved local device key or complete a new-device approval
+flow. Password reset returns the user to sign-in and does not silently open a
+chat session.
 
-| Concern | Spire (current) | Client SDK | Notes |
-|---|---|---|---|
-| Token storage | In-memory single-use UUID array | Presents token from server | **Aligned** |
-| Token reuse | Single-use, consumed on validation | Single-use | **Aligned** |
-| Token redemption | Requires NaCl device signature | Signs with device key | **Aligned** |
-| userID | `uuid.stringify(nacl.sign.open(signed, signKey))` — client-derived | Receives from server | **Aligned** |
-| Registration | NaCl sig + device + preKey bundled atomically | Sends bundled payload | **Aligned** |
-| JWT secret | `process.env.SPK` (NaCl key reused) | N/A | Key hygiene concern — consider dedicated `JWT_SECRET` |
-| JWT library | `jsonwebtoken` (CJS) | N/A (receives JWT) | |
-| Transport | HTTP cookie `auth` + `Authorization` header | Bearer token header | SDK sends Bearer; spire accepts both |
-| Password hashing | PBKDF2 + argon2id (lazy migration) | N/A (server-only) | Old hashes upgraded on login |
-| DB | Kysely + SQLite/MySQL | N/A | |
+Adding or removing a passkey requires an approved-device session. This keeps a
+single passkey-scoped session from deleting the credential that authorized it.
 
-### Notes on divergences
+Vex has no verified email address, phone number, security questions, or operator
+recovery credential. Losing every approved device and every passkey makes the
+account unrecoverable by design.
 
-**JWT transport (cookie vs Bearer):** Upstream sets an `httpOnly` cookie named `auth`. We use `Authorization: Bearer <token>`. Both carry the same 7-day JWT. Cookie transport is marginally more phishing-resistant in browser clients but less ergonomic for mobile/desktop clients and tests. This is the one deliberate deviation from upstream that does not affect the privacy model.
+## Device Clusters
 
-**JWT secret separation:** Upstream uses the NaCl server signing key (`SPK`) as the HMAC-SHA256 JWT secret. This creates key reuse across two cryptographic systems (Ed25519 signing and HMAC-SHA256). We use a dedicated `JWT_SECRET` env var. The privacy properties are identical; this is a hygiene improvement.
+Every client installation has its own signing key. A new account atomically
+creates the user and its first device after password validation and proof of the
+new device key.
 
----
+Adding another device requires either the account password or a fresh passkey
+session before Spire publishes a pending request. An existing approved device
+then signs a challenge containing the request ID and new signing key. Both
+clients show a short code derived from the new key so the user can compare the
+request before approval.
 
-## JWT Signing Algorithm: HS256 vs RS256 vs ES256
+Spire limits active devices and passkeys per account. Deleting a device also
+removes its prekeys, one-time keys, notification subscriptions, and passkey
+approval record. Protected HTTP and WebSocket authentication recheck that the
+device still exists and is not deleted.
 
-We use **HS256** (HMAC-SHA256) with a shared `JWT_SECRET`. This is a deliberate choice for this deployment model, not a default.
+Device approval controls provisioning, but it is not a transparency log. A
+fully malicious Spire can still substitute the public device directory unless
+users verify session fingerprints out of band.
 
-### When each algorithm is appropriate
+## Sessions and JWTs
 
-| Algorithm | Key type | Best for | Weakness |
-|---|---|---|---|
-| **HS256** | Shared secret | Single service — same process signs and verifies | Secret leaks → every service must rotate; brute-forceable with weak keys |
-| **RS256** | RSA key pair | Distributed systems — publish public key, protect private | Large keys (2048+ bits); slower; key rotation is complex |
-| **ES256** | ECDSA P-256 key pair | New projects needing distributed or public key distribution | Requires key pair management |
+Spire signs JWTs with HS256 and a dedicated `JWT_SECRET`. The verifier pins the
+algorithm, issuer, and audience. Runtime configuration rejects a missing or
+short secret and rejects reuse of the server protocol signing key (`SPK`).
 
-### Why HS256 is right here
+User and device-auth sessions expire after one hour. Passkey sessions expire
+after five minutes and carry a distinct scope. Routes reject a bearer whose
+scope is not appropriate for that operation.
 
-Spire is a **single-service monolith** — the same process that signs JWTs also verifies them. There are no external services that need to read the JWT. HS256 is appropriate in this topology.
+JWTs are stateless. `/goodbye` is a clean authenticated boundary, while the
+client is responsible for deleting its local bearer and session state. Password
+changes do not revoke already issued device JWTs; deleting the device blocks it
+on routes that revalidate current device state, and remaining JWT revocation is
+expiry-based.
 
-If Spire were split into microservices (e.g., a separate WebSocket gateway, a separate API gateway), you would want to switch to ES256 or RS256 so the private signing key stays on the auth service and other services only receive the public key for verification.
+## Action Tokens
 
-### HS256 key requirements (CRITICAL)
-
-HS256 uses HMAC-SHA256. The security of the scheme depends entirely on the secret being:
-- **At least 256 bits (32 bytes)** — the RFC 7518 minimum. Shorter keys are brute-forceable.
-- **Cryptographically random** — not a human-readable passphrase or a NaCl key repurposed for this (see upstream's SPK mistake above).
-- **Never committed to source control** — set via environment variable only.
-
-Generate a production secret:
-```bash
-node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-```
-
-A 64-byte (512-bit) hex secret is recommended — it doubles the HMAC key material compared to the minimum and costs nothing at runtime.
-
----
-
-## Hex Encoding: Why Buffer Is Fine (and When It Isn't)
-
-All hex encode/decode in `src/auth/index.ts` uses `Buffer`:
-
-```ts
-Buffer.from(bytes).toString('hex')       // encode
-new Uint8Array(Buffer.from(hex, 'hex'))  // decode
-```
-
-This is intentional. `Buffer` is Node.js-native, zero-dependency, and the fastest available option on LTS releases (18, 20, 22).
-
-### The caveat worth knowing
-
-The TC39 `Uint8Array` base64/hex proposal reached **Stage 4** and shipped as Baseline 2025 in browsers:
-
-```ts
-// Native in browsers (Sep 2025) and future Node.js
-Uint8Array.fromHex(hex)
-uint8Array.toHex()
-```
-
-These are **not yet available in any Node.js LTS** as of early 2026. They will eventually make `Buffer` unnecessary for this use case.
-
-`@vex-chat/libvex` already runs in browsers (Tauri webview) and React Native, so it uses `Uint8Array` exclusively — all `Buffer` usage was removed during the platform adapter migration. Spire (Node.js only) still uses `Buffer` which is fine.
-
-**Rule of thumb:** `Buffer` in spire (Node.js only) is fine. Any shared code in `libvex-js`, `@vex-chat/crypto`, or `@vex-chat/types` must use `Uint8Array` — these packages run on all platforms.
-
----
-
-## Crypto library: @noble/curves
-
-We use **`@noble/curves`** (Ed25519 via `@noble/curves/ed25519`) for all signing operations, wrapped in `@vex-chat/crypto`. The original upstream used tweetnacl; we migrated for RFC 8032 compliance, active maintenance, and a more recent Cure53 audit (2022).
-
-Our `@vex-chat/crypto` package preserves NaCl-compatible wire format (64-byte signature prepended to message) so the protocol is unchanged from upstream — only the underlying library differs.
-
-```ts
-import { generateSignKeyPair, signMessage, verifyNaClSignature, encodeHex } from '@vex-chat/crypto'
-
-const keyPair = generateSignKeyPair()              // { publicKey, secretKey } — 32 bytes each
-const signed = signMessage(message, keyPair.secretKey) // 64-byte sig || message (NaCl format)
-const original = verifyNaClSignature(signed, keyPair.publicKey) // Uint8Array | null
-```
-
----
-
-## Token Store: Memory and Production Considerations
-
-### What the upstream does
-
-The upstream `Spire` class stores tokens in a plain `IActionToken[]` array with no cleanup loop:
-
-```ts
-private actionTokens: IActionToken[] = []
-private createActionToken(scope): IActionToken { /* push to array */ }
-private validateToken(key, scope): boolean { /* find + splice on success */ }
-```
-
-Consumed tokens are removed on successful validation. Expired-but-never-consumed tokens stay in the array forever.
-
-### What happens in production without cleanup
-
-Action tokens are created whenever a client requests a scoped operation (register, connect, file upload, etc.). A consumed token is removed immediately. An unconsumed token — where the client starts but never completes — is never removed.
-
-Under normal load this leaks slowly. Under a basic DoS — repeatedly hitting `/tokens` endpoints to create tokens and never consuming them — it becomes an unbounded allocation attack. Each `IActionToken` entry is small (~200 bytes), but at millions of entries it adds up, and there is no ceiling.
-
-The upstream is exposed to the same issue. It was never fixed there.
-
-### Our fix: sweep + unref
-
-```ts
-const sweep = setInterval(() => {
-  const cutoff = Date.now() - TOKEN_EXPIRY
-  for (const [key, token] of store) {
-    if (token.time.getTime() < cutoff) store.delete(key)
-  }
-}, 5 * 60 * 1000)
-sweep.unref()
-```
-
-- **Sweep every 5 minutes** removes all tokens older than 10 minutes (TOKEN_EXPIRY). Any unconsumed expired token is collected within one sweep interval.
-- **`.unref()`** is critical: without it, the `setInterval` timer keeps the Node.js process alive even after all other async work is done. This causes test suites to hang indefinitely waiting for the timer to fire. `unref()` tells Node.js it can exit naturally even if this timer is still pending.
-
-The sweep should **always stay**. It has no meaningful overhead (a Map iteration every 5 minutes) and prevents a class of memory exhaustion that the upstream left unaddressed. It also makes the server safer to run under load without a rate limiter on token-issuing endpoints.
-
----
-
-See also: [vex-overview.md](../vex-overview.md) for the cryptographic protocol, [glossary.md](../glossary.md) for term definitions.
+Sensitive protocol operations use random, scoped action tokens that expire after
+ten minutes. Tokens are held in memory, consumed on successful validation, and
+pruned whenever the store is used. The client signs operations that require
+device-key proof; presenting an action token alone is not sufficient.
+
+## Local Secret Storage
+
+The device signing key and local database key are different secrets. Platform
+keychain adapters persist them in separate slots. The encrypted local database
+uses fresh nonces and purpose-separated at-rest keys; logout clears runtime
+state without conflating an ordinary sign-out with deleting the trusted device
+key.
+
+See also: [Vex platform overview](../vex-overview.md) and the protocol repository's
+`docs/security/threat-model.md`.

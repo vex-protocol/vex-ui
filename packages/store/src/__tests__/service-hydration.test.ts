@@ -3,6 +3,10 @@ import type { Channel, Message, Server, User } from "@vex-chat/libvex";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
+    $accountEntitlementsWritable,
+    defaultAccountEntitlements,
+} from "../domains/entitlements.ts";
+import {
     $hydrationStatusWritable,
     $userWritable,
 } from "../domains/identity.ts";
@@ -22,6 +26,7 @@ import { vexService } from "../service.ts";
 
 type HydrationClient = {
     channels: { retrieve: ReturnType<typeof vi.fn> };
+    entitlements?: { retrieve: ReturnType<typeof vi.fn> };
     me: { user: ReturnType<typeof vi.fn> };
     messages: {
         retrieve: ReturnType<typeof vi.fn>;
@@ -51,6 +56,9 @@ const channel = {
 function makeClient(overrides: Partial<HydrationClient> = {}): HydrationClient {
     const client: HydrationClient = {
         channels: { retrieve: vi.fn(async () => []) },
+        entitlements: {
+            retrieve: vi.fn(async () => defaultAccountEntitlements(me.userID)),
+        },
         me: { user: vi.fn(() => me) },
         messages: {
             retrieve: vi.fn(async () => []),
@@ -109,6 +117,7 @@ function resetServiceState(): void {
     internals.populateStateInFlight = null;
 
     $userWritable.set(null);
+    $accountEntitlementsWritable.set(defaultAccountEntitlements());
     $hydrationStatusWritable.set({
         completedSteps: 0,
         ready: false,
@@ -143,6 +152,28 @@ describe("vexService hydration", () => {
         expect($hydrationStatusWritable.get()).toMatchObject({
             ready: true,
             stage: "ready",
+        });
+    });
+
+    test("hydrates account entitlements before the rest of account state", async () => {
+        const client = makeClient({
+            entitlements: {
+                retrieve: vi.fn(async () => ({
+                    ...defaultAccountEntitlements(me.userID, "plus"),
+                    refreshedAt: "2026-06-24T00:00:00.000Z",
+                    source: "dev_override",
+                })),
+            },
+        });
+        (vexService as unknown as { client: unknown }).client = client;
+
+        await populateState();
+
+        expect(client.entitlements?.retrieve).toHaveBeenCalledOnce();
+        expect($accountEntitlementsWritable.get()).toMatchObject({
+            source: "dev_override",
+            tier: "plus",
+            userID: me.userID,
         });
     });
 

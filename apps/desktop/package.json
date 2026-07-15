@@ -4,9 +4,15 @@
     "version": "0.0.0",
     "type": "module",
     "scripts": {
-        "dev": "tauri dev",
-        "build": "tauri build",
-        "vite:dev": "vite",
+        "dev": "node ./scripts/desktop-flavor.mjs dev development",
+        "build": "pnpm run build:production",
+        "build:development": "node ./scripts/desktop-flavor.mjs build development",
+        "build:production": "node ./scripts/desktop-flavor.mjs build production",
+        "install:development": "node ./scripts/desktop-flavor.mjs install development",
+        "install:production": "node ./scripts/desktop-flavor.mjs install production",
+        "icons:regen": "bash ../../scripts/generate-app-icons.sh",
+        "vite:dev": "vite --host localhost",
+        "vite:local": "VITE_PROXY_TARGET=http://localhost:16777 vite --host localhost",
         "vite:build": "vite build",
         "preview": "vite preview",
         "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
@@ -16,7 +22,7 @@
     },
     "devDependencies": {
         "@sveltejs/vite-plugin-svelte": "^6.2.1",
-        "@tauri-apps/cli": "^2.10.1",
+        "@tauri-apps/cli": "catalog:",
         "@tsconfig/svelte": "^5.0.6",
         "@types/node": "catalog:",
         "@vex-chat/eslint-config": "workspace:*",
@@ -27,11 +33,13 @@
         "svelte-check": "^4.3.4",
         "svelte-eslint-parser": "^1.6.0",
         "typescript": "catalog:",
-        "vite": "^7.3.1"
+        "vite": "^7.3.5"
     },
     "dependencies": {
-        "@tauri-apps/api": "^2.10.1",
+        "@lucide/svelte": "catalog:",
+        "@tauri-apps/api": "catalog:",
         "@tauri-apps/plugin-deep-link": "^2.4.7",
+        "@tauri-apps/plugin-http": "catalog:",
         "@tauri-apps/plugin-log": "^2.8.0",
         "@tauri-apps/plugin-notification": "^2",
         "@tauri-apps/plugin-opener": "^2.5.3",
@@ -40,12 +48,13 @@
         "@tauri-apps/plugin-updater": "^2.10.0",
         "@vex-chat/store": "workspace:*",
         "dompurify": "catalog:",
+        "eventemitter3": "5.0.4",
         "highlight.js": "catalog:",
         "kysely": "catalog:",
         "kysely-dialect-tauri": "^1.2.1",
         "marked": "catalog:",
+        "nanostores": "catalog:",
         "svelte-spa-router": "^4.0.1",
-        "tauri-plugin-keyring-api": "^0.1.1",
         "uuid": "catalog:"
     },
     "license": "AGPL-3.0-or-later"

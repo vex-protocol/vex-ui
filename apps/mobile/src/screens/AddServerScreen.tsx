@@ -1,17 +1,35 @@
 import type { AppStackParamList } from "../navigation/types";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import React, { useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 import { parseInviteID } from "@vex-chat/store";
 import { vexService } from "@vex-chat/store";
 
+import { Ionicons } from "@expo/vector-icons";
+import { useStore } from "@nanostores/react";
 import { useNavigation } from "@react-navigation/native";
+import * as ImagePicker from "expo-image-picker";
 
+import { ChatHeader } from "../components/ChatHeader";
 import { CornerBracketBox } from "../components/CornerBracketBox";
 import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
+import { VexField } from "../components/VexField";
+import {
+    $avatarCropResult,
+    nextAvatarCropRequestId,
+} from "../lib/avatarCropResult";
+import { prepareServerIcon } from "../lib/serverIconImage";
 import { navigateToJoinedServer } from "../navigation/navigationRef";
 import { colors, typography } from "../theme";
 
@@ -21,10 +39,66 @@ export function AddServerScreen() {
             NativeStackNavigationProp<AppStackParamList, "AddServer">
         >();
     const [mode, setMode] = useState<"create" | "join" | "pick">("pick");
+    const cropResult = useStore($avatarCropResult);
+    const expectedCropRequestRef = useRef<null | number>(null);
+    const [iconUri, setIconUri] = useState<null | string>(null);
     const [name, setName] = useState("");
     const [inviteInput, setInviteInput] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (
+            !cropResult ||
+            cropResult.requestId !== expectedCropRequestRef.current
+        ) {
+            return;
+        }
+        expectedCropRequestRef.current = null;
+        $avatarCropResult.set(null);
+        setIconUri(cropResult.uri);
+        setError("");
+    }, [cropResult]);
+
+    async function handlePickIcon(): Promise<void> {
+        if (loading) return;
+        const permission =
+            await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+            setError("Photo library permission is required.");
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.92,
+        });
+        if (result.canceled) return;
+        const asset = result.assets[0];
+        if (!asset?.uri || (asset.type != null && asset.type !== "image")) {
+            setError("Please select an image.");
+            return;
+        }
+        if (
+            typeof asset.width === "number" &&
+            typeof asset.height === "number" &&
+            Math.abs(asset.width - asset.height) > 1
+        ) {
+            const requestId = nextAvatarCropRequestId();
+            expectedCropRequestRef.current = requestId;
+            $avatarCropResult.set(null);
+            navigation.navigate("AvatarCrop", {
+                requestId,
+                sourceHeight: asset.height,
+                sourceUri: asset.uri,
+                sourceWidth: asset.width,
+                title: "Crop group icon",
+            });
+            return;
+        }
+        setIconUri(asset.uri);
+        setError("");
+    }
 
     async function handleCreate() {
         if (!name.trim()) return;
@@ -39,6 +113,28 @@ export function AddServerScreen() {
             if (!result.serverID) {
                 if (navigation.canGoBack()) navigation.goBack();
                 return;
+            }
+            if (iconUri) {
+                try {
+                    const icon = await prepareServerIcon(iconUri);
+                    const iconResult = await vexService.setServerIcon(
+                        result.serverID,
+                        icon,
+                    );
+                    if (!iconResult.ok) {
+                        throw new Error(
+                            iconResult.error ?? "Failed to set group icon",
+                        );
+                    }
+                } catch (err: unknown) {
+                    await vexService.deleteServer(result.serverID);
+                    setError(
+                        err instanceof Error
+                            ? err.message
+                            : "Failed to set group icon",
+                    );
+                    return;
+                }
             }
             if (result.channelID && result.channelName) {
                 navigation.navigate("Channel", {
@@ -94,23 +190,27 @@ export function AddServerScreen() {
 
     if (mode === "pick") {
         return (
-            <ScreenLayout>
+            <ScreenLayout glows>
                 <View style={styles.content}>
                     <View style={styles.header}>
-                        <Text style={styles.heading}>Add a server.</Text>
+                        <Text style={styles.kicker}>NEW GROUP</Text>
+                        <Text style={styles.heading}>Create or join</Text>
                         <Text style={styles.subtitle}>
-                            Create your own or join an existing one
+                            Encrypted from the first message. Only members hold
+                            the keys.
                         </Text>
                     </View>
                     <View style={styles.options}>
                         <VexButton
                             glow
+                            icon="add"
                             onPress={() => {
                                 setMode("create");
                             }}
-                            title="Create a server"
+                            title="Create group"
                         />
                         <VexButton
+                            icon="link-outline"
                             onPress={() => {
                                 setMode("join");
                             }}
@@ -125,12 +225,18 @@ export function AddServerScreen() {
 
     if (mode === "create") {
         return (
-            <ScreenLayout>
-                <View style={styles.content}>
-                    <View style={styles.header}>
-                        <Text style={styles.heading}>Create a server.</Text>
-                        <Text style={styles.subtitle}>
-                            Give your server a name
+            <VexField glows style={styles.container}>
+                <ChatHeader title="Create Group" />
+                <ScrollView
+                    contentContainerStyle={styles.createScroll}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                >
+                    <View style={styles.createIntro}>
+                        <Text style={styles.kicker}>NEW GROUP</Text>
+                        <Text style={styles.createSubtitle}>
+                            Encrypted from the first message. Only members hold
+                            the keys.
                         </Text>
                     </View>
 
@@ -140,18 +246,65 @@ export function AddServerScreen() {
                         </View>
                     ) : null}
 
+                    <View style={styles.groupIconWrap}>
+                        <View style={styles.iconStage}>
+                            <TouchableOpacity
+                                accessibilityLabel="Choose group icon"
+                                activeOpacity={0.78}
+                                disabled={loading}
+                                onPress={() => void handlePickIcon()}
+                            >
+                                <CornerBracketBox
+                                    color={colors.border}
+                                    size={8}
+                                >
+                                    <View style={styles.groupIconBox}>
+                                        {iconUri ? (
+                                            <Image
+                                                source={{ uri: iconUri }}
+                                                style={styles.groupIconImage}
+                                            />
+                                        ) : (
+                                            <Ionicons
+                                                color={colors.muted}
+                                                name="camera-outline"
+                                                size={26}
+                                            />
+                                        )}
+                                    </View>
+                                </CornerBracketBox>
+                            </TouchableOpacity>
+                            {iconUri ? (
+                                <TouchableOpacity
+                                    accessibilityLabel="Remove selected group icon"
+                                    onPress={() => setIconUri(null)}
+                                    style={styles.removeIconButton}
+                                >
+                                    <Ionicons
+                                        color={colors.muted}
+                                        name="close"
+                                        size={18}
+                                    />
+                                </TouchableOpacity>
+                            ) : null}
+                        </View>
+                        <Text style={styles.iconHint}>
+                            Group icon (optional)
+                        </Text>
+                    </View>
+
                     <View style={styles.field}>
-                        <Text style={styles.label}>SERVER NAME</Text>
+                        <Text style={styles.label}>GROUP NAME</Text>
                         <CornerBracketBox color={colors.border} size={8}>
                             <TextInput
-                                autoCapitalize="none"
+                                autoCapitalize="words"
                                 autoCorrect={false}
                                 editable={!loading}
                                 onChangeText={(t) => {
                                     setName(t);
                                     setError("");
                                 }}
-                                placeholder="My server"
+                                placeholder="Field Operations"
                                 placeholderTextColor={colors.mutedDark}
                                 style={styles.input}
                                 value={name}
@@ -159,26 +312,44 @@ export function AddServerScreen() {
                         </CornerBracketBox>
                     </View>
 
+                    <View style={styles.privacyRow}>
+                        <View style={styles.privacyIcon}>
+                            <Ionicons
+                                color={colors.success}
+                                name="lock-closed-outline"
+                                size={18}
+                            />
+                        </View>
+                        <View style={styles.privacyCopy}>
+                            <Text style={styles.privacyTitle}>Invite-only</Text>
+                            <Text style={styles.privacyDescription}>
+                                New members need an invite link.
+                            </Text>
+                        </View>
+                    </View>
+
                     <View style={styles.buttonRow}>
                         <VexButton
                             disabled={!name.trim()}
                             glow
+                            icon="add"
                             loading={loading}
                             onPress={() => void handleCreate()}
-                            title="Create"
+                            title="Create group"
                         />
                     </View>
-                </View>
-            </ScreenLayout>
+                </ScrollView>
+            </VexField>
         );
     }
 
     // mode === 'join'
     return (
-        <ScreenLayout>
+        <ScreenLayout glows>
             <View style={styles.content}>
                 <View style={styles.header}>
-                    <Text style={styles.heading}>Join a server.</Text>
+                    <Text style={styles.kicker}>INVITE CODE</Text>
+                    <Text style={styles.heading}>Join Group</Text>
                     <Text style={styles.subtitle}>
                         Enter an invite link or code
                     </Text>
@@ -213,9 +384,10 @@ export function AddServerScreen() {
                     <VexButton
                         disabled={!inviteInput.trim()}
                         glow
+                        icon="link-outline"
                         loading={loading}
                         onPress={() => void handleJoin()}
-                        title="Join"
+                        title="Join group"
                     />
                 </View>
             </View>
@@ -226,11 +398,30 @@ export function AddServerScreen() {
 const styles = StyleSheet.create({
     buttonRow: {
         alignItems: "center",
+        marginTop: 24,
+    },
+    container: {
+        backgroundColor: colors.bg,
+        flex: 1,
     },
     content: {
         flex: 1,
         gap: 24,
-        justifyContent: "center",
+        justifyContent: "flex-start",
+        paddingTop: 18,
+    },
+    createIntro: {
+        gap: 6,
+        marginBottom: 18,
+    },
+    createScroll: {
+        paddingBottom: 24,
+        paddingHorizontal: 16,
+        paddingTop: 18,
+    },
+    createSubtitle: {
+        ...typography.body,
+        color: colors.muted,
     },
     errorBox: {
         backgroundColor: colors.dangerBg,
@@ -243,7 +434,24 @@ const styles = StyleSheet.create({
         color: colors.error,
     },
     field: {
-        gap: 6,
+        gap: 8,
+    },
+    groupIconBox: {
+        alignItems: "center",
+        backgroundColor: colors.surface,
+        borderRadius: 8,
+        height: 84,
+        justifyContent: "center",
+        overflow: "hidden",
+        width: 84,
+    },
+    groupIconImage: {
+        height: 84,
+        width: 84,
+    },
+    groupIconWrap: {
+        alignItems: "center",
+        gap: 8,
     },
     header: {
         alignItems: "center",
@@ -254,12 +462,26 @@ const styles = StyleSheet.create({
         color: colors.text,
         textAlign: "center",
     },
+    iconHint: {
+        ...typography.body,
+        color: colors.mutedDark,
+        fontSize: 12,
+    },
+    iconStage: {
+        position: "relative",
+    },
     input: {
-        backgroundColor: colors.surface,
+        backgroundColor: "rgba(255,255,255,0.03)",
+        borderColor: "rgba(255,255,255,0.08)",
+        borderWidth: 1,
         color: colors.textSecondary,
         fontSize: 14,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
+        paddingHorizontal: 12,
+        paddingVertical: 11,
+    },
+    kicker: {
+        ...typography.label,
+        color: colors.accent,
     },
     label: {
         ...typography.label,
@@ -268,6 +490,51 @@ const styles = StyleSheet.create({
     options: {
         alignItems: "center",
         gap: 12,
+    },
+    privacyCopy: {
+        flex: 1,
+        gap: 2,
+    },
+    privacyDescription: {
+        ...typography.body,
+        color: colors.muted,
+        fontSize: 12,
+        lineHeight: 16,
+    },
+    privacyIcon: {
+        alignItems: "center",
+        backgroundColor: colors.successBg,
+        borderRadius: 8,
+        height: 36,
+        justifyContent: "center",
+        width: 36,
+    },
+    privacyRow: {
+        alignItems: "center",
+        borderColor: colors.borderSubtle,
+        borderTopWidth: 1,
+        flexDirection: "row",
+        gap: 12,
+        marginTop: 18,
+        paddingTop: 16,
+    },
+    privacyTitle: {
+        ...typography.button,
+        color: colors.textSecondary,
+        fontSize: 14,
+    },
+    removeIconButton: {
+        alignItems: "center",
+        backgroundColor: colors.surfaceLight,
+        borderColor: colors.border,
+        borderRadius: 8,
+        borderWidth: 1,
+        height: 30,
+        justifyContent: "center",
+        position: "absolute",
+        right: -10,
+        top: 64,
+        width: 30,
     },
     subtitle: {
         ...typography.body,

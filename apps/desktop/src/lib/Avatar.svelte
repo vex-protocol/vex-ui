@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { buildAvatarUrl } from "./avatarUrl.js";
     import { avatarHue } from "./store/index.js";
 
     interface Props {
@@ -15,15 +16,9 @@
     // Fallback resolved outside the destructure — eslint --fix
     // silently strips destructure defaults on svelte files.
     const resolvedSize = $derived(size ?? 36);
+    const avatarUrl = $derived(buildAvatarUrl(serverUrl, userID, version));
 
-    let failed = $state(false);
-
-    // Re-attempt image load whenever version changes (after upload)
-    $effect(() => {
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-        version;
-        failed = false;
-    });
+    let failedUrl = $state("");
 
     function initials(id: string, displayName?: string): string {
         if (displayName) return displayName.slice(0, 2).toUpperCase();
@@ -31,16 +26,16 @@
     }
 </script>
 
-{#if !failed}
+{#if failedUrl !== avatarUrl}
     <img
-        src="{serverUrl}/avatar/{userID}?v={version}"
+        src={avatarUrl}
         alt={name ?? userID}
         width={resolvedSize}
         height={resolvedSize}
         class="avatar"
         style="width:{resolvedSize}px;height:{resolvedSize}px;border-radius:50%"
         onerror={() => {
-            failed = true;
+            failedUrl = avatarUrl;
         }}
     />
 {:else}
@@ -69,7 +64,7 @@
         justify-content: center;
         color: #fff;
         font-weight: 700;
-        letter-spacing: 0.02em;
+        letter-spacing: 0;
         user-select: none;
     }
 </style>

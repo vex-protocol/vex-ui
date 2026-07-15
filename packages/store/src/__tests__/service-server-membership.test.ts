@@ -12,7 +12,9 @@ import { vexService } from "../service.ts";
 
 type TestClient = {
     channels?: {
+        delete?: ReturnType<typeof vi.fn>;
         retrieve: ReturnType<typeof vi.fn>;
+        update?: ReturnType<typeof vi.fn>;
     };
     close: ReturnType<typeof vi.fn>;
     invites?: {
@@ -24,19 +26,26 @@ type TestClient = {
     moderation?: {
         fetchPermissionList: ReturnType<typeof vi.fn>;
         kick: ReturnType<typeof vi.fn>;
+        setRole?: ReturnType<typeof vi.fn>;
     };
     permissions?: {
         retrieve: ReturnType<typeof vi.fn>;
     };
     servers: {
         create?: ReturnType<typeof vi.fn>;
+        iconURL?: ReturnType<typeof vi.fn>;
         leave: ReturnType<typeof vi.fn>;
+        removeIcon?: ReturnType<typeof vi.fn>;
+        retrieve?: ReturnType<typeof vi.fn>;
         retrieveByID?: ReturnType<typeof vi.fn>;
+        setIcon?: ReturnType<typeof vi.fn>;
+        update?: ReturnType<typeof vi.fn>;
     };
 };
 
 const serviceInternals = vexService as unknown as {
     client: null | TestClient;
+    refreshServerState: (serverID: string) => Promise<void>;
 };
 
 function makeMessage(channelID: string, mailID: string): Message {
@@ -242,6 +251,39 @@ describe("vexService server moderation", () => {
             "server-blood",
         );
     });
+
+    test("changes a member role through moderation API", async () => {
+        const permission: Permission = {
+            permissionID: "permission-target",
+            powerLevel: 50,
+            resourceID: "server-blood",
+            resourceType: "server",
+            userID: "user-target",
+        };
+        const client: TestClient = {
+            close: vi.fn(async () => undefined),
+            me: {
+                user: vi.fn(() => ({ userID: "user-owner" })),
+            },
+            moderation: {
+                fetchPermissionList: vi.fn(async () => [permission]),
+                kick: vi.fn(async () => undefined),
+                setRole: vi.fn(async () => permission),
+            },
+            servers: {
+                leave: vi.fn(async () => undefined),
+            },
+        };
+        serviceInternals.client = client;
+
+        await expect(
+            vexService.updateServerMemberRole(permission.permissionID, 50),
+        ).resolves.toEqual({ ok: true });
+        expect(client.moderation?.setRole).toHaveBeenCalledWith(
+            permission.permissionID,
+            50,
+        );
+    });
 });
 
 describe("vexService.leaveServer", () => {
@@ -328,6 +370,85 @@ describe("vexService.leaveServer", () => {
             [otherChannel.channelID]: [
                 makeMessage(otherChannel.channelID, "mail-other"),
             ],
+        });
+    });
+});
+
+describe("vexService server management", () => {
+    beforeEach(resetMembershipState);
+
+    test("updates server and channel metadata in shared state", async () => {
+        const server: Server = { name: "Before", serverID: "server-edit" };
+        const renamedServer: Server = { ...server, name: "After" };
+        const channel: Channel = {
+            channelID: "channel-edit",
+            name: "general",
+            serverID: server.serverID,
+        };
+        const renamedChannel: Channel = {
+            ...channel,
+            name: "announcements",
+        };
+        const client: TestClient = {
+            channels: {
+                retrieve: vi.fn(async () => [renamedChannel]),
+                update: vi.fn(async () => renamedChannel),
+            },
+            close: vi.fn(async () => undefined),
+            servers: {
+                leave: vi.fn(async () => undefined),
+                update: vi.fn(async () => renamedServer),
+            },
+        };
+        serviceInternals.client = client;
+        $serversWritable.set({ [server.serverID]: server });
+        $channelsWritable.set({ [server.serverID]: [channel] });
+
+        await expect(
+            vexService.updateServer(server.serverID, renamedServer.name),
+        ).resolves.toEqual({ ok: true });
+        await expect(
+            vexService.updateChannel(channel.channelID, renamedChannel.name),
+        ).resolves.toEqual({ ok: true });
+
+        expect($serversWritable.get()[server.serverID]).toEqual(renamedServer);
+        expect($channelsWritable.get()[server.serverID]).toEqual([
+            renamedChannel,
+        ]);
+    });
+
+    test("refreshes server, channels, and current-user permissions together", async () => {
+        const server: Server = { name: "Refreshed", serverID: "server-live" };
+        const channel: Channel = {
+            channelID: "channel-live",
+            name: "news",
+            serverID: server.serverID,
+        };
+        const permission: Permission = {
+            permissionID: "permission-live",
+            powerLevel: 50,
+            resourceID: server.serverID,
+            resourceType: "server",
+            userID: "user-me",
+        };
+        serviceInternals.client = {
+            channels: { retrieve: vi.fn(async () => [channel]) },
+            close: vi.fn(async () => undefined),
+            permissions: { retrieve: vi.fn(async () => [permission]) },
+            servers: {
+                leave: vi.fn(async () => undefined),
+                retrieve: vi.fn(async () => [server]),
+            },
+        };
+
+        await serviceInternals.refreshServerState(server.serverID);
+
+        expect($serversWritable.get()).toEqual({ [server.serverID]: server });
+        expect($channelsWritable.get()).toEqual({
+            [server.serverID]: [channel],
+        });
+        expect($permissionsWritable.get()).toEqual({
+            [permission.permissionID]: permission,
         });
     });
 });

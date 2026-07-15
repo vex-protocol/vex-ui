@@ -20,13 +20,14 @@ import {
     $user,
 } from "@vex-chat/store";
 
+import { Ionicons } from "@expo/vector-icons";
 import { useStore } from "@nanostores/react";
 
 import { haptic } from "../lib/haptics";
 import { colors } from "../theme";
 
 import { Avatar } from "./Avatar";
-import { VexLogo } from "./VexLogo";
+import { ServerIcon } from "./ServerIcon";
 
 interface ServerSidebarProps {
     activeChannelId: null | string;
@@ -138,13 +139,23 @@ export function ServerSidebar({
                             ]}
                         />
                         <TouchableOpacity
+                            accessibilityLabel="Direct messages"
+                            accessibilityRole="button"
+                            activeOpacity={0.78}
                             onPress={() => {
                                 haptic("selection");
                                 onSelectHome();
                             }}
-                            style={styles.homeBtn}
+                            style={[
+                                styles.homeBtn,
+                                homeActive && styles.homeBtnActive,
+                            ]}
                         >
-                            <VexLogo showWordmark={false} size={22} />
+                            <Ionicons
+                                color={homeActive ? colors.text : colors.muted}
+                                name="chatbubbles-outline"
+                                size={24}
+                            />
                             {totalDmUnread > 0 && (
                                 <View style={styles.homeBadge}>
                                     <Text style={styles.homeBadgeText}>
@@ -186,11 +197,12 @@ export function ServerSidebar({
                                             active && styles.serverBtnActive,
                                         ]}
                                     >
-                                        <Text style={styles.serverInitial}>
-                                            {server.name
-                                                .slice(0, 2)
-                                                .toUpperCase()}
-                                        </Text>
+                                        <ServerIcon
+                                            iconID={server.icon ?? null}
+                                            name={server.name}
+                                            serverID={server.serverID}
+                                            size={52}
+                                        />
                                         {unread > 0 ? (
                                             <View style={styles.serverBadge}>
                                                 <Text
@@ -208,13 +220,20 @@ export function ServerSidebar({
                         <View style={styles.serverRow}>
                             <View style={styles.activePill} />
                             <TouchableOpacity
+                                accessibilityLabel="Create or join a group"
+                                accessibilityRole="button"
+                                activeOpacity={0.78}
                                 onPress={() => {
                                     haptic("tap");
                                     onAddServer();
                                 }}
                                 style={styles.addBtn}
                             >
-                                <Text style={styles.addText}>+</Text>
+                                <Ionicons
+                                    color={colors.success}
+                                    name="add"
+                                    size={26}
+                                />
                             </TouchableOpacity>
                         </View>
                     </ScrollView>
@@ -415,9 +434,11 @@ export function ServerSidebar({
                     </Text>
                 </View>
                 <View style={styles.profileGearWrap}>
-                    <View style={styles.profileGearOuter}>
-                        <View style={styles.profileGearInner} />
-                    </View>
+                    <Ionicons
+                        color={colors.muted}
+                        name="settings-outline"
+                        size={21}
+                    />
                 </View>
             </TouchableOpacity>
         </View>
@@ -430,7 +451,7 @@ function formatUnreadCount(count: number): string {
 
 const styles = StyleSheet.create({
     activePill: {
-        backgroundColor: colors.text,
+        backgroundColor: colors.accent,
         borderRadius: 2,
         height: 28,
         opacity: 0,
@@ -441,34 +462,29 @@ const styles = StyleSheet.create({
     },
     addBtn: {
         alignItems: "center",
-        backgroundColor: "#171a22",
-        borderColor: "rgba(255,255,255,0.1)",
-        borderRadius: 18,
+        backgroundColor: colors.surfaceLight,
+        borderColor: colors.borderSubtle,
+        borderRadius: 8,
         borderWidth: 1,
         height: 56,
         justifyContent: "center",
         marginVertical: 4,
         width: 56,
     },
-    addText: {
-        color: colors.textSecondary,
-        fontSize: 28,
-        marginTop: -2,
-    },
     authDotAuthenticated: {
         backgroundColor: colors.online,
     },
     authDotChecking: {
-        backgroundColor: "#FFD60A",
+        backgroundColor: colors.warning,
     },
     authDotOffline: {
-        backgroundColor: "#8E8E93",
+        backgroundColor: colors.offline,
     },
     authDotSignedOut: {
-        backgroundColor: "#6B7280",
+        backgroundColor: colors.mutedDark,
     },
     authDotUnauthorized: {
-        backgroundColor: "#FF453A",
+        backgroundColor: colors.error,
     },
     channelBadge: {
         alignItems: "center",
@@ -485,9 +501,7 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
     },
     channelItemActive: {
-        backgroundColor: "rgba(255,255,255,0.09)",
-        borderColor: "rgba(255,255,255,0.16)",
-        borderWidth: 1,
+        backgroundColor: colors.selected,
     },
     channelItemRow: {
         alignItems: "center",
@@ -510,14 +524,14 @@ const styles = StyleSheet.create({
         minWidth: 0,
     },
     channelPane: {
-        backgroundColor: "#12151d",
-        borderLeftColor: "rgba(255,255,255,0.08)",
+        backgroundColor: colors.panel,
+        borderLeftColor: colors.borderSubtle,
         borderLeftWidth: 1,
         flex: 1,
         paddingHorizontal: 10,
     },
     channelPaneEmpty: {
-        color: "rgba(255,255,255,0.5)",
+        color: colors.mutedDark,
         fontSize: 12,
         marginTop: 8,
     },
@@ -527,7 +541,7 @@ const styles = StyleSheet.create({
         fontWeight: "600",
     },
     divider: {
-        backgroundColor: "rgba(255,255,255,0.12)",
+        backgroundColor: colors.borderSubtle,
         height: 1,
         marginVertical: 8,
         width: 40,
@@ -574,8 +588,8 @@ const styles = StyleSheet.create({
         justifyContent: "space-between",
     },
     drawerContainer: {
-        backgroundColor: "#0b0d12",
-        borderRightColor: "rgba(255,255,255,0.08)",
+        backgroundColor: colors.rail,
+        borderRightColor: colors.borderSubtle,
         borderRightWidth: 1,
         flex: 1,
         flexDirection: "column",
@@ -583,7 +597,7 @@ const styles = StyleSheet.create({
     homeBadge: {
         alignItems: "center",
         backgroundColor: colors.error,
-        borderColor: colors.surface,
+        borderColor: colors.rail,
         borderRadius: 10,
         borderWidth: 2,
         bottom: -3,
@@ -601,17 +615,21 @@ const styles = StyleSheet.create({
     },
     homeBtn: {
         alignItems: "center",
-        backgroundColor: "#171a22",
-        borderColor: "rgba(255,255,255,0.1)",
-        borderRadius: 18,
+        backgroundColor: colors.surfaceLight,
+        borderColor: colors.borderSubtle,
+        borderRadius: 8,
         borderWidth: 1,
         height: 56,
         justifyContent: "center",
         width: 56,
     },
+    homeBtnActive: {
+        backgroundColor: colors.selected,
+        borderColor: colors.accentBorder,
+    },
     profileAuthDot: {
-        backgroundColor: "#6B7280",
-        borderColor: "#0b0d12",
+        backgroundColor: colors.mutedDark,
+        borderColor: colors.rail,
         borderRadius: 999,
         borderWidth: 2,
         bottom: -2,
@@ -621,29 +639,13 @@ const styles = StyleSheet.create({
         width: 14,
     },
     profileAvatarPlaceholder: {
-        backgroundColor: "rgba(255,255,255,0.06)",
+        backgroundColor: colors.surfaceLight,
         borderRadius: 21,
         height: 42,
         width: 42,
     },
     profileAvatarWrap: {
         position: "relative",
-    },
-    profileGearInner: {
-        backgroundColor: "rgba(255,255,255,0.55)",
-        borderRadius: 6,
-        height: 6,
-        position: "absolute",
-        width: 6,
-    },
-    profileGearOuter: {
-        alignItems: "center",
-        borderColor: "rgba(255,255,255,0.55)",
-        borderRadius: 12,
-        borderWidth: 2,
-        height: 24,
-        justifyContent: "center",
-        width: 24,
     },
     profileGearWrap: {
         alignItems: "center",
@@ -652,16 +654,15 @@ const styles = StyleSheet.create({
         width: 24,
     },
     profileStatus: {
-        color: "rgba(255,255,255,0.55)",
+        color: colors.mutedDark,
         fontSize: 11,
-        letterSpacing: 0.4,
         marginTop: 1,
         textTransform: "uppercase",
     },
     profileStrip: {
         alignItems: "center",
-        backgroundColor: "#0e1118",
-        borderTopColor: "rgba(231,0,0,0.18)",
+        backgroundColor: colors.rail,
+        borderTopColor: colors.borderSubtle,
         borderTopWidth: 1,
         flexDirection: "row",
         gap: 12,
@@ -676,17 +677,17 @@ const styles = StyleSheet.create({
         color: colors.text,
         fontSize: 15,
         fontWeight: "700",
-        letterSpacing: 0.2,
     },
     railContainer: {
         alignItems: "center",
+        backgroundColor: colors.rail,
         paddingBottom: 10,
         width: 80,
     },
     serverBadge: {
         alignItems: "center",
         backgroundColor: colors.error,
-        borderColor: colors.surface,
+        borderColor: colors.rail,
         borderRadius: 10,
         borderWidth: 2,
         bottom: -3,
@@ -699,9 +700,9 @@ const styles = StyleSheet.create({
     },
     serverBtn: {
         alignItems: "center",
-        backgroundColor: "#171a22",
-        borderColor: "rgba(255,255,255,0.1)",
-        borderRadius: 18,
+        backgroundColor: colors.surfaceLight,
+        borderColor: colors.borderSubtle,
+        borderRadius: 8,
         borderWidth: 1,
         height: 56,
         justifyContent: "center",
@@ -709,14 +710,8 @@ const styles = StyleSheet.create({
         width: 56,
     },
     serverBtnActive: {
-        backgroundColor: "#1f2430",
-        borderColor: colors.accent,
-    },
-    serverInitial: {
-        color: colors.text,
-        fontSize: 16,
-        fontWeight: "700",
-        letterSpacing: 0.5,
+        backgroundColor: colors.selected,
+        borderColor: colors.accentBorder,
     },
     serverList: {
         flex: 1,

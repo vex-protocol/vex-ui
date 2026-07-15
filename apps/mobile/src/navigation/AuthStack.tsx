@@ -8,6 +8,7 @@ import { AccountSelectorScreen } from "../screens/AccountSelectorScreen";
 import { AuthenticateScreen } from "../screens/AuthenticateScreen";
 import { HangTightScreen } from "../screens/HangTightScreen";
 import { ProvisionDeviceScreen } from "../screens/ProvisionDeviceScreen";
+import { RecoverPasswordScreen } from "../screens/RecoverPasswordScreen";
 import { WelcomeScreen } from "../screens/WelcomeScreen";
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
@@ -28,6 +29,10 @@ export function AuthStack() {
             <Stack.Screen
                 component={ProvisionDeviceScreen}
                 name="ProvisionDevice"
+            />
+            <Stack.Screen
+                component={RecoverPasswordScreen}
+                name="RecoverPassword"
             />
         </Stack.Navigator>
     );

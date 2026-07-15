@@ -1,538 +1,490 @@
 <script lang="ts">
     import type { Channel } from "@vex-chat/libvex";
 
+    import { tick } from "svelte";
     import { push } from "svelte-spa-router";
 
+    import { ChevronDown, Hash, Link, Plus, Settings2 } from "@lucide/svelte";
+
     import InviteModal from "./InviteModal.svelte";
+    import ServerIcon from "./ServerIcon.svelte";
+    import ServerSettingsModal from "./ServerSettingsModal.svelte";
     import {
-        channels as channelsStore,
+        channels as allChannels,
+        channelUnreadCounts,
+        permissions,
         servers,
+        user,
         vexService,
     } from "./store/index.js";
 
     let {
         activeChannelID,
-        channels,
-        serverID,
-        serverName,
+        channels = [],
+        serverID = "",
     }: {
         activeChannelID?: string;
         channels?: Channel[];
         serverID?: string;
-        serverName?: string;
     } = $props();
 
-    function navToChannel(channelID: string): void {
-        void push(`/server/${serverID ?? ""}/${channelID}`);
-    }
-
-    // ── Server menu ───────────────────────────────────────────────────────────
+    const server = $derived($servers[serverID]);
+    const myPower = $derived(
+        Math.max(
+            0,
+            ...Object.values($permissions)
+                .filter(
+                    (permission) =>
+                        permission.resourceID === serverID &&
+                        permission.userID === $user?.userID,
+                )
+                .map((permission) => permission.powerLevel),
+        ),
+    );
+    const canManageChannels = $derived(myPower >= 50);
 
     let menuOpen = $state(false);
-    let confirmDelete = $state(false);
-    let deleting = $state(false);
-    let deleteError = $state("");
     let showInvite = $state(false);
-
-    async function handleDeleteServer(): Promise<void> {
-        if (!serverID) return;
-        deleting = true;
-        deleteError = "";
-
-        // Compute next destination before deleting
-        const allServers = servers.get();
-        const remaining = Object.values(allServers).filter(
-            (s) => s.serverID !== serverID,
-        );
-        let dest = "/home";
-        if (remaining.length > 0) {
-            const next = remaining[0];
-            const nextChans = channelsStore.get()[next.serverID] ?? [];
-            const firstChan = nextChans[0];
-            dest = firstChan
-                ? `/server/${next.serverID}/${firstChan.channelID}`
-                : "/home";
-        }
-
-        const result = await vexService.deleteServer(serverID);
-        if (!result.ok) {
-            deleteError = result.error ?? "Failed to delete";
-            deleting = false;
-            return;
-        }
-
-        // VexService updates $servers and $channels atoms internally.
-        confirmDelete = false;
-        menuOpen = false;
-        deleting = false;
-        void push(dest);
-    }
-
-    // ── Add channel ─────────────────────────────────────────────────────────────
-
+    let showSettings = $state(false);
     let addingChannel = $state(false);
     let newChannelName = $state("");
     let addingError = $state("");
+    let addChannelInput: HTMLInputElement | null = $state(null);
 
-    function startAddChannel(): void {
+    function navToChannel(channelID: string): void {
+        void push(`/server/${serverID}/${channelID}`);
+    }
+
+    async function startAddChannel(): Promise<void> {
+        if (!canManageChannels) return;
         addingChannel = true;
         newChannelName = "";
         addingError = "";
+        await tick();
+        addChannelInput?.focus();
     }
 
     function cancelAddChannel(): void {
         addingChannel = false;
         newChannelName = "";
+        addingError = "";
     }
 
-    async function submitAddChannel(e: Event): Promise<void> {
-        e.preventDefault();
+    async function submitAddChannel(event: Event): Promise<void> {
+        event.preventDefault();
         const name = newChannelName.trim();
         if (!name || !serverID) return;
-        addingError = "";
-        try {
-            const result = await vexService.createChannel(name, serverID);
-            if (!result.ok) {
-                addingError = result.error ?? "Failed";
-                return;
-            }
-            // VexService updates $channels atom internally.
-            // Navigate to the last channel in the updated list (the newly created one).
-            const updatedChannels = channelsStore.get()[serverID] ?? [];
-            const newChan = updatedChannels[updatedChannels.length - 1];
-            addingChannel = false;
-            newChannelName = "";
-            if (newChan) void push(`/server/${serverID}/${newChan.channelID}`);
-        } catch (err: unknown) {
-            addingError = err instanceof Error ? err.message : "Failed";
+        const result = await vexService.createChannel(name, serverID);
+        if (!result.ok) {
+            addingError = result.error ?? "Could not create this channel.";
+            return;
         }
+        const created = ($allChannels[serverID] ?? []).at(-1);
+        cancelAddChannel();
+        if (created) navToChannel(created.channelID);
     }
 
-    function onInputKeydown(e: KeyboardEvent): void {
-        if (e.key === "Escape") cancelAddChannel();
+    function handleInputKeydown(event: KeyboardEvent): void {
+        if (event.key === "Escape") cancelAddChannel();
     }
 </script>
 
-<nav class="channel-bar" aria-label="Channels">
-    <div class="channel-bar__header">
+<nav class="channel-sidebar" aria-label="Channels">
+    <header class="channel-sidebar__header">
         <button
-            class="channel-bar__server-btn"
+            class="channel-sidebar__server"
+            type="button"
             onclick={() => (menuOpen = !menuOpen)}
-            aria-label="Server options"
+            aria-label="Group options"
             aria-expanded={menuOpen}
         >
-            <span class="channel-bar__server-name">{serverName}</span>
-            <span class="channel-bar__chevron"
-                >{menuOpen ? "\u2715" : "\u25BE"}</span
-            >
+            {#if server}
+                <ServerIcon {server} size={32} />
+            {/if}
+            <span class="channel-sidebar__server-name">
+                {server?.name ?? "Group"}
+            </span>
+            <ChevronDown
+                class={menuOpen ? "channel-sidebar__chevron--open" : ""}
+                size={17}
+            />
         </button>
 
         {#if menuOpen}
-            <div class="channel-bar__menu" role="menu">
-                {#if !confirmDelete}
-                    <button
-                        class="channel-bar__menu-item"
-                        role="menuitem"
-                        onclick={() => {
-                            showInvite = true;
-                            menuOpen = false;
-                        }}
-                    >
-                        Invite People
-                    </button>
-                    <button
-                        class="channel-bar__menu-item channel-bar__menu-item--danger"
-                        role="menuitem"
-                        onclick={() => {
-                            confirmDelete = true;
-                        }}
-                    >
-                        Delete Server
-                    </button>
-                {:else}
-                    <div class="channel-bar__confirm">
-                        <p class="channel-bar__confirm-text">
-                            Delete <strong>{serverName}</strong>?
-                        </p>
-                        {#if deleteError}
-                            <p class="channel-bar__delete-error">
-                                {deleteError}
-                            </p>
-                        {/if}
-                        <div class="channel-bar__confirm-actions">
-                            <button
-                                class="channel-bar__confirm-btn channel-bar__confirm-btn--danger"
-                                onclick={handleDeleteServer}
-                                disabled={deleting}
-                            >
-                                {deleting ? "Deleting..." : "Delete"}
-                            </button>
-                            <button
-                                class="channel-bar__confirm-btn"
-                                onclick={() => {
-                                    confirmDelete = false;
-                                }}
-                                disabled={deleting}
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
+            <div class="channel-sidebar__menu" role="menu">
+                <button
+                    role="menuitem"
+                    onclick={() => {
+                        showInvite = true;
+                        menuOpen = false;
+                    }}
+                >
+                    <Link size={16} />
+                    Invite people
+                </button>
+                <button
+                    role="menuitem"
+                    onclick={() => {
+                        showSettings = true;
+                        menuOpen = false;
+                    }}
+                >
+                    <Settings2 size={16} />
+                    Group settings
+                </button>
+            </div>
+        {/if}
+    </header>
+
+    {#if menuOpen}
+        <button
+            class="channel-sidebar__backdrop"
+            type="button"
+            aria-label="Close group menu"
+            onclick={() => (menuOpen = false)}
+        ></button>
+    {/if}
+
+    <div class="channel-sidebar__section">
+        <span>Channels</span>
+        {#if canManageChannels}
+            <button
+                class="channel-sidebar__add"
+                type="button"
+                title="Create channel"
+                aria-label="Create channel"
+                onclick={() => void startAddChannel()}
+            >
+                <Plus size={16} />
+            </button>
+        {/if}
+    </div>
+
+    <div class="channel-sidebar__list">
+        {#each channels as channel (channel.channelID)}
+            {@const unread = $channelUnreadCounts[channel.channelID] ?? 0}
+            <button
+                class="channel-sidebar__channel"
+                class:channel-sidebar__channel--active={activeChannelID ===
+                    channel.channelID}
+                type="button"
+                onclick={() => navToChannel(channel.channelID)}
+            >
+                <Hash size={17} strokeWidth={2} />
+                <span>{channel.name}</span>
+                {#if unread > 0}
+                    <strong>{unread > 99 ? "99+" : unread}</strong>
                 {/if}
+            </button>
+        {/each}
+
+        {#if addingChannel}
+            <form class="channel-sidebar__create" onsubmit={submitAddChannel}>
+                <div class="channel-sidebar__input">
+                    <Hash size={15} />
+                    <input
+                        bind:this={addChannelInput}
+                        bind:value={newChannelName}
+                        type="text"
+                        placeholder="channel-name"
+                        maxlength={100}
+                        autocomplete="off"
+                        onkeydown={handleInputKeydown}
+                    />
+                </div>
+                {#if addingError}
+                    <p role="alert">{addingError}</p>
+                {/if}
+                <div class="channel-sidebar__create-actions">
+                    <button
+                        class="channel-sidebar__save"
+                        type="submit"
+                        disabled={!newChannelName.trim()}>Create</button
+                    >
+                    <button type="button" onclick={cancelAddChannel}
+                        >Cancel</button
+                    >
+                </div>
+            </form>
+        {/if}
+
+        {#if channels.length === 0 && !addingChannel}
+            <div class="channel-sidebar__empty">
+                <Hash size={20} />
+                <span>No channels yet</span>
             </div>
         {/if}
     </div>
 
-    {#if menuOpen}
-        <div
-            class="channel-bar__backdrop"
-            role="presentation"
-            onclick={() => {
-                menuOpen = false;
-                confirmDelete = false;
-            }}
-        ></div>
-    {/if}
-
-    <ul class="channel-bar__list">
-        <li class="channel-bar__section-label">
-            <span>Text Channels</span>
-            <button
-                class="channel-bar__add-btn"
-                title="Add channel"
-                aria-label="Add channel"
-                onclick={startAddChannel}>+</button
-            >
-        </li>
-
-        {#each channels as channel (channel.channelID)}
-            <li>
-                <button
-                    class="channel-bar__item {activeChannelID ===
-                    channel.channelID
-                        ? 'channel-bar__item--active'
-                        : ''}"
-                    onclick={() => navToChannel(channel.channelID)}
-                >
-                    <span class="channel-bar__prefix">#</span>
-                    <span class="channel-bar__name">{channel.name}</span>
-                </button>
-            </li>
-        {/each}
-
-        {#if addingChannel}
-            <li class="channel-bar__add-row">
-                <form onsubmit={submitAddChannel}>
-                    <input
-                        class="channel-bar__add-input"
-                        type="text"
-                        placeholder="channel-name"
-                        bind:value={newChannelName}
-                        onkeydown={onInputKeydown}
-                        maxlength={32}
-                        autofocus
-                        autocomplete="off"
-                    />
-                    {#if addingError}
-                        <p class="channel-bar__add-error">{addingError}</p>
-                    {/if}
-                    <div class="channel-bar__add-actions">
-                        <button
-                            type="submit"
-                            class="channel-bar__add-submit"
-                            disabled={!newChannelName.trim()}>Add</button
-                        >
-                        <button
-                            type="button"
-                            class="channel-bar__add-cancel"
-                            onclick={cancelAddChannel}>Cancel</button
-                        >
-                    </div>
-                </form>
-            </li>
-        {/if}
-    </ul>
+    <button
+        class="channel-sidebar__manage"
+        type="button"
+        onclick={() => (showSettings = true)}
+    >
+        <Settings2 size={16} />
+        Manage group
+    </button>
 </nav>
 
 {#if showInvite}
     <InviteModal
         {serverID}
-        {serverName}
-        onclose={() => {
-            showInvite = false;
-        }}
+        serverName={server?.name}
+        onclose={() => (showInvite = false)}
     />
 {/if}
 
+{#if showSettings}
+    <ServerSettingsModal {serverID} onclose={() => (showSettings = false)} />
+{/if}
+
 <style>
-    .channel-bar {
-        width: var(--channelbar-width);
+    .channel-sidebar {
+        width: 100%;
+        min-height: 0;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
         background: var(--bg-secondary);
-        display: flex;
-        flex-direction: column;
-        flex-shrink: 0;
-        border-right: 1px solid var(--border);
-        overflow: visible;
     }
 
-    .channel-bar__header {
-        padding: 0;
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
+    .channel-sidebar__header {
         position: relative;
+        height: var(--topbar-height);
+        flex: 0 0 var(--topbar-height);
+        border-bottom: 1px solid var(--border);
     }
 
-    .channel-bar__server-btn {
+    .channel-sidebar__server {
         width: 100%;
+        height: 100%;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        padding: 12px 16px;
+        gap: 10px;
+        padding: 0 12px;
         text-align: left;
-        transition: background 0.1s;
     }
 
-    .channel-bar__server-btn:hover {
+    .channel-sidebar__server:hover {
         background: var(--bg-hover);
     }
 
-    .channel-bar__server-name {
-        font-weight: 600;
-        font-size: 15px;
-        color: var(--text-primary);
-    }
-
-    .channel-bar__chevron {
-        font-size: 12px;
-        color: var(--text-muted);
-    }
-
-    .channel-bar__menu {
-        position: absolute;
-        top: 100%;
-        left: 8px;
-        right: 8px;
-        background: var(--bg-surface);
-        border: 1px solid var(--border);
-        border-radius: 6px;
+    .channel-sidebar__server-name {
+        min-width: 0;
+        flex: 1;
         overflow: hidden;
-        z-index: 101;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    }
-
-    .channel-bar__menu-item {
-        width: 100%;
-        padding: 8px 12px;
-        text-align: left;
-        font-size: 13px;
         color: var(--text-primary);
-        transition: background 0.1s;
-    }
-
-    .channel-bar__menu-item:hover {
-        background: var(--bg-hover);
-    }
-    .channel-bar__menu-item--danger {
-        color: var(--danger);
-    }
-    .channel-bar__menu-item--danger:hover {
-        background: var(--danger);
-        color: #fff;
-    }
-
-    .channel-bar__confirm {
-        padding: 10px 12px;
-    }
-
-    .channel-bar__confirm-text {
-        font-size: 13px;
-        color: var(--text-primary);
-        margin: 0 0 8px;
-    }
-
-    .channel-bar__confirm-actions {
-        display: flex;
-        gap: 6px;
-    }
-
-    .channel-bar__confirm-btn {
-        flex: 1;
-        padding: 5px 10px;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: 600;
-        background: var(--bg-hover);
-        color: var(--text-secondary);
-        border: 1px solid var(--border);
-    }
-
-    .channel-bar__confirm-btn--danger {
-        background: var(--danger);
-        color: #fff;
-        border: none;
-    }
-
-    .channel-bar__confirm-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-
-    .channel-bar__delete-error {
-        font-size: 12px;
-        color: var(--danger);
-        margin: 0 0 6px;
-    }
-
-    .channel-bar__backdrop {
-        position: fixed;
-        inset: 0;
-        z-index: 100;
-    }
-
-    .channel-bar__section-label {
-        list-style: none;
-        padding: 16px 8px 4px 8px;
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--text-muted);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-
-    .channel-bar__add-btn {
-        font-size: 16px;
-        color: var(--text-muted);
-        line-height: 1;
-        padding: 0 2px;
-        border-radius: 3px;
-    }
-
-    .channel-bar__add-btn:hover {
-        color: var(--text-primary);
-        background: var(--bg-hover);
-    }
-
-    .channel-bar__list {
-        list-style: none;
-        padding: 4px 8px;
-        display: flex;
-        flex-direction: column;
-        gap: 1px;
-        overflow-y: auto;
-        flex: 1;
-    }
-
-    .channel-bar__item {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 8px;
-        border-radius: 4px;
-        color: var(--text-secondary);
+        font-family: var(--font-heading);
         font-size: 14px;
-        text-align: left;
-        transition:
-            background 0.1s,
-            color 0.1s;
-    }
-
-    .channel-bar__item:hover {
-        background: var(--bg-hover);
-        color: var(--text-primary);
-    }
-
-    .channel-bar__item--active {
-        background: var(--bg-surface);
-        color: var(--text-primary);
-    }
-
-    .channel-bar__prefix {
-        color: var(--text-muted);
-        flex-shrink: 0;
-    }
-    .channel-bar__name {
-        flex: 1;
-        overflow: hidden;
+        font-weight: 700;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
 
-    .channel-bar__badge {
-        background: var(--danger);
-        color: #fff;
-        border-radius: 8px;
-        font-size: 11px;
-        font-weight: 700;
-        padding: 1px 5px;
+    .channel-sidebar__server :global(svg) {
         flex-shrink: 0;
+        color: var(--text-faint);
+        transition: transform 140ms ease;
     }
 
-    /* Add channel inline form */
-    .channel-bar__add-row {
-        list-style: none;
-        padding: 4px 2px;
+    .channel-sidebar__server :global(.channel-sidebar__chevron--open) {
+        transform: rotate(180deg);
     }
 
-    .channel-bar__add-input {
+    .channel-sidebar__menu {
+        position: absolute;
+        z-index: 102;
+        top: calc(100% + 6px);
+        right: 8px;
+        left: 8px;
+        padding: 5px;
+        border: 1px solid var(--border-strong);
+        border-radius: 7px;
+        background: var(--bg-elevated);
+        box-shadow: var(--shadow-menu);
+    }
+
+    .channel-sidebar__menu button {
         width: 100%;
-        padding: 5px 8px;
-        background: var(--bg-surface);
-        border: 1px solid var(--accent);
-        border-radius: 4px;
-        color: var(--text-primary);
-        font-size: 13px;
-        box-sizing: border-box;
-    }
-
-    .channel-bar__add-input:focus {
-        outline: none;
-    }
-
-    .channel-bar__add-error {
-        font-size: 11px;
-        color: var(--danger);
-        margin: 2px 0 0;
-    }
-
-    .channel-bar__add-actions {
+        min-height: 36px;
         display: flex;
-        gap: 4px;
-        margin-top: 4px;
-    }
-
-    .channel-bar__add-submit,
-    .channel-bar__add-cancel {
-        flex: 1;
-        padding: 4px 8px;
-        border-radius: 4px;
+        align-items: center;
+        gap: 9px;
+        padding: 0 9px;
+        border-radius: 5px;
+        color: var(--text-secondary);
         font-size: 12px;
         font-weight: 600;
-        cursor: pointer;
+        text-align: left;
     }
 
-    .channel-bar__add-submit {
-        background: var(--accent);
-        color: #fff;
-        border: none;
-    }
-
-    .channel-bar__add-submit:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-    }
-
-    .channel-bar__add-cancel {
-        background: transparent;
-        color: var(--text-muted);
-        border: 1px solid var(--border);
-    }
-
-    .channel-bar__add-cancel:hover {
+    .channel-sidebar__menu button:hover {
         background: var(--bg-hover);
         color: var(--text-primary);
+    }
+
+    .channel-sidebar__backdrop {
+        position: fixed;
+        z-index: 101;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        cursor: default;
+    }
+
+    .channel-sidebar__section {
+        height: 42px;
+        flex: 0 0 42px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px 4px 14px;
+        color: var(--text-faint);
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .channel-sidebar__add {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border-radius: 5px;
+        color: var(--text-muted);
+    }
+
+    .channel-sidebar__add:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+
+    .channel-sidebar__list {
+        min-height: 0;
+        flex: 1;
+        overflow-y: auto;
+        padding: 2px 8px 10px;
+    }
+
+    .channel-sidebar__channel {
+        width: 100%;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 0 9px;
+        border-radius: 6px;
+        color: var(--text-muted);
+        text-align: left;
+    }
+
+    .channel-sidebar__channel:hover {
+        background: var(--bg-hover);
+        color: var(--text-secondary);
+    }
+
+    .channel-sidebar__channel--active {
+        background: var(--bg-selected);
+        color: var(--text-primary);
+    }
+
+    .channel-sidebar__channel > span {
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        font-size: 13px;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .channel-sidebar__channel > strong {
+        min-width: 17px;
+        height: 17px;
+        display: grid;
+        place-items: center;
+        padding: 0 4px;
+        border-radius: 9px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 9px;
+    }
+
+    .channel-sidebar__create {
+        padding: 6px 3px;
+    }
+
+    .channel-sidebar__input {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding-left: 8px;
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        background: var(--bg-surface);
+        color: var(--text-faint);
+    }
+
+    .channel-sidebar__input input {
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        padding: 7px 7px 7px 0;
+        font-size: 12px;
+    }
+
+    .channel-sidebar__create p {
+        margin-top: 5px;
+        color: var(--danger);
+        font-size: 11px;
+        line-height: 1.35;
+    }
+
+    .channel-sidebar__create-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 7px;
+    }
+
+    .channel-sidebar__create-actions button {
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .channel-sidebar__create-actions .channel-sidebar__save {
+        color: var(--accent-hover);
+    }
+
+    .channel-sidebar__empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 28px 12px;
+        color: var(--text-faint);
+        font-size: 12px;
+    }
+
+    .channel-sidebar__manage {
+        min-height: 42px;
+        flex: 0 0 42px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 8px 8px;
+        padding: 0 9px;
+        border-radius: 6px;
+        color: var(--text-faint);
+        font-size: 12px;
+        font-weight: 600;
+        text-align: left;
+    }
+
+    .channel-sidebar__manage:hover {
+        background: var(--bg-hover);
+        color: var(--text-secondary);
     }
 </style>

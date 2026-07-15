@@ -7,6 +7,7 @@ import {
     Keyboard,
     KeyboardAvoidingView,
     Platform,
+    Pressable,
     ScrollView,
     StyleSheet,
     Text,
@@ -22,36 +23,21 @@ import {
     vexService,
 } from "@vex-chat/store";
 
+import { Ionicons } from "@expo/vector-icons";
 import { useStore } from "@nanostores/react";
 
-import { Avatar } from "../components/Avatar";
+import { BackButton } from "../components/BackButton";
 import { CornerBracketBox } from "../components/CornerBracketBox";
 import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
 import { VexLogo } from "../components/VexLogo";
 import { getServerOptions } from "../lib/config";
 import { keychainKeyStore, listKnownAccounts } from "../lib/keychain";
-import {
-    cleanupLegacyLocalKeyMaterialArtifacts,
-    mobileConfig,
-} from "../lib/platform";
+import { mobileConfig } from "../lib/platform";
 import { hydrateLocalMessageRetention } from "../lib/retentionPreference";
 import { colors, typography } from "../theme";
 
-interface PendingApprovalSnapshot {
-    pendingRequestID: string;
-    pendingSignKey?: string;
-    /**
-     * Existing user's ID when the server told us so. Lets the
-     * "Is this you?" screen fetch their public avatar from the
-     * unauthenticated `/avatar/:userID` endpoint. Optional because
-     * older servers don't include it.
-     */
-    pendingUserID?: string;
-    username: string;
-}
-
-type Phase = "boot" | "confirmExisting" | "form";
+type Phase = "boot" | "form";
 
 const HANDLE_PATTERN = /^[A-Za-z0-9_]{3,19}$/;
 
@@ -64,15 +50,22 @@ export function HangTightScreen({
     // account" or "Create an account" from a non-bootstrap entry point.
     const forceForm = route.params?.force === true;
     const fromAccountPicker = route.params?.fromAccountPicker === true;
+    const mode = route.params?.mode ?? "signin";
+    const isCreatingAccount = mode === "signup";
+    const initialUsername = route.params?.username?.toLowerCase() ?? "";
+    const notice = route.params?.notice ?? "";
     const _user = useStore($user);
     const historyRecoveryStatus = useStore($historyRecoveryStatus);
     const [bootError, setBootError] = useState("");
     const [busy, setBusy] = useState(true);
-    const [username, setUsername] = useState("");
+    const [username, setUsername] = useState(initialUsername);
+    const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
     const [phase, setPhase] = useState<Phase>("boot");
     const [focused, setFocused] = useState(false);
-    const [pendingApproval, setPendingApproval] =
-        useState<null | PendingApprovalSnapshot>(null);
+    const [passwordFocused, setPasswordFocused] = useState(false);
+    const [confirmationFocused, setConfirmationFocused] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     // ── Boot spinner animations (kept for the initial loading phase) ────────
     const spin = useMemo(() => new Animated.Value(0), []);
@@ -92,6 +85,8 @@ export function HangTightScreen({
     const inputGlow = useRef(new Animated.Value(0)).current;
     const buttonScale = useRef(new Animated.Value(1)).current;
     const errorShake = useRef(new Animated.Value(0)).current;
+    const passwordInputRef = useRef<TextInput>(null);
+    const confirmationInputRef = useRef<TextInput>(null);
 
     const replaceWithAccountSelector = (error?: string) => {
         if (error) {
@@ -101,30 +96,11 @@ export function HangTightScreen({
         navigation.replace("AccountSelector");
     };
 
-    const finishRequiredPasskeySetup = async () => {
-        setBootError("");
-        setPhase("boot");
-        try {
-            const retry =
-                await vexService.completeInitialPasskeySetup(mobileConfig());
-            if (!retry.ok) {
-                replaceWithAccountSelector(
-                    retry.error ??
-                        "Passkey setup failed. Select the account to try again.",
-                );
-            }
-        } catch (err: unknown) {
-            replaceWithAccountSelector(
-                err instanceof Error
-                    ? err.message
-                    : "Passkey setup failed. Select the account to try again.",
-            );
-        }
-    };
-
     useEffect(() => {
-        void cleanupLegacyLocalKeyMaterialArtifacts();
-    }, []);
+        if (initialUsername.length > 0) {
+            setUsername(initialUsername);
+        }
+    }, [initialUsername]);
 
     useEffect(() => {
         Animated.loop(
@@ -153,7 +129,7 @@ export function HangTightScreen({
     }, [spin, pulse]);
 
     useEffect(() => {
-        if (phase !== "form" && phase !== "confirmExisting") {
+        if (phase !== "form") {
             return;
         }
         formOpacity.setValue(0);
@@ -174,9 +150,6 @@ export function HangTightScreen({
             }),
         ]).start();
 
-        if (phase !== "form") {
-            return;
-        }
         const loop = Animated.loop(
             Animated.sequence([
                 Animated.timing(inputGlow, {
@@ -257,9 +230,7 @@ export function HangTightScreen({
                         navigation.replace("AccountSelector");
                         return;
                     }
-                    setPhase("form");
-                } else if (!result.ok && result.passkeySetupRequired) {
-                    await finishRequiredPasskeySetup();
+                    navigation.replace("Welcome");
                 } else if (!result.ok) {
                     replaceWithAccountSelector(
                         result.error ?? "Could not initialize account.",
@@ -316,7 +287,7 @@ export function HangTightScreen({
         ]).start();
     };
 
-    const handleSubmit = () => {
+    const handlePasskeySubmit = () => {
         if (busy) return;
         const candidate = username.trim();
         if (!HANDLE_PATTERN.test(candidate)) {
@@ -360,7 +331,7 @@ export function HangTightScreen({
                 });
                 return;
             }
-            if (!passkey.shouldTryDeviceApproval) {
+            if (passkey.userCancelled || passkey.networkError) {
                 setBootError(
                     passkey.userCancelled
                         ? "Passkey sign-in was cancelled."
@@ -370,54 +341,12 @@ export function HangTightScreen({
                 return;
             }
 
-            return vexService.register(
-                candidate,
-                "",
-                mobileConfig(),
-                getServerOptions(),
-                keychainKeyStore,
+            setBootError(
+                passkey.error ??
+                    "No passkey found for this account. Enter your password instead.",
             );
+            playInvalidShake();
         })()
-            .then(async (result) => {
-                if (result === undefined) {
-                    return;
-                }
-                if (!result.ok && result.passkeySetupRequired) {
-                    await finishRequiredPasskeySetup();
-                    return;
-                }
-                if (
-                    !result.ok &&
-                    result.pendingDeviceApproval &&
-                    result.pendingRequestID
-                ) {
-                    // Existing account picked up mid-signup. Don't jump
-                    // straight into the approval-poll screen — it's
-                    // confusing for users who didn't realize the handle
-                    // was already taken. Show an "is this you?" gate
-                    // first; only on confirm do we route to the
-                    // Authenticate screen. The watcher started by
-                    // vexService.register() keeps running in the
-                    // background; if the user denies, we cancel it.
-                    Vibration.vibrate(20);
-                    setPendingApproval({
-                        pendingRequestID: result.pendingRequestID,
-                        ...(result.pendingSignKey !== undefined
-                            ? { pendingSignKey: result.pendingSignKey }
-                            : {}),
-                        ...(result.pendingUserID !== undefined
-                            ? { pendingUserID: result.pendingUserID }
-                            : {}),
-                        username: candidate,
-                    });
-                    setPhase("confirmExisting");
-                    return;
-                }
-                if (!result.ok) {
-                    setBootError(result.error ?? "Could not sign in.");
-                    playInvalidShake();
-                }
-            })
             .catch((err: unknown) => {
                 setBootError(
                     err instanceof Error ? err.message : "Could not sign in.",
@@ -429,57 +358,126 @@ export function HangTightScreen({
             });
     };
 
-    const handleConfirmExisting = () => {
-        if (!pendingApproval || busy) {
+    const handleSubmit = () => {
+        if (busy) return;
+        const candidate = username.trim();
+        const passwordCandidate = password;
+        if (!HANDLE_PATTERN.test(candidate)) {
+            setBootError("Handles are 3-19 letters, digits, or underscores.");
+            playInvalidShake();
             return;
         }
-        Vibration.vibrate([0, 20, 40, 20]);
+        if (passwordCandidate.length === 0) {
+            setBootError("Enter your password.");
+            playInvalidShake();
+            return;
+        }
+        if (isCreatingAccount && passwordCandidate.length < 15) {
+            setBootError("Password must be at least 15 characters.");
+            playInvalidShake();
+            return;
+        }
+        if (isCreatingAccount && confirmPassword !== passwordCandidate) {
+            setBootError("Passwords do not match.");
+            playInvalidShake();
+            return;
+        }
+        Keyboard.dismiss();
+        Vibration.vibrate(20);
+        Animated.sequence([
+            Animated.timing(buttonScale, {
+                duration: 80,
+                toValue: 0.96,
+                useNativeDriver: true,
+            }),
+            Animated.spring(buttonScale, {
+                damping: 12,
+                mass: 0.5,
+                stiffness: 280,
+                toValue: 1,
+                useNativeDriver: true,
+            }),
+        ]).start();
+
+        setBootError("");
         setBusy(true);
-        void vexService
-            .publishDeferredDeviceApprovalAndStartWatching(keychainKeyStore)
-            .then((published) => {
-                if (!published.ok) {
-                    setBootError(
-                        published.error ??
-                            "Could not notify your other devices. Try again.",
-                    );
+        const auth = isCreatingAccount
+            ? vexService.register(
+                  candidate,
+                  passwordCandidate,
+                  mobileConfig(),
+                  getServerOptions(),
+                  keychainKeyStore,
+              )
+            : fromAccountPicker
+              ? vexService.login(
+                    candidate,
+                    passwordCandidate,
+                    mobileConfig(),
+                    getServerOptions(),
+                    keychainKeyStore,
+                )
+              : vexService.requestDeviceEnrollment(
+                    candidate,
+                    passwordCandidate,
+                    mobileConfig(),
+                    getServerOptions(),
+                    keychainKeyStore,
+                );
+        void auth
+            .then(async (result) => {
+                if (
+                    !result.ok &&
+                    result.pendingDeviceApproval &&
+                    result.pendingRequestID
+                ) {
+                    if (!fromAccountPicker) {
+                        const published =
+                            await vexService.publishDeferredDeviceApprovalAndStartWatching(
+                                keychainKeyStore,
+                            );
+                        if (!published.ok) {
+                            setBootError(
+                                published.error ??
+                                    "Could not notify your other devices. Try again.",
+                            );
+                            playInvalidShake();
+                            return;
+                        }
+                    }
+                    navigation.replace("Authenticate", {
+                        requestID: result.pendingRequestID,
+                        ...(result.pendingSignKey !== undefined
+                            ? { signKey: result.pendingSignKey }
+                            : {}),
+                        username: candidate,
+                    });
                     return;
                 }
-                setBootError("");
-                const params = {
-                    requestID: pendingApproval.pendingRequestID,
-                    ...(pendingApproval.pendingSignKey !== undefined
-                        ? { signKey: pendingApproval.pendingSignKey }
-                        : {}),
-                    username: pendingApproval.username,
-                };
-                setPendingApproval(null);
-                navigation.replace("Authenticate", params);
+                if (!result.ok) {
+                    setBootError(result.error ?? "Could not continue.");
+                    playInvalidShake();
+                    return;
+                }
+            })
+            .catch((err: unknown) => {
+                setBootError(
+                    err instanceof Error ? err.message : "Could not continue.",
+                );
+                playInvalidShake();
             })
             .finally(() => {
                 setBusy(false);
             });
     };
 
-    const handleDenyExisting = () => {
-        if (busy) {
-            return;
-        }
-        Vibration.vibrate(15);
-        void (async () => {
-            await vexService.abortDeferredDeviceApproval();
-            vexService.cancelPendingApproval();
-            setPendingApproval(null);
-            setBootError("");
-            setBusy(false);
-            setUsername("");
-            setPhase("form");
-        })();
-    };
-
     const handleValid = HANDLE_PATTERN.test(username.trim());
     const showHint = username.length > 0;
     const cornerColor = focused ? colors.accent : colors.border;
+    const passwordCornerColor = passwordFocused ? colors.accent : colors.border;
+    const confirmationCornerColor = confirmationFocused
+        ? colors.accent
+        : colors.border;
 
     const inputGlowOpacity = inputGlow.interpolate({
         inputRange: [0, 1],
@@ -500,6 +498,11 @@ export function HangTightScreen({
                 <View pointerEvents="none" style={styles.blackoutLayer} />
                 <View pointerEvents="none" style={styles.glowTop} />
                 <View pointerEvents="none" style={styles.glowBottom} />
+                {forceForm && navigation.canGoBack() ? (
+                    <View style={styles.backButton}>
+                        <BackButton />
+                    </View>
+                ) : null}
 
                 <KeyboardAvoidingView
                     behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -532,12 +535,29 @@ export function HangTightScreen({
                                 <VexLogo showWordmark size={40} />
                             </Animated.View>
 
-                            <Text style={styles.eyebrow}>SIGN IN</Text>
-                            <Text style={styles.heading}>Welcome.</Text>
-                            <Text style={styles.subheading}>
-                                Enter your handle. If it&apos;s yours, your
-                                passkey opens the next step.
+                            <Text style={styles.eyebrow}>
+                                {isCreatingAccount
+                                    ? "CREATE ACCOUNT"
+                                    : "SIGN IN"}
                             </Text>
+                            <Text style={styles.heading}>
+                                {isCreatingAccount
+                                    ? "Join Vex."
+                                    : "Welcome back."}
+                            </Text>
+                            <Text style={styles.subheading}>
+                                {isCreatingAccount
+                                    ? "Choose a handle and a password of 15 or more characters. You can add a passkey later."
+                                    : "Enter your handle and password, or use a passkey already added to your account."}
+                            </Text>
+
+                            {notice ? (
+                                <View style={styles.noticeBox}>
+                                    <Text style={styles.noticeText}>
+                                        {notice}
+                                    </Text>
+                                </View>
+                            ) : null}
 
                             <View style={styles.inputArea}>
                                 <Animated.View
@@ -591,14 +611,17 @@ export function HangTightScreen({
                                                 setFocused(true);
                                                 Vibration.vibrate(8);
                                             }}
-                                            onSubmitEditing={handleSubmit}
+                                            onSubmitEditing={() => {
+                                                passwordInputRef.current?.focus();
+                                            }}
                                             placeholder="handle"
                                             placeholderTextColor={
                                                 colors.mutedDark
                                             }
-                                            returnKeyType="go"
+                                            returnKeyType="next"
                                             selectionColor={colors.accent}
                                             style={styles.input}
+                                            submitBehavior="submit"
                                             value={username}
                                         />
                                         {showHint ? (
@@ -621,6 +644,139 @@ export function HangTightScreen({
                                 3-19 letters, digits, or underscores
                             </Text>
 
+                            <View style={styles.passwordArea}>
+                                <CornerBracketBox
+                                    color={passwordCornerColor}
+                                    size={10}
+                                    thickness={1.5}
+                                >
+                                    <View style={styles.inputRow}>
+                                        <TextInput
+                                            autoCapitalize="none"
+                                            autoComplete={
+                                                isCreatingAccount
+                                                    ? "new-password"
+                                                    : "current-password"
+                                            }
+                                            autoCorrect={false}
+                                            editable={!busy}
+                                            maxLength={1024}
+                                            onBlur={() => {
+                                                setPasswordFocused(false);
+                                            }}
+                                            onChangeText={(text) => {
+                                                setPassword(text);
+                                                if (bootError) setBootError("");
+                                            }}
+                                            onFocus={() => {
+                                                setPasswordFocused(true);
+                                                Vibration.vibrate(8);
+                                            }}
+                                            onSubmitEditing={() => {
+                                                if (isCreatingAccount) {
+                                                    confirmationInputRef.current?.focus();
+                                                    return;
+                                                }
+                                                handleSubmit();
+                                            }}
+                                            placeholder="password"
+                                            placeholderTextColor={
+                                                colors.mutedDark
+                                            }
+                                            ref={passwordInputRef}
+                                            returnKeyType={
+                                                isCreatingAccount
+                                                    ? "next"
+                                                    : "go"
+                                            }
+                                            secureTextEntry={!showPassword}
+                                            selectionColor={colors.accent}
+                                            style={styles.input}
+                                            textContentType={
+                                                isCreatingAccount
+                                                    ? "newPassword"
+                                                    : "password"
+                                            }
+                                            value={password}
+                                        />
+                                        <Pressable
+                                            accessibilityLabel={
+                                                showPassword
+                                                    ? "Hide password"
+                                                    : "Show password"
+                                            }
+                                            accessibilityRole="button"
+                                            hitSlop={8}
+                                            onPress={() => {
+                                                setShowPassword(
+                                                    (shown) => !shown,
+                                                );
+                                            }}
+                                            style={styles.passwordToggle}
+                                        >
+                                            <Ionicons
+                                                color={colors.muted}
+                                                name={
+                                                    showPassword
+                                                        ? "eye-off-outline"
+                                                        : "eye-outline"
+                                                }
+                                                size={20}
+                                            />
+                                        </Pressable>
+                                    </View>
+                                </CornerBracketBox>
+                            </View>
+
+                            {isCreatingAccount ? (
+                                <View style={styles.passwordArea}>
+                                    <CornerBracketBox
+                                        color={confirmationCornerColor}
+                                        size={10}
+                                        thickness={1.5}
+                                    >
+                                        <View style={styles.inputRow}>
+                                            <TextInput
+                                                autoCapitalize="none"
+                                                autoComplete="new-password"
+                                                autoCorrect={false}
+                                                editable={!busy}
+                                                maxLength={1024}
+                                                onBlur={() => {
+                                                    setConfirmationFocused(
+                                                        false,
+                                                    );
+                                                }}
+                                                onChangeText={(text) => {
+                                                    setConfirmPassword(text);
+                                                    if (bootError) {
+                                                        setBootError("");
+                                                    }
+                                                }}
+                                                onFocus={() => {
+                                                    setConfirmationFocused(
+                                                        true,
+                                                    );
+                                                    Vibration.vibrate(8);
+                                                }}
+                                                onSubmitEditing={handleSubmit}
+                                                placeholder="confirm password"
+                                                placeholderTextColor={
+                                                    colors.mutedDark
+                                                }
+                                                ref={confirmationInputRef}
+                                                returnKeyType="go"
+                                                secureTextEntry={!showPassword}
+                                                selectionColor={colors.accent}
+                                                style={styles.input}
+                                                textContentType="newPassword"
+                                                value={confirmPassword}
+                                            />
+                                        </View>
+                                    </CornerBracketBox>
+                                </View>
+                            ) : null}
+
                             {bootError ? (
                                 <View style={styles.errorBox}>
                                     <Text style={styles.errorText}>
@@ -640,128 +796,61 @@ export function HangTightScreen({
                                     loading={busy}
                                     onPress={handleSubmit}
                                     style={styles.signInBtn}
-                                    title={busy ? "Signing in..." : "Sign in"}
+                                    title={
+                                        busy
+                                            ? isCreatingAccount
+                                                ? "Creating account..."
+                                                : "Signing in..."
+                                            : isCreatingAccount
+                                              ? "Create account"
+                                              : "Sign in"
+                                    }
                                     variant="primary"
                                 />
+                                {!isCreatingAccount ? (
+                                    <>
+                                        <VexButton
+                                            disabled={
+                                                busy ||
+                                                username.trim().length === 0
+                                            }
+                                            icon="key-outline"
+                                            onPress={handlePasskeySubmit}
+                                            style={styles.passkeyBtn}
+                                            title="Use passkey"
+                                            variant="outline"
+                                        />
+                                        <Pressable
+                                            accessibilityRole="button"
+                                            disabled={busy}
+                                            onPress={() => {
+                                                navigation.navigate(
+                                                    "RecoverPassword",
+                                                    username.trim()
+                                                        ? {
+                                                              username:
+                                                                  username.trim(),
+                                                          }
+                                                        : undefined,
+                                                );
+                                            }}
+                                            style={styles.forgotButton}
+                                        >
+                                            <Text style={styles.forgotText}>
+                                                Forgot password?
+                                            </Text>
+                                        </Pressable>
+                                    </>
+                                ) : null}
                             </Animated.View>
 
                             {!busy ? (
                                 <Text style={styles.bottomHint}>
-                                    New handles create an account. Existing
-                                    handles use passkey sign-in first.
+                                    {isCreatingAccount
+                                        ? "Already have an account? Go back and choose Sign in."
+                                        : "Signing in on a new device may require approval from one of your existing devices."}
                                 </Text>
                             ) : null}
-                        </Animated.View>
-                    </ScrollView>
-                </KeyboardAvoidingView>
-            </ScreenLayout>
-        );
-    }
-
-    if (phase === "confirmExisting" && pendingApproval) {
-        return (
-            <ScreenLayout style={styles.layout}>
-                <View pointerEvents="none" style={styles.blackoutLayer} />
-                <View pointerEvents="none" style={styles.glowTop} />
-                <View pointerEvents="none" style={styles.glowBottom} />
-
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === "ios" ? "padding" : undefined}
-                    style={styles.formWrap}
-                >
-                    <ScrollView
-                        bounces={false}
-                        contentContainerStyle={styles.formScrollContent}
-                        keyboardShouldPersistTaps="handled"
-                        showsVerticalScrollIndicator={false}
-                    >
-                        <Animated.View
-                            style={[
-                                styles.formContent,
-                                {
-                                    opacity: formOpacity,
-                                    transform: [{ translateY: formY }],
-                                },
-                            ]}
-                        >
-                            <Animated.View
-                                style={[
-                                    styles.logoBlock,
-                                    { transform: [{ scale: pulse }] },
-                                ]}
-                            >
-                                <VexLogo showWordmark size={40} />
-                            </Animated.View>
-
-                            <Text style={styles.eyebrow}>EXISTING ACCOUNT</Text>
-                            <Text style={styles.heading}>Is this you?</Text>
-                            <Text style={styles.subheading}>
-                                That handle is already registered. If it's
-                                yours, we'll ask one of your other signed-in
-                                devices to approve this one.
-                            </Text>
-
-                            <View style={styles.confirmAvatarWrap}>
-                                <Avatar
-                                    displayName={pendingApproval.username}
-                                    // Older servers don't return the
-                                    // existing user's ID with the
-                                    // pending response — in that case
-                                    // we fall through to the
-                                    // initial/hue tile derived from the
-                                    // username they just typed.
-                                    fallbackOnly={
-                                        pendingApproval.pendingUserID ===
-                                        undefined
-                                    }
-                                    ring={{ color: colors.accent, width: 2 }}
-                                    size={96}
-                                    userID={pendingApproval.pendingUserID ?? ""}
-                                />
-                            </View>
-
-                            <View style={styles.confirmHandleArea}>
-                                <CornerBracketBox
-                                    color={colors.accent}
-                                    size={10}
-                                    thickness={1.5}
-                                >
-                                    <View style={styles.confirmHandleRow}>
-                                        <Text style={styles.atSign}>@</Text>
-                                        <Text
-                                            ellipsizeMode="tail"
-                                            numberOfLines={1}
-                                            style={styles.confirmHandleText}
-                                        >
-                                            {pendingApproval.username}
-                                        </Text>
-                                    </View>
-                                </CornerBracketBox>
-                            </View>
-
-                            <View style={styles.confirmButtonStack}>
-                                <VexButton
-                                    disabled={busy}
-                                    glow
-                                    onPress={handleConfirmExisting}
-                                    style={styles.confirmPrimary}
-                                    title="Yes, that's me"
-                                    variant="primary"
-                                />
-                                <VexButton
-                                    disabled={busy}
-                                    onPress={handleDenyExisting}
-                                    style={styles.confirmSecondary}
-                                    title="No, use a different handle"
-                                    variant="outline"
-                                />
-                            </View>
-
-                            <Text style={styles.bottomHint}>
-                                {
-                                    'Other devices are only notified after you tap "Yes". If this isn\u2019t you, nothing is sent — you can use a different handle.'
-                                }
-                            </Text>
                         </Animated.View>
                     </ScrollView>
                 </KeyboardAvoidingView>
@@ -797,6 +886,12 @@ const styles = StyleSheet.create({
         color: colors.muted,
         fontSize: 18,
         marginRight: 4,
+    },
+    backButton: {
+        left: 20,
+        position: "absolute",
+        top: 20,
+        zIndex: 2,
     },
     blackoutLayer: {
         ...StyleSheet.absoluteFill,
@@ -835,39 +930,6 @@ const styles = StyleSheet.create({
     checkPending: {
         color: colors.mutedDark,
     },
-    confirmAvatarWrap: {
-        alignItems: "center",
-        marginTop: 22,
-    },
-    confirmButtonStack: {
-        gap: 12,
-        marginTop: 24,
-    },
-    confirmHandleArea: {
-        marginTop: 16,
-    },
-    confirmHandleRow: {
-        alignItems: "center",
-        backgroundColor: colors.input,
-        borderColor: "rgba(255,255,255,0.06)",
-        borderWidth: 1,
-        flexDirection: "row",
-        paddingHorizontal: 14,
-        paddingVertical: 14,
-    },
-    confirmHandleText: {
-        ...typography.bodyLarge,
-        color: colors.text,
-        flex: 1,
-        fontSize: 18,
-        letterSpacing: 0.5,
-    },
-    confirmPrimary: {
-        width: "100%",
-    },
-    confirmSecondary: {
-        width: "100%",
-    },
     errorBox: {
         alignSelf: "stretch",
         backgroundColor: colors.dangerBg,
@@ -886,6 +948,17 @@ const styles = StyleSheet.create({
         ...typography.label,
         color: "rgba(255,255,255,0.5)",
         marginTop: 18,
+    },
+    forgotButton: {
+        alignSelf: "center",
+        marginTop: 14,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+    },
+    forgotText: {
+        ...typography.body,
+        color: colors.accentMuted,
+        fontSize: 13,
     },
     formContent: {
         alignSelf: "center",
@@ -949,7 +1022,7 @@ const styles = StyleSheet.create({
         flex: 1,
         fontFamily: typography.bodyLarge.fontFamily,
         fontSize: 18,
-        letterSpacing: 0.5,
+        letterSpacing: 0,
         paddingVertical: 14,
     },
     inputArea: {
@@ -983,6 +1056,34 @@ const styles = StyleSheet.create({
     },
     logoBlock: {
         alignItems: "flex-start",
+    },
+    noticeBox: {
+        alignSelf: "stretch",
+        backgroundColor: colors.successBg,
+        borderColor: colors.successBorder,
+        borderWidth: 1,
+        marginTop: 14,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+    },
+    noticeText: {
+        ...typography.body,
+        color: colors.successText,
+        textAlign: "center",
+    },
+    passkeyBtn: {
+        marginTop: 10,
+        width: "100%",
+    },
+    passwordArea: {
+        marginTop: 14,
+        position: "relative",
+    },
+    passwordToggle: {
+        alignItems: "center",
+        height: 44,
+        justifyContent: "center",
+        width: 44,
     },
     signInBtn: {
         marginTop: 20,

@@ -2,7 +2,7 @@ import { applyEmoji } from "@vex-chat/store";
 
 import { openUrl } from "@tauri-apps/plugin-opener";
 import DOMPurify from "dompurify";
-import hljs from "highlight.js";
+import hljs from "highlight.js/lib/common";
 import { marked } from "marked";
 
 // Re-export shared utilities so existing imports keep working

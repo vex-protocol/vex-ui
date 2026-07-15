@@ -117,9 +117,13 @@ module.exports = ({ config }) => {
     const androidPermissions = Array.from(
         new Set([
             ...(config.android?.permissions ?? []),
+            "BLUETOOTH_CONNECT",
+            "CAMERA",
             "FOREGROUND_SERVICE",
             "FOREGROUND_SERVICE_DATA_SYNC",
+            "MODIFY_AUDIO_SETTINGS",
             "REQUEST_INSTALL_PACKAGES",
+            "RECORD_AUDIO",
             "WAKE_LOCK",
         ]),
     );
@@ -146,6 +150,15 @@ module.exports = ({ config }) => {
             config: {
                 ...config.ios?.config,
                 usesNonExemptEncryption: true,
+            },
+            infoPlist: {
+                ...config.ios?.infoPlist,
+                NSCameraUsageDescription:
+                    "Allow $(PRODUCT_NAME) to use the camera to take photos to send in chats.",
+                NSMicrophoneUsageDescription:
+                    "Allow $(PRODUCT_NAME) to use the microphone for voice calls and voice memos.",
+                NSPhotoLibraryUsageDescription:
+                    "Allow $(PRODUCT_NAME) to choose photos to send in chats and update your profile.",
             },
         },
         android: {
@@ -195,7 +208,7 @@ module.exports = ({ config }) => {
                 {
                     enableBackgroundPlayback: false,
                     microphonePermission:
-                        "Allow $(PRODUCT_NAME) to record voice memos.",
+                        "Allow $(PRODUCT_NAME) to use the microphone for voice calls and voice memos.",
                     recordAudioAndroid: true,
                 },
             ],
@@ -206,6 +219,16 @@ module.exports = ({ config }) => {
                     supportsPictureInPicture: false,
                 },
             ],
+            [
+                "expo-camera",
+                {
+                    barcodeScannerEnabled: false,
+                    cameraPermission:
+                        "Allow $(PRODUCT_NAME) to use the camera to take photos to send in chats.",
+                    recordAudioAndroid: false,
+                },
+            ],
+            "react-native-iap",
             "expo-background-task",
             "./plugins/withForegroundService",
             "./plugins/withAndroidShareIntent",

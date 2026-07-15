@@ -1,7 +1,8 @@
 # ADR-007: Device-Key Auto-Login (Passwordless Session Bootstrap)
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-04-07
+**Last reviewed:** 2026-07-14
 **Deciders:** @dream
 
 ---
@@ -56,11 +57,11 @@ HTTP client headers before calling `connect()`.
 
 | Criteria | Assessment |
 |----------|-----------|
-| **Privacy** | Stores a bearer token that grants full account access. If the keystore is compromised, the attacker can impersonate the user until expiry (7 days). |
+| **Privacy** | Stores a bearer token that grants account access. If copied, it can be replayed until its one-hour expiry. |
 | **Security** | JWT is a shared secret between client and server. It can be replayed from any device. Does not prove possession of the device key. |
 | **Alignment with identity model** | Poor. Vex's identity is device-key-bound, but JWT auth bypasses that — any holder of the JWT is authenticated regardless of which device they're on. |
 | **Platform compatibility** | Works everywhere. No server changes. |
-| **Expiry** | JWT expires in 7 days. After that, user must log in manually. |
+| **Expiry** | User JWTs expire after one hour. |
 
 **Verdict:** Expedient but contradicts the privacy-first, device-key-bound
 identity model. The JWT is a portable credential that is not bound to the device.
@@ -84,13 +85,14 @@ and the device-key identity model.
 ### Option 3: Device-key challenge-response (recommended)
 
 The device proves it holds the private signing key by signing a server-issued
-nonce. No passwords, no JWTs, no shared secrets.
+nonce. It does not persist the password or require a reusable bearer to begin
+the exchange; a bounded JWT is issued only after proof succeeds.
 
 | Criteria | Assessment |
 |----------|-----------|
 | **Privacy** | No new secrets stored. The device key is already in the OS keychain from registration. Nothing additional to leak. |
 | **Security** | Challenge-response proves possession of the private key. The nonce prevents replay. The signature is bound to one device — cannot be used from another. |
-| **Alignment with identity model** | Perfect. This IS the identity model — device keys are the root of trust. |
+| **Alignment with identity model** | Strong. An approved device key is the authenticator for that client installation. |
 | **Platform compatibility** | Works everywhere. Same crypto primitives already used for registration and WS auth. |
 | **Server changes** | New HTTP endpoint on spire. |
 
@@ -109,18 +111,18 @@ Implement **Option 3: device-key challenge-response** for auto-login.
 1. Client sends:  POST /auth/device
                   { deviceID, signKey }
 
-2. Server:        - Looks up device by deviceID
+2. Server:        - Looks up the current, non-deleted device by deviceID
                   - Verifies signKey matches stored device signKey
                   - Generates random 32-byte nonce
-                  - Responds: { challenge: hex(nonce) }
+                  - Responds: { challenge, challengeID }
 
 3. Client:        - Signs the nonce with device private key
                   - Sends:  POST /auth/device/verify
-                            { deviceID, challenge: hex(nonce), signed: hex(signature) }
+                            { challengeID, signed: hex(signature) }
 
 4. Server:        - Verifies signature against stored device signKey
                   - Looks up device owner
-                  - Issues JWT + sets auth cookie (same as password login)
+                  - Consumes the challenge and issues a one-hour Bearer JWT
                   - Responds: { user, token }
 
 5. Client:        - Proceeds to connect() as normal
@@ -185,9 +187,9 @@ Password login (new device or keychain cleared):
 ### Positive
 
 - **Zero additional secrets** — no passwords or tokens stored beyond what registration already saves
-- **Device-bound** — the signing key cannot be extracted and used elsewhere (OS keychain protection)
-- **No expiry concerns** — device keys don't expire (unlike 7-day JWTs)
-- **Consistent with identity model** — the device key IS the identity, and now it's also the login credential
+- **Device-oriented** — the signing key is stored behind the platform keychain and is never sent to Spire
+- **Bounded sessions** — the approved device can obtain a fresh one-hour JWT without storing the password
+- **Consistent with the trust model** — the device key is an approved authenticator for that installation
 - **Revocable** — deleting a device on the server invalidates its auto-login (same as SSH `authorized_keys`)
 - **Works offline-first** — the challenge-response needs only two HTTP calls, no cookie jar state
 

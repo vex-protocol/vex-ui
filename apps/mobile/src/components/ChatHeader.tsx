@@ -13,6 +13,7 @@ interface ChatHeaderProps {
     onOverflow?: () => void;
     onTitlePress?: () => void;
     onUsers?: () => void;
+    onVoiceCall?: () => void;
     overflowIcon?: "dots" | "users";
     subtitle?: string;
     title: string;
@@ -23,6 +24,7 @@ export function ChatHeader({
     onOverflow,
     onTitlePress,
     onUsers,
+    onVoiceCall,
     overflowIcon = "dots",
     subtitle,
     title,
@@ -71,6 +73,21 @@ export function ChatHeader({
                 )}
             </View>
             <View style={styles.actions}>
+                {onVoiceCall && (
+                    <TouchableOpacity
+                        accessibilityLabel="Start voice call"
+                        accessibilityRole="button"
+                        hitSlop={8}
+                        onPress={onVoiceCall}
+                        style={styles.actionBtn}
+                    >
+                        <Ionicons
+                            color={colors.text}
+                            name="call-outline"
+                            size={20}
+                        />
+                    </TouchableOpacity>
+                )}
                 {onOverflow && (
                     <TouchableOpacity
                         accessibilityLabel="Channel menu"
@@ -78,15 +95,15 @@ export function ChatHeader({
                         onPress={onOverflow}
                         style={styles.actionBtn}
                     >
-                        {overflowIcon === "users" ? (
-                            <View style={styles.usersIcon}>
-                                <View style={styles.usersBackHead} />
-                                <View style={styles.usersFrontHead} />
-                                <View style={styles.usersBody} />
-                            </View>
-                        ) : (
-                            <Text style={styles.actionIcon}>⋮</Text>
-                        )}
+                        <Ionicons
+                            color={colors.muted}
+                            name={
+                                overflowIcon === "users"
+                                    ? "people-outline"
+                                    : "ellipsis-vertical"
+                            }
+                            size={20}
+                        />
                     </TouchableOpacity>
                 )}
                 {onUsers && (
@@ -96,11 +113,11 @@ export function ChatHeader({
                         onPress={onUsers}
                         style={styles.actionBtn}
                     >
-                        <View style={styles.usersIcon}>
-                            <View style={styles.usersBackHead} />
-                            <View style={styles.usersFrontHead} />
-                            <View style={styles.usersBody} />
-                        </View>
+                        <Ionicons
+                            color={colors.muted}
+                            name="people-outline"
+                            size={20}
+                        />
                     </TouchableOpacity>
                 )}
             </View>
@@ -114,11 +131,6 @@ const styles = StyleSheet.create({
         height: 36,
         justifyContent: "center",
         width: 36,
-    },
-    actionIcon: {
-        color: colors.text,
-        fontSize: 22,
-        fontWeight: "700",
     },
     actions: {
         alignItems: "flex-end",
@@ -152,7 +164,7 @@ const styles = StyleSheet.create({
         paddingRight: 12,
     },
     separator: {
-        color: colors.muted,
+        color: colors.mutedDark,
         fontSize: 14,
     },
     subtitle: {
@@ -168,38 +180,5 @@ const styles = StyleSheet.create({
     },
     titlePressable: {
         flexShrink: 1,
-    },
-    usersBackHead: {
-        backgroundColor: "rgba(255,255,255,0.52)",
-        borderRadius: 4,
-        height: 8,
-        left: 4,
-        position: "absolute",
-        top: 5,
-        width: 8,
-    },
-    usersBody: {
-        backgroundColor: "rgba(255,255,255,0.88)",
-        borderRadius: 5,
-        bottom: 3,
-        height: 6,
-        position: "absolute",
-        width: 16,
-    },
-    usersFrontHead: {
-        backgroundColor: colors.text,
-        borderRadius: 5,
-        height: 10,
-        position: "absolute",
-        right: 5,
-        top: 3,
-        width: 10,
-    },
-    usersIcon: {
-        alignItems: "center",
-        height: 20,
-        justifyContent: "center",
-        position: "relative",
-        width: 20,
     },
 });

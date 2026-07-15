@@ -21,6 +21,7 @@ type MockClient = {
     channels: { retrieve: ReturnType<typeof vi.fn> };
     close: ReturnType<typeof vi.fn>;
     connect: ReturnType<typeof vi.fn>;
+    login: ReturnType<typeof vi.fn>;
     loginWithDeviceKey: ReturnType<typeof vi.fn>;
     me: { user: ReturnType<typeof vi.fn> };
     messages: {
@@ -57,6 +58,7 @@ function makeClient(): MockClient {
         channels: { retrieve: vi.fn(async () => []) },
         close: vi.fn(async () => undefined),
         connect: vi.fn(async () => undefined),
+        login: vi.fn(async () => ({ ok: true })),
         loginWithDeviceKey: vi.fn(async () => null),
         me: {
             user: vi.fn(() => ({ userID: "user-blood", username: "blood" })),
@@ -180,7 +182,7 @@ describe("vexService.login decrypt-mismatch recovery", () => {
 
         const result = await vexService.login(
             "blood",
-            "",
+            "correct-password",
             config,
             options,
             keyStore,
@@ -199,11 +201,88 @@ describe("vexService.login decrypt-mismatch recovery", () => {
         );
         expect(firstStorage.purgeKeyData).not.toHaveBeenCalled();
         expect(recoveryStorage.purgeKeyData).toHaveBeenCalledOnce();
-        expect(recoveredClient.loginWithDeviceKey).toHaveBeenCalledWith(
-            creds.deviceID,
+        expect(recoveredClient.login).toHaveBeenCalledWith(
+            "blood",
+            "correct-password",
         );
+        expect(recoveredClient.loginWithDeviceKey).not.toHaveBeenCalled();
         expect(recoveredClient.connect).toHaveBeenCalledOnce();
         expect(saveCredentials).toHaveBeenCalledWith({ ...creds, token: "" });
+    });
+
+    test("explicit login requires a password instead of using the saved device key", async () => {
+        const creds: StoredCredentials = {
+            deviceID: "device-blood",
+            deviceKey: "0".repeat(64),
+            token: "old-token",
+            username: "blood",
+        };
+        const keyStore: KeyStore = {
+            clear: vi.fn(async () => undefined),
+            load: vi.fn(async () => creds),
+            save: vi.fn(async () => undefined),
+        };
+        const config: BootstrapConfig = {
+            createStorage: vi.fn(async () => makeStorage()),
+            deviceName: "test-device",
+        };
+        const options: ServerOptions = { host: "dev.vex.wtf" };
+        const client = makeClient();
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        const result = await vexService.login(
+            "blood",
+            "",
+            config,
+            options,
+            keyStore,
+        );
+
+        expect(result).toEqual({
+            error: "Enter your password, or use a passkey.",
+            ok: false,
+        });
+        expect(client.login).not.toHaveBeenCalled();
+        expect(client.loginWithDeviceKey).not.toHaveBeenCalled();
+        expect(client.connect).not.toHaveBeenCalled();
+    });
+
+    test("does not expose transport details when a password is rejected", async () => {
+        const creds: StoredCredentials = {
+            deviceID: "device-blood",
+            deviceKey: "0".repeat(64),
+            token: "",
+            username: "blood",
+        };
+        const keyStore: KeyStore = {
+            clear: vi.fn(async () => undefined),
+            load: vi.fn(async () => creds),
+            save: vi.fn(async () => undefined),
+        };
+        const config: BootstrapConfig = {
+            createStorage: vi.fn(async () => makeStorage()),
+            deviceName: "test-device",
+        };
+        const client = makeClient();
+        client.login.mockResolvedValueOnce({
+            error: "Unauthorized",
+            ok: false,
+        });
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        const result = await vexService.login(
+            "blood",
+            "wrong-password",
+            config,
+            { host: "dev.vex.wtf" },
+            keyStore,
+        );
+
+        expect(result).toEqual({
+            error: "Incorrect username or password.",
+            ok: false,
+        });
+        expect(client.connect).not.toHaveBeenCalled();
     });
 
     test("prompts for passkey and retries when device login reports required 2FA", async () => {
@@ -244,7 +323,7 @@ describe("vexService.login decrypt-mismatch recovery", () => {
         const authenticate = vi.fn(async () => ({ id: "assertion" }));
         const register = vi.fn();
         client.loginWithDeviceKey
-            .mockImplementationOnce(async () => {
+            .mockImplementationOnce(() => {
                 vexService.setPasskeyCeremonyDriver({
                     authenticate,
                     register,
@@ -309,63 +388,5 @@ describe("vexService.login decrypt-mismatch recovery", () => {
         expect(client.passkeys.beginRegistration).not.toHaveBeenCalled();
         expect(register).not.toHaveBeenCalled();
         expect(client.connect).toHaveBeenCalledOnce();
-    });
-
-    test("keeps authenticated client retryable when connect requires first passkey", async () => {
-        const creds: StoredCredentials = {
-            deviceID: "device-blood",
-            deviceKey: "0".repeat(64),
-            token: "old-token",
-            username: "blood",
-        };
-        const keyStore: KeyStore = {
-            clear: vi.fn(async () => undefined),
-            load: vi.fn(async () => creds),
-            save: vi.fn(async () => undefined),
-        };
-        const createStorage = vi
-            .fn<BootstrapConfig["createStorage"]>()
-            .mockResolvedValue(makeStorage());
-        const config: BootstrapConfig = {
-            createStorage,
-            deviceName: "test-device",
-        };
-        const options: ServerOptions = { host: "dev.vex.wtf" };
-        const client = makeClient();
-        client.connect.mockRejectedValueOnce(
-            new Error(
-                "A passkey must be registered before this device is allowed to connect.",
-            ),
-        );
-        client.loginWithDeviceKey.mockResolvedValueOnce(null);
-        libvexMock.create.mockResolvedValueOnce(client);
-
-        const result = await vexService.autoLogin(keyStore, config, options);
-
-        expect(result).toEqual({
-            error: "Passkey setup did not finish. Tap Retry to finish passkey setup for this account.",
-            ok: false,
-            passkeySetupRequired: true,
-        });
-        expect(client.close).not.toHaveBeenCalled();
-
-        const register = vi.fn(async () => ({ id: "credential" }));
-        vexService.setPasskeyCeremonyDriver({
-            authenticate: vi.fn(),
-            register,
-        });
-
-        const retry = await vexService.completeInitialPasskeySetup(config);
-
-        expect(retry).toEqual({ ok: true });
-        expect(register).toHaveBeenCalledWith({
-            challenge: "registration-challenge",
-        });
-        expect(client.passkeys.finishRegistration).toHaveBeenCalledWith({
-            name: "test-device",
-            requestID: "registration-request",
-            response: { id: "credential" },
-        });
-        expect(client.connect).toHaveBeenCalledTimes(2);
     });
 });

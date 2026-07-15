@@ -1,7 +1,10 @@
 <script lang="ts">
     import { tick } from "svelte";
 
+    import { FileText, Paperclip, Pencil, Send, X } from "@lucide/svelte";
+
     let {
+        contextKey,
         disabled,
         editing,
         onCancelEdit,
@@ -11,11 +14,12 @@
         sending,
         value: controlledValue,
     }: {
+        contextKey?: string;
         disabled?: boolean;
         editing?: boolean;
         onCancelEdit?: () => void;
         onChange?: (value: string) => void;
-        onSend: (content: string, attachment?: File) => Promise<void> | void;
+        onSend: (content: string, attachment?: File) => unknown;
         placeholder?: string;
         sending?: boolean;
         value?: string;
@@ -27,7 +31,10 @@
     let attachment: File | null = $state(null);
     let previewUrl: null | string = $state(null);
     let dragActive = $state(false);
+    let submitting = $state(false);
+    let attachmentContext: string | undefined = $state(undefined);
     const value = $derived(controlledValue ?? draftValue);
+    const busy = $derived(sending === true || submitting);
 
     function setValue(next: string): void {
         if (controlledValue !== undefined) {
@@ -45,7 +52,7 @@
     }
 
     function handleKeyDown(e: KeyboardEvent): void {
-        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
             e.preventDefault();
             void send();
         }
@@ -54,21 +61,19 @@
     async function send(): Promise<void> {
         const trimmed = value.trim();
         const pendingAttachment = attachment ?? undefined;
-        if ((!trimmed && !pendingAttachment) || disabled || sending) return;
-        setValue("");
-        clearAttachment();
-        if (textareaEl) textareaEl.style.height = "auto";
-        await tick();
-        await waitForNextFrame();
-        await onSend(trimmed, pendingAttachment);
-    }
-
-    function waitForNextFrame(): Promise<void> {
-        return new Promise((resolve) => {
-            requestAnimationFrame(() => {
-                resolve();
-            });
-        });
+        if ((!trimmed && !pendingAttachment) || disabled || busy) return;
+        submitting = true;
+        try {
+            const sent = await onSend(trimmed, pendingAttachment);
+            if (sent === false) return;
+            setValue("");
+            clearAttachment();
+            if (textareaEl) textareaEl.style.height = "auto";
+            await tick();
+            textareaEl?.focus();
+        } finally {
+            submitting = false;
+        }
     }
 
     function openFilePicker(): void {
@@ -125,6 +130,12 @@
         }
     });
 
+    $effect(() => {
+        if (contextKey === attachmentContext) return;
+        attachmentContext = contextKey;
+        clearAttachment();
+    });
+
     function formatSize(bytes: number): string {
         if (bytes < 1024) return `${bytes} B`;
         if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -170,14 +181,14 @@
 <div class="chat-input">
     {#if editing}
         <div class="chat-input__editing">
-            <span class="chat-input__editing-icon">✎</span>
+            <span class="chat-input__editing-icon"><Pencil size={15} /></span>
             <span class="chat-input__editing-label">Editing message</span>
             <button
                 class="chat-input__preview-remove"
                 onclick={onCancelEdit}
-                disabled={disabled || sending}
+                disabled={disabled || busy}
                 title="Cancel edit"
-                aria-label="Cancel edit">✕</button
+                aria-label="Cancel edit"><X size={15} /></button
             >
         </div>
     {/if}
@@ -191,7 +202,9 @@
                     class="chat-input__preview-img"
                 />
             {:else}
-                <span class="chat-input__preview-icon">📄</span>
+                <span class="chat-input__preview-icon"
+                    ><FileText size={22} /></span
+                >
             {/if}
             <div class="chat-input__preview-info">
                 <span class="chat-input__preview-name">{attachment.name}</span>
@@ -202,9 +215,9 @@
             <button
                 class="chat-input__preview-remove"
                 onclick={clearAttachment}
-                disabled={disabled || sending}
+                disabled={disabled || busy}
                 title="Remove attachment"
-                aria-label="Remove attachment">✕</button
+                aria-label="Remove attachment"><X size={15} /></button
             >
         </div>
     {/if}
@@ -225,7 +238,7 @@
             {value}
             rows={1}
             {placeholder}
-            {disabled}
+            disabled={disabled || busy}
             onkeydown={handleKeyDown}
             onpaste={handlePaste}
             oninput={(event) => {
@@ -249,14 +262,10 @@
                 title="Attach file"
                 aria-label="Attach file"
                 onclick={openFilePicker}
-                disabled={disabled || sending || editing}>📎</button
+                disabled={disabled || busy || editing}
             >
-            <button
-                class="chat-input__icon"
-                title="Emoji"
-                aria-label="Emoji"
-                disabled>😊</button
-            >
+                <Paperclip size={18} />
+            </button>
             {#if value.trim() || attachment}
                 <button
                     class="chat-input__send"
@@ -265,9 +274,9 @@
                     }}
                     disabled={(!value.trim() && !attachment) ||
                         disabled ||
-                        sending}
+                        busy}
                     aria-label="Send message"
-                    title="Send">↑</button
+                    title="Send"><Send size={17} /></button
                 >
             {/if}
         </div>
@@ -276,8 +285,7 @@
 
 <style>
     .chat-input {
-        padding: 10px 16px 12px;
-        border-top: 1px solid var(--border);
+        padding: 8px 18px 14px;
         background: var(--bg-primary);
         flex-shrink: 0;
     }
@@ -305,9 +313,9 @@
     }
 
     .chat-input__editing-icon {
-        color: var(--text-muted);
-        font-size: 13px;
-        line-height: 1;
+        display: grid;
+        place-items: center;
+        color: var(--accent-hover);
     }
 
     .chat-input__editing-label {
@@ -327,14 +335,13 @@
     }
 
     .chat-input__preview-icon {
-        font-size: 24px;
         width: 48px;
         height: 48px;
         display: flex;
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
-        filter: grayscale(1);
+        color: var(--text-faint);
     }
 
     .chat-input__preview-info {
@@ -381,16 +388,20 @@
     }
 
     .chat-input__wrap {
+        min-height: 48px;
         display: flex;
         align-items: flex-end;
         background: var(--bg-surface);
-        border: 1px solid var(--border);
+        border: 1px solid var(--border-strong);
         border-radius: 8px;
-        transition: border-color 0.15s;
+        transition:
+            border-color 0.15s,
+            box-shadow 0.15s;
     }
 
     .chat-input__wrap:focus-within {
         border-color: var(--accent);
+        box-shadow: 0 0 0 2px var(--accent-soft);
     }
 
     .chat-input__wrap--drag {
@@ -401,13 +412,13 @@
     .chat-input__textarea {
         flex: 1;
         resize: none;
-        line-height: 1.5;
-        min-height: 40px;
-        padding: 8px 12px;
+        line-height: 21px;
+        min-height: 46px;
+        padding: 12px 12px 10px;
         background: transparent;
         border: none;
         color: var(--text-primary);
-        font-size: 14px;
+        font-size: 13px;
         font-family: inherit;
         max-height: 144px;
         overflow-y: auto;
@@ -426,28 +437,24 @@
     .chat-input__icons {
         display: flex;
         align-items: center;
-        gap: 2px;
-        padding: 4px 6px;
+        gap: 4px;
+        padding: 6px 7px 6px 2px;
         flex-shrink: 0;
     }
 
     .chat-input__icon {
-        width: 28px;
-        height: 28px;
-        border-radius: 4px;
+        width: 34px;
+        height: 34px;
+        border-radius: 6px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 14px;
         color: var(--text-muted);
-        filter: grayscale(1);
-        opacity: 0.5;
-        transition: opacity 0.1s;
     }
 
     .chat-input__icon:not(:disabled):hover {
-        opacity: 0.8;
         background: var(--bg-hover);
+        color: var(--text-primary);
     }
 
     .chat-input__icon:disabled {
@@ -455,22 +462,23 @@
     }
 
     .chat-input__send {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
+        width: 34px;
+        height: 34px;
+        border-radius: 7px;
         background: var(--accent);
         color: #fff;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 14px;
-        font-weight: 700;
         flex-shrink: 0;
-        transition: opacity 0.15s;
+        transition:
+            background 0.15s,
+            transform 0.15s;
     }
 
     .chat-input__send:not(:disabled):hover {
-        opacity: 0.85;
+        background: var(--accent-hover);
+        transform: translateY(-1px);
     }
 
     .chat-input__send:disabled {

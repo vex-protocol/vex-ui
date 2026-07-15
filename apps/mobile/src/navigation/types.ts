@@ -1,3 +1,4 @@
+import type { CameraCaptureSource } from "../lib/cameraCaptureResult";
 import type { NavigatorScreenParams } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
@@ -8,10 +9,13 @@ export type AppScreenProps<T extends keyof AppStackParamList> =
 export type AppStackParamList = {
     AddServer: undefined;
     AvatarCrop: {
+        requestId: number;
         sourceHeight: number;
         sourceUri: string;
         sourceWidth: number;
+        title?: string;
     };
+    CameraCapture: { source: CameraCaptureSource };
     Channel: { channelID: string; channelName: string; serverID: string };
     ChannelList: { serverID: string; serverName?: string };
     Conversation: { userID: string; username: string };
@@ -25,6 +29,7 @@ export type AppStackParamList = {
     JoinGroup: undefined | { inviteID?: string };
     OnboardingEmpty: undefined;
     Passkeys: undefined;
+    Password: undefined;
     ServerSettings: { serverID: string; serverName?: string };
     SessionDetails: undefined;
     Settings: undefined;
@@ -32,6 +37,7 @@ export type AppStackParamList = {
         section:
             | "about"
             | "account"
+            | "billing"
             | "connection"
             | "data"
             | "developer"
@@ -50,12 +56,21 @@ export type AuthStackParamList = {
     Authenticate:
         | undefined
         | { requestID?: string; signKey?: string; username?: string };
-    HangTight: undefined | { force?: boolean; fromAccountPicker?: boolean };
+    HangTight:
+        | undefined
+        | {
+              force?: boolean;
+              fromAccountPicker?: boolean;
+              mode?: "signin" | "signup";
+              notice?: string;
+              username?: string;
+          };
     ProvisionDevice: {
         hasLocalDevice: boolean;
         userID?: string;
         username: string;
     };
+    RecoverPassword: undefined | { username?: string };
     Welcome: undefined;
 };
 

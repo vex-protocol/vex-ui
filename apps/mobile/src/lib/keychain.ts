@@ -22,7 +22,6 @@ import { clearLocalDatabaseKeyMaterial } from "./platform";
  *   vex-known-users.{host}                   → JSON string[] (every account ever signed in
  *                                              on this device that hasn't been explicitly
  *                                              removed; used to render the picker)
- *   vex-device-credentials.{host}            → legacy host-scoped slot (pre-multi-account)
  *
  * SecureStore has no enumeration API on either platform, so the index file is the only
  * way the picker can know what accounts exist.
@@ -39,6 +38,11 @@ export interface KnownAccount {
     username: string;
 }
 
+/** Keep saved accounts but disable trusted-device auto-login until one is chosen. */
+export async function clearActiveUsername(): Promise<void> {
+    await SecureStore.deleteItemAsync(activeUserKey());
+}
+
 /**
  * Remove every credential slot this build knows how to discover for the
  * current server host. Useful as an account-picker escape hatch when iOS
@@ -50,10 +54,6 @@ export async function clearAllCredentials(): Promise<void> {
     if (active) {
         users.add(active);
     }
-    const legacy = await readLegacyCredentials();
-    if (legacy?.username) {
-        users.add(legacy.username);
-    }
     for (const user of users) {
         await SecureStore.deleteItemAsync(credsKeyForUser(user));
         await SecureStore.deleteItemAsync(userIDKeyForUser(user));
@@ -61,7 +61,6 @@ export async function clearAllCredentials(): Promise<void> {
     }
     await SecureStore.deleteItemAsync(activeUserKey());
     await SecureStore.deleteItemAsync(knownUsersKey());
-    await SecureStore.deleteItemAsync(legacyCredsKey());
 }
 
 /**
@@ -79,7 +78,6 @@ export async function clearCredentials(username?: string): Promise<void> {
     const user = username ?? (await loadActiveUsername());
     if (!user) {
         await SecureStore.deleteItemAsync(activeUserKey());
-        await SecureStore.deleteItemAsync(legacyCredsKey());
         return;
     }
     await SecureStore.deleteItemAsync(credsKeyForUser(user));
@@ -90,10 +88,6 @@ export async function clearCredentials(username?: string): Promise<void> {
     if (active === user) {
         await SecureStore.deleteItemAsync(activeUserKey());
     }
-    const legacy = await readLegacyCredentials();
-    if (legacy?.username === user) {
-        await SecureStore.deleteItemAsync(legacyCredsKey());
-    }
 }
 
 /**
@@ -103,20 +97,6 @@ export async function clearCredentials(username?: string): Promise<void> {
 export async function listKnownAccounts(): Promise<KnownAccount[]> {
     const usernames = await readKnownUsers();
     if (usernames.length === 0) {
-        // Backfill path: a device that signed in before the multi-account
-        // index existed will have credentials but an empty index. Pull
-        // whatever's at the active slot or the legacy slot and re-anchor it.
-        const fallback = await loadCredentials();
-        if (fallback) {
-            await addToKnownUsers(fallback.username);
-            return [
-                {
-                    deviceID: fallback.deviceID,
-                    userID: await readUserID(fallback.username),
-                    username: fallback.username,
-                },
-            ];
-        }
         return [];
     }
     const accounts: KnownAccount[] = [];
@@ -148,22 +128,7 @@ export async function loadCredentials(
     username?: string,
 ): Promise<null | StoredCredentials> {
     const user = username ?? (await loadActiveUsername());
-    if (user) {
-        const creds = await readCredentialsForUser(user);
-        if (creds) {
-            return creds;
-        }
-    }
-    // Legacy fallback: older builds used a single host-scoped slot.
-    const legacy = await readLegacyCredentials();
-    if (!legacy) {
-        return null;
-    }
-    if (user && legacy.username !== user) {
-        return null;
-    }
-    await saveCredentials(legacy);
-    return legacy;
+    return user ? readCredentialsForUser(user) : null;
 }
 
 export async function saveCredentials(creds: StoredCredentials): Promise<void> {
@@ -173,7 +138,6 @@ export async function saveCredentials(creds: StoredCredentials): Promise<void> {
     );
     await SecureStore.setItemAsync(activeUserKey(), creds.username);
     await addToKnownUsers(creds.username);
-    await SecureStore.deleteItemAsync(legacyCredsKey());
 }
 
 /**
@@ -217,10 +181,6 @@ function credsKeyForUser(username: string): string {
 
 function knownUsersKey(): string {
     return `${KNOWN_USERS_KEY_PREFIX}.${scopeFromHost(getServerUrl())}`;
-}
-
-function legacyCredsKey(): string {
-    return `${CREDS_KEY_PREFIX}.${scopeFromHost(getServerUrl())}`;
 }
 
 async function readCredentialsForUser(
@@ -267,18 +227,6 @@ async function readKnownUsers(): Promise<string[]> {
         /* fall through — corrupted index, treat as empty */
     }
     return [];
-}
-
-async function readLegacyCredentials(): Promise<null | StoredCredentials> {
-    const raw = await SecureStore.getItemAsync(legacyCredsKey());
-    if (!raw) {
-        return null;
-    }
-    try {
-        return JSON.parse(raw) as StoredCredentials;
-    } catch {
-        return null;
-    }
 }
 
 async function readUserID(username: string): Promise<null | string> {

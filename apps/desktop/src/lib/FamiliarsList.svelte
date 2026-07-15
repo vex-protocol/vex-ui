@@ -1,44 +1,25 @@
 <script lang="ts">
     import type { User } from "@vex-chat/libvex";
 
-    import { push } from "svelte-spa-router";
+    import { location, push } from "svelte-spa-router";
+
+    import { MessageCircle, Search, X } from "@lucide/svelte";
 
     import Avatar from "./Avatar.svelte";
     import { getServerUrl } from "./config.js";
     import {
         familiars,
+        messages,
         dmUnreadCounts as unreadCounts,
         vexService,
     } from "./store/index.js";
 
     const serverUrl = getServerUrl();
-
-    // ── Familiar persistence ─────────────────────────────────────────────────────
-    // NOTE: Familiars atom is now readonly. Local persistence is managed via
-    // localStorage only for the search-initiated "add familiar" flow. The
-    // authoritative familiar list comes from the store's bootstrap.
-
-    const STORAGE_KEY = "vex-familiars";
-
-    function loadFamiliars(): void {
-        // Familiars are populated by VexService during bootstrap.
-        // localStorage is only used to seed the search sidebar list.
-    }
-
-    function saveFamiliars(): void {
-        const list = Object.values($familiars);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-    }
-
-    function addFamiliar(_user: User): void {
-        // Familiars atom is readonly — VexService adds familiars when messages arrive.
-        // Just persist the current list for next session.
-        saveFamiliars();
-    }
-
-    loadFamiliars();
-
-    // ── Search ────────────────────────────────────────────────────────────────────
+    const familiarList = $derived(
+        Object.values($familiars)
+            .filter((familiar) => ($messages[familiar.userID]?.length ?? 0) > 0)
+            .sort((a, b) => a.username.localeCompare(b.username)),
+    );
 
     let query = $state("");
     let results: User[] = $state([]);
@@ -47,228 +28,324 @@
 
     function onInput(): void {
         if (searchTimer) clearTimeout(searchTimer);
-        const q = query.trim();
-        if (!q) {
+        const nextQuery = query.trim();
+        if (!nextQuery) {
             results = [];
+            searching = false;
             return;
         }
         searching = true;
-        searchTimer = setTimeout(async () => {
-            const found = await vexService.lookupUser(q);
-            results = found ? [found] : [];
-            searching = false;
+        searchTimer = setTimeout(() => {
+            void vexService
+                .lookupUser(nextQuery)
+                .then((found) => {
+                    results = found ? [found] : [];
+                })
+                .finally(() => {
+                    searching = false;
+                });
         }, 250);
     }
 
-    function openDM(user: User): void {
-        addFamiliar(user);
+    function clearSearch(): void {
         query = "";
         results = [];
-        void push(`/messaging/${user.userID}`);
+        searching = false;
     }
 
-    const familiarList = $derived(Object.values($familiars));
+    function openDM(target: User): void {
+        clearSearch();
+        void push(`/messaging/${target.userID}`);
+    }
+
+    function isActive(userID: string): boolean {
+        return $location === `/messaging/${userID}`;
+    }
 </script>
 
-<aside class="familiars" aria-label="Direct messages">
-    <div class="familiars__header">
-        <span class="familiars__title">Direct Messages</span>
-    </div>
+<aside class="dm-sidebar" aria-label="Direct messages">
+    <header class="dm-sidebar__header">
+        <div>
+            <span>Messages</span>
+            <strong>Direct messages</strong>
+        </div>
+        <MessageCircle size={19} />
+    </header>
 
-    <div class="familiars__search-wrap">
+    <div class="dm-sidebar__search">
+        <Search size={15} />
         <input
-            class="familiars__search"
             type="text"
-            placeholder="Search by exact username…"
+            placeholder="Find a person"
             bind:value={query}
             oninput={onInput}
-            aria-label="Search users"
+            aria-label="Find a person by username"
         />
+        {#if query}
+            <button
+                type="button"
+                onclick={clearSearch}
+                title="Clear search"
+                aria-label="Clear search"
+            >
+                <X size={14} />
+            </button>
+        {/if}
     </div>
 
-    {#if results.length > 0}
-        <ul class="familiars__results" role="listbox">
-            {#each results as user (user.userID)}
-                <li>
-                    <button
-                        class="familiars__result-item"
-                        onclick={() => openDM(user)}
-                        role="option"
-                        aria-selected="false"
-                    >
+    {#if query.trim()}
+        <div class="dm-sidebar__section-label">Search results</div>
+        <div class="dm-sidebar__results">
+            {#if searching}
+                <p>Searching...</p>
+            {:else if results.length === 0}
+                <p>No exact match found</p>
+            {:else}
+                {#each results as result (result.userID)}
+                    <button type="button" onclick={() => openDM(result)}>
                         <Avatar
-                            userID={user.userID}
-                            name={user.username}
-                            size={28}
+                            userID={result.userID}
+                            name={result.username}
+                            size={30}
                             {serverUrl}
                         />
-                        <span class="familiars__result-name"
-                            >{user.username}</span
-                        >
+                        <span>{result.username}</span>
                     </button>
-                </li>
-            {/each}
-        </ul>
-    {:else if query.trim() && !searching}
-        <p class="familiars__no-results">No users found</p>
+                {/each}
+            {/if}
+        </div>
     {/if}
 
-    {#if searching}
-        <p class="familiars__searching">Searching…</p>
-    {/if}
-
-    <ul class="familiars__list">
-        {#each familiarList as user (user.userID)}
-            <li>
-                <button class="familiars__item" onclick={() => openDM(user)}>
-                    <Avatar
-                        userID={user.userID}
-                        name={user.username}
-                        size={28}
-                        {serverUrl}
-                    />
-                    <span class="familiars__name">{user.username}</span>
-                    {#if $unreadCounts[user.userID]}
-                        <span class="familiars__badge"
-                            >{$unreadCounts[user.userID]}</span
-                        >
-                    {/if}
-                </button>
-            </li>
+    <div class="dm-sidebar__section-label">Recent</div>
+    <div class="dm-sidebar__list">
+        {#each familiarList as familiar (familiar.userID)}
+            <button
+                class:dm-sidebar__item--active={isActive(familiar.userID)}
+                class="dm-sidebar__item"
+                type="button"
+                onclick={() => openDM(familiar)}
+            >
+                <Avatar
+                    userID={familiar.userID}
+                    name={familiar.username}
+                    size={32}
+                    {serverUrl}
+                />
+                <span>{familiar.username}</span>
+                {#if $unreadCounts[familiar.userID]}
+                    <strong>
+                        {$unreadCounts[familiar.userID] > 99
+                            ? "99+"
+                            : $unreadCounts[familiar.userID]}
+                    </strong>
+                {/if}
+            </button>
         {/each}
-    </ul>
+
+        {#if familiarList.length === 0 && !query.trim()}
+            <div class="dm-sidebar__empty">
+                <MessageCircle size={22} />
+                <strong>No conversations yet</strong>
+                <span>Search above to start one.</span>
+            </div>
+        {/if}
+    </div>
 </aside>
 
 <style>
-    .familiars {
-        width: 220px;
-        flex-shrink: 0;
-        background: var(--bg-secondary);
-        border-left: 1px solid var(--border);
+    .dm-sidebar {
+        min-height: 0;
+        flex: 1;
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        background: var(--bg-secondary);
     }
 
-    .familiars__header {
-        padding: 12px 12px 8px;
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-    }
-
-    .familiars__title {
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--text-muted);
-    }
-
-    .familiars__search-wrap {
-        padding: 8px 8px 4px;
-        flex-shrink: 0;
-    }
-
-    .familiars__search {
-        font-size: 13px;
-        padding: 5px 8px;
-        background: var(--bg-surface);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        color: var(--text-primary);
-        width: 100%;
-    }
-
-    .familiars__search:focus {
-        outline: none;
-        border-color: var(--accent);
-    }
-
-    .familiars__results {
-        list-style: none;
-        background: var(--bg-primary);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        margin: 0 8px 4px;
-        overflow-y: auto;
-        max-height: 160px;
-        flex-shrink: 0;
-    }
-
-    .familiars__result-item {
-        width: 100%;
+    .dm-sidebar__header {
+        height: var(--topbar-height);
+        flex: 0 0 var(--topbar-height);
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 6px 8px;
-        font-size: 13px;
-        color: var(--text-secondary);
-        text-align: left;
+        justify-content: space-between;
+        padding: 0 14px;
+        border-bottom: 1px solid var(--border);
     }
 
-    .familiars__result-item:hover {
-        background: var(--bg-hover);
-        color: var(--text-primary);
-    }
-
-    .familiars__no-results,
-    .familiars__searching {
-        font-size: 12px;
-        color: var(--text-muted);
-        padding: 4px 12px;
-        font-style: italic;
-    }
-
-    .familiars__list {
-        list-style: none;
-        flex: 1;
-        overflow-y: auto;
-        padding: 4px 8px;
+    .dm-sidebar__header div {
+        min-width: 0;
         display: flex;
         flex-direction: column;
         gap: 1px;
     }
 
-    .familiars__item {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 5px 8px;
-        border-radius: 4px;
-        font-size: 13px;
-        color: var(--text-secondary);
-        text-align: left;
-        transition:
-            background 0.1s,
-            color 0.1s;
+    .dm-sidebar__header span {
+        color: var(--text-faint);
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
     }
 
-    .familiars__item:hover {
+    .dm-sidebar__header strong {
+        overflow: hidden;
+        font-family: var(--font-heading);
+        font-size: 14px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .dm-sidebar__header :global(svg) {
+        color: var(--text-faint);
+    }
+
+    .dm-sidebar__search {
+        height: 46px;
+        flex: 0 0 46px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 8px 9px 2px;
+        padding: 0 9px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg-surface);
+        color: var(--text-faint);
+    }
+
+    .dm-sidebar__search:focus-within {
+        border-color: var(--border-strong);
+    }
+
+    .dm-sidebar__search input {
+        min-width: 0;
+        height: 100%;
+        flex: 1;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        padding: 0;
+        font-size: 12px;
+    }
+
+    .dm-sidebar__search button {
+        width: 24px;
+        height: 24px;
+        display: grid;
+        place-items: center;
+        border-radius: 4px;
+        color: var(--text-faint);
+    }
+
+    .dm-sidebar__search button:hover {
         background: var(--bg-hover);
         color: var(--text-primary);
     }
 
-    .familiars__badge {
-        min-width: 18px;
-        height: 18px;
-        padding: 0 5px;
-        border-radius: 9px;
-        background: var(--danger, #e53935);
-        color: #fff;
-        font-size: 11px;
+    .dm-sidebar__section-label {
+        padding: 12px 14px 5px;
+        color: var(--text-faint);
+        font-size: 10px;
         font-weight: 700;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-left: auto;
-        flex-shrink: 0;
+        text-transform: uppercase;
     }
 
-    .familiars__name,
-    .familiars__result-name {
+    .dm-sidebar__results {
+        margin: 0 8px 4px;
+        padding: 4px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg-tertiary);
+    }
+
+    .dm-sidebar__results button,
+    .dm-sidebar__item {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        border-radius: 6px;
+        color: var(--text-muted);
+        text-align: left;
+    }
+
+    .dm-sidebar__results button {
+        min-height: 40px;
+        padding: 4px 7px;
+    }
+
+    .dm-sidebar__results button:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+
+    .dm-sidebar__results p {
+        padding: 10px;
+        color: var(--text-faint);
+        font-size: 11px;
+        text-align: center;
+    }
+
+    .dm-sidebar__list {
+        min-height: 0;
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 8px 10px;
+    }
+
+    .dm-sidebar__item {
+        height: 44px;
+        padding: 0 8px;
+    }
+
+    .dm-sidebar__item:hover {
+        background: var(--bg-hover);
+        color: var(--text-secondary);
+    }
+
+    .dm-sidebar__item--active {
+        background: var(--bg-selected);
+        color: var(--text-primary);
+    }
+
+    .dm-sidebar__item > span,
+    .dm-sidebar__results button > span {
+        min-width: 0;
+        flex: 1;
         overflow: hidden;
+        font-size: 12px;
+        font-weight: 600;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    .dm-sidebar__item > strong {
+        min-width: 18px;
+        height: 18px;
+        display: grid;
+        place-items: center;
+        padding: 0 4px;
+        border-radius: 9px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 9px;
+    }
+
+    .dm-sidebar__empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+        padding: 30px 12px;
+        color: var(--text-faint);
+        text-align: center;
+    }
+
+    .dm-sidebar__empty strong {
+        color: var(--text-muted);
+        font-size: 12px;
+    }
+
+    .dm-sidebar__empty span {
+        font-size: 11px;
     }
 </style>

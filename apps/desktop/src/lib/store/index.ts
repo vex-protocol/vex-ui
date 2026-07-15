@@ -1,13 +1,22 @@
 // Re-export all atoms without the $ prefix so Svelte's reactive $ syntax works cleanly.
 export {
+    $accountEntitlements as accountEntitlements,
+    $accountTier as accountTier,
+    $activeCalls as activeCalls,
     $avatarHash as avatarHash,
+    $billingAccount as billingAccount,
+    $billingOperation as billingOperation,
+    $billingProducts as billingProducts,
     $channels as channels,
     $channelUnreadCounts as channelUnreadCounts,
+    $currentCallID as currentCallID,
     $devices as devices,
     $dmUnreadCounts as dmUnreadCounts,
     $familiars as familiars,
     $groupMessages as groupMessages,
+    $incomingCalls as incomingCalls,
     $keyReplaced as keyReplaced,
+    $latestCallEvent as latestCallEvent,
     $messages as messages,
     $onlineLists as onlineLists,
     $permissions as permissions,
@@ -18,6 +27,7 @@ export {
 } from "@vex-chat/store";
 
 export {
+    ACCOUNT_TIERS,
     applyEmoji,
     avatarHue,
     parseVexLink,

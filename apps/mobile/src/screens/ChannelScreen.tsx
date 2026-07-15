@@ -44,7 +44,16 @@ import { Avatar } from "../components/Avatar";
 import { ChatHeader } from "../components/ChatHeader";
 import { MessageBubbleRN } from "../components/MessageBubbleRN";
 import { MessageInputBar } from "../components/MessageInputBar";
-import { pickFileAttachment, pickImageAttachment } from "../lib/attachments";
+import { VexField } from "../components/VexField";
+import {
+    cameraPhotoAttachmentFromUri,
+    pickFileAttachment,
+    pickImageAttachment,
+} from "../lib/attachments";
+import {
+    $cameraCaptureResult,
+    clearCameraCaptureResult,
+} from "../lib/cameraCaptureResult";
 import { haptic } from "../lib/haptics";
 import { $leftSidebarOpen, $rightSidebarOpen } from "../lib/sidebarState";
 import { colors, typography } from "../theme";
@@ -70,6 +79,7 @@ export function ChannelScreen({
     const permissions = useStore($permissions);
     // Scoped to just this server's slot so other server churn doesn't re-render us.
     const servers = useStore($servers);
+    const cameraCaptureResult = useStore($cameraCaptureResult);
     const user = useStore($user);
     const serverName = servers[serverID]?.name ?? "";
 
@@ -105,8 +115,11 @@ export function ChannelScreen({
         null,
     );
     const [sending, setSending] = useState(false);
+    const [attachingCameraPhoto, setAttachingCameraPhoto] = useState(false);
     const [sendError, setSendError] = useState("");
     const sendInFlightRef = useRef(false);
+    const cameraAttachmentInFlightRef = useRef(false);
+    const handledCameraCaptureRequestIdRef = useRef<null | number>(null);
     const listRef = useRef<FlatList<Message>>(null);
     const [members, setMembers] = useState<User[]>([]);
     const [serverPermissions, setServerPermissions] = useState<Permission[]>(
@@ -138,6 +151,52 @@ export function ChannelScreen({
                   )
                 : null,
         [authorNameForMessage, liveReplyingToMessage],
+    );
+
+    useFocusEffect(
+        useCallback(() => {
+            if (
+                !cameraCaptureResult ||
+                handledCameraCaptureRequestIdRef.current ===
+                    cameraCaptureResult.requestId
+            ) {
+                return;
+            }
+            if (
+                cameraCaptureResult.source.kind !== "channel" ||
+                cameraCaptureResult.source.channelID !== channelID ||
+                cameraCaptureResult.source.serverID !== serverID
+            ) {
+                return;
+            }
+            handledCameraCaptureRequestIdRef.current =
+                cameraCaptureResult.requestId;
+            clearCameraCaptureResult();
+            cameraAttachmentInFlightRef.current = true;
+            setAttachingCameraPhoto(true);
+
+            void (async () => {
+                setSendError("");
+                try {
+                    const picked = await cameraPhotoAttachmentFromUri({
+                        height: cameraCaptureResult.height,
+                        uri: cameraCaptureResult.uri,
+                        width: cameraCaptureResult.width,
+                    });
+                    setEditingMessage(null);
+                    setAttachment(picked);
+                } catch (err: unknown) {
+                    setSendError(
+                        err instanceof Error
+                            ? err.message
+                            : "Could not attach photo",
+                    );
+                } finally {
+                    cameraAttachmentInFlightRef.current = false;
+                    setAttachingCameraPhoto(false);
+                }
+            })();
+        }, [cameraCaptureResult, channelID, serverID]),
     );
 
     const membersBackdropOpacity = useMemo(
@@ -378,7 +437,12 @@ export function ChannelScreen({
         const pendingAttachment = attachment;
         const pendingReply = liveReplyingToMessage;
         if (pendingEdit) {
-            if (!content || !user || sendInFlightRef.current) {
+            if (
+                !content ||
+                !user ||
+                sendInFlightRef.current ||
+                cameraAttachmentInFlightRef.current
+            ) {
                 return;
             }
             sendInFlightRef.current = true;
@@ -417,7 +481,8 @@ export function ChannelScreen({
         if (
             (!content && !pendingAttachment) ||
             !user ||
-            sendInFlightRef.current
+            sendInFlightRef.current ||
+            cameraAttachmentInFlightRef.current
         ) {
             return;
         }
@@ -536,14 +601,23 @@ export function ChannelScreen({
     );
 
     const openAttachmentMenu = useCallback(() => {
-        if (sending) return;
+        if (sending || attachingCameraPhoto) return;
         Alert.alert("Attach", undefined, [
             { style: "cancel", text: "Cancel" },
             {
                 onPress: () => {
+                    setSendError("");
+                    navigation.navigate("CameraCapture", {
+                        source: { channelID, kind: "channel", serverID },
+                    });
+                },
+                text: "Camera",
+            },
+            {
+                onPress: () => {
                     handlePickAttachment("image");
                 },
-                text: "Photo",
+                text: "Photo Library",
             },
             {
                 onPress: () => {
@@ -552,7 +626,14 @@ export function ChannelScreen({
                 text: "File",
             },
         ]);
-    }, [handlePickAttachment, sending]);
+    }, [
+        attachingCameraPhoto,
+        channelID,
+        handlePickAttachment,
+        navigation,
+        sending,
+        serverID,
+    ]);
 
     const deleteMessageForEveryone = useCallback(
         (message: Message) => {
@@ -744,111 +825,116 @@ export function ChannelScreen({
             keyboardVerticalOffset={insets.top}
             style={styles.container}
         >
-            <ChatHeader
-                onOverflow={() => {
-                    navigation.navigate("ServerSettings", {
-                        serverID,
-                        serverName,
-                    });
-                }}
-                onUsers={() => {
-                    toggleMembersDrawer();
-                }}
-                subtitle={`# ${channelName}`}
-                title={serverName || "Server"}
-            />
+            <VexField style={styles.field}>
+                <ChatHeader
+                    onOverflow={() => {
+                        navigation.navigate("ServerSettings", {
+                            serverID,
+                            serverName,
+                        });
+                    }}
+                    onUsers={() => {
+                        toggleMembersDrawer();
+                    }}
+                    subtitle={`# ${channelName}`}
+                    title={serverName || "Server"}
+                />
 
-            <FlatList
-                contentContainerStyle={styles.list}
-                data={messages}
-                inverted
-                keyExtractor={(m) => m.mailID}
-                onScrollToIndexFailed={(info) => {
-                    listRef.current?.scrollToOffset({
-                        animated: true,
-                        offset: info.averageItemLength * info.index,
-                    });
-                }}
-                ref={listRef}
-                renderItem={renderMessage}
-            />
+                <FlatList
+                    contentContainerStyle={styles.list}
+                    data={messages}
+                    inverted
+                    keyExtractor={(m) => m.mailID}
+                    onScrollToIndexFailed={(info) => {
+                        listRef.current?.scrollToOffset({
+                            animated: true,
+                            offset: info.averageItemLength * info.index,
+                        });
+                    }}
+                    ref={listRef}
+                    renderItem={renderMessage}
+                    style={styles.messagePane}
+                />
 
-            {sendError !== "" && (
-                <View style={styles.errorBar}>
-                    <Text style={styles.errorText}>{sendError}</Text>
-                </View>
-            )}
+                {sendError !== "" && (
+                    <View style={styles.errorBar}>
+                        <Text style={styles.errorText}>{sendError}</Text>
+                    </View>
+                )}
 
-            <MessageInputBar
-                attachment={attachment}
-                bottomInset={insets.bottom}
-                editing={editingMessage !== null}
-                onAttachPress={openAttachmentMenu}
-                onCancelEdit={() => {
-                    setEditingMessage(null);
-                    setText("");
-                }}
-                onCancelReply={() => {
-                    setReplyingToMessage(null);
-                }}
-                onChangeText={setText}
-                onRemoveAttachment={() => {
-                    setAttachment(null);
-                }}
-                onSend={() => void sendMessage()}
-                onVoiceMemoError={setSendError}
-                onVoiceMemoRecorded={setAttachment}
-                placeholder={
-                    editingMessage ? "Edit message" : `Message #${channelName}`
-                }
-                replyingTo={replyReference}
-                sending={sending}
-                value={text}
-            />
-            {membersDrawerVisible && (
-                <>
-                    <Animated.View
-                        pointerEvents="none"
-                        style={[
-                            styles.membersBackdrop,
-                            { opacity: membersBackdropOpacity },
-                        ]}
-                    />
-                    <Pressable
-                        onPress={() => {
-                            closeMembersDrawer();
-                        }}
-                        style={styles.membersBackdropPressable}
-                    />
-                    <Animated.View
-                        pointerEvents="auto"
-                        style={[
-                            styles.membersDrawer,
-                            { transform: [{ translateX: membersDrawerX }] },
-                        ]}
-                    >
-                        <View style={styles.membersDrawerHeader}>
-                            <Text style={styles.membersDrawerTitle}>
-                                MEMBERS
-                            </Text>
-                            <Text style={styles.membersDrawerMeta}>
-                                {members.length}
-                            </Text>
-                        </View>
-                        {members.length === 0 ? (
-                            <Text style={styles.membersEmptyText}>
-                                No members found for this channel.
-                            </Text>
-                        ) : (
-                            <FlatList
-                                data={orderedMembers}
-                                keyExtractor={(member) => member.userID}
-                                renderItem={renderMember}
-                            />
-                        )}
-                    </Animated.View>
-                </>
-            )}
+                <MessageInputBar
+                    attachment={attachment}
+                    bottomInset={insets.bottom}
+                    editing={editingMessage !== null}
+                    onAttachPress={openAttachmentMenu}
+                    onCancelEdit={() => {
+                        setEditingMessage(null);
+                        setText("");
+                    }}
+                    onCancelReply={() => {
+                        setReplyingToMessage(null);
+                    }}
+                    onChangeText={setText}
+                    onRemoveAttachment={() => {
+                        setAttachment(null);
+                    }}
+                    onSend={() => void sendMessage()}
+                    onVoiceMemoError={setSendError}
+                    onVoiceMemoRecorded={setAttachment}
+                    placeholder={
+                        editingMessage
+                            ? "Edit message"
+                            : `Message #${channelName}`
+                    }
+                    replyingTo={replyReference}
+                    sending={sending || attachingCameraPhoto}
+                    value={text}
+                />
+                {membersDrawerVisible && (
+                    <>
+                        <Animated.View
+                            pointerEvents="none"
+                            style={[
+                                styles.membersBackdrop,
+                                { opacity: membersBackdropOpacity },
+                            ]}
+                        />
+                        <Pressable
+                            onPress={() => {
+                                closeMembersDrawer();
+                            }}
+                            style={styles.membersBackdropPressable}
+                        />
+                        <Animated.View
+                            pointerEvents="auto"
+                            style={[
+                                styles.membersDrawer,
+                                { transform: [{ translateX: membersDrawerX }] },
+                            ]}
+                        >
+                            <View style={styles.membersDrawerHeader}>
+                                <Text style={styles.membersDrawerTitle}>
+                                    MEMBERS
+                                </Text>
+                                <Text style={styles.membersDrawerMeta}>
+                                    {members.length}
+                                </Text>
+                            </View>
+                            {members.length === 0 ? (
+                                <Text style={styles.membersEmptyText}>
+                                    No members found for this channel.
+                                </Text>
+                            ) : (
+                                <FlatList
+                                    data={orderedMembers}
+                                    keyExtractor={(member) => member.userID}
+                                    renderItem={renderMember}
+                                />
+                            )}
+                        </Animated.View>
+                    </>
+                )}
+            </VexField>
         </KeyboardAvoidingView>
     );
 }
@@ -875,8 +961,12 @@ const styles = StyleSheet.create({
         ...typography.body,
         color: colors.error,
     },
+    field: {
+        flex: 1,
+    },
     list: {
-        paddingVertical: 8,
+        paddingBottom: 6,
+        paddingTop: 6,
     },
     memberAvatarWrap: {
         position: "relative",
@@ -918,7 +1008,7 @@ const styles = StyleSheet.create({
         lineHeight: 16,
     },
     memberPresenceDot: {
-        borderColor: "rgba(12,14,20,0.98)",
+        borderColor: colors.panel,
         borderRadius: 999,
         borderWidth: 2,
         bottom: -1,
@@ -935,8 +1025,9 @@ const styles = StyleSheet.create({
     },
     memberRow: {
         alignItems: "center",
-        backgroundColor: "rgba(255,255,255,0.04)",
-        borderColor: "rgba(255,255,255,0.08)",
+        backgroundColor: colors.surfaceLight,
+        borderColor: colors.borderSubtle,
+        borderRadius: 6,
         borderWidth: 1,
         flexDirection: "row",
         gap: 8,
@@ -946,14 +1037,14 @@ const styles = StyleSheet.create({
     },
     membersBackdrop: {
         ...StyleSheet.absoluteFill,
-        backgroundColor: "rgba(0,0,0,0.36)",
+        backgroundColor: colors.overlay,
     },
     membersBackdropPressable: {
         ...StyleSheet.absoluteFill,
     },
     membersDrawer: {
-        backgroundColor: "rgba(12,14,20,0.98)",
-        borderLeftColor: "rgba(255,255,255,0.1)",
+        backgroundColor: colors.panel,
+        borderLeftColor: colors.borderSubtle,
         borderLeftWidth: 1,
         bottom: 0,
         paddingTop: 56,
@@ -971,23 +1062,26 @@ const styles = StyleSheet.create({
     },
     membersDrawerMeta: {
         ...typography.body,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.mutedDark,
         fontSize: 11,
     },
     membersDrawerTitle: {
         ...typography.label,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.mutedDark,
     },
     membersEmptyText: {
         ...typography.body,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.mutedDark,
         marginTop: 6,
         paddingHorizontal: 14,
     },
     memberSubtext: {
         ...typography.body,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.mutedDark,
         fontSize: 10,
+    },
+    messagePane: {
+        flex: 1,
     },
 });
 

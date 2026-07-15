@@ -12,7 +12,7 @@ type Props = AuthScreenProps<"Welcome">;
 
 export function WelcomeScreen({ navigation }: Props) {
     return (
-        <ScreenLayout style={styles.layout}>
+        <ScreenLayout paddingHorizontal={28} style={styles.layout}>
             <View style={styles.container}>
                 <View pointerEvents="none" style={styles.blackoutLayer} />
                 <View pointerEvents="none" style={styles.glowTop} />
@@ -26,11 +26,25 @@ export function WelcomeScreen({ navigation }: Props) {
                     <VexButton
                         glow
                         onPress={() => {
-                            navigation.navigate("HangTight", { force: true });
+                            navigation.navigate("HangTight", {
+                                force: true,
+                                mode: "signin",
+                            });
                         }}
                         style={styles.actionButton}
                         title="Sign in"
                         variant="primary"
+                    />
+                    <VexButton
+                        onPress={() => {
+                            navigation.navigate("HangTight", {
+                                force: true,
+                                mode: "signup",
+                            });
+                        }}
+                        style={styles.actionButton}
+                        title="Create account"
+                        variant="outline"
                     />
                 </View>
 
@@ -101,6 +115,6 @@ const styles = StyleSheet.create({
         backgroundColor: "#000000",
     },
     logoWrap: {
-        marginBottom: 22,
+        marginBottom: 26,
     },
 });

@@ -31,13 +31,15 @@ import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { VoiceCallOverlay } from "./components/VoiceCallOverlay";
 import { type AppUpdateState, checkForAppUpdates } from "./lib/appUpdates";
 import {
     BACKGROUND_NETWORK_SYNC_TASK,
     BACKGROUND_PUSH_NOTIFICATION_TASK,
 } from "./lib/backgroundTaskDefinitions";
-import { getServerOptions } from "./lib/config";
+import { getServerOptions, isLocalDevServer } from "./lib/config";
 import { hydrateDevOptionsUnlocked } from "./lib/devMode";
+import { productFeatures } from "./lib/features";
 import {
     $alwaysOnEnabled,
     ensureAlwaysOnRunning,
@@ -48,10 +50,15 @@ import {
 } from "./lib/foregroundService";
 import { $incomingShare } from "./lib/incomingShareState";
 import {
+    clearActiveUsername,
     clearCredentials,
     keychainKeyStore,
     setUserIDForUsername,
 } from "./lib/keychain";
+import {
+    handleLocalDevAutomationLink,
+    isLocalDevAutomationLink,
+} from "./lib/localDevAutomation";
 import {
     clearNotifiedApprovalRequestIDs,
     dismissDeviceApprovalNotification,
@@ -87,6 +94,7 @@ vexService.setPasskeyCeremonyDriver({
     authenticate: authenticatePasskey,
     register: registerPasskey,
 });
+vexService.configureProductFeatures(productFeatures);
 
 interface AppUpdateNotice {
     message: string;
@@ -183,6 +191,15 @@ function MainApp() {
             if (!url) {
                 return;
             }
+            if (isLocalDevAutomationLink(url)) {
+                void handleLocalDevAutomationLink(url).catch((err: unknown) => {
+                    console.warn(
+                        "[vex-dev] local automation failed",
+                        err instanceof Error ? err.message : String(err),
+                    );
+                });
+                return;
+            }
             const link = parseVexLink(url);
             if (link.type !== "invite") {
                 return;
@@ -208,6 +225,7 @@ function MainApp() {
             );
         }
         await vexService.logout();
+        await clearActiveUsername();
     }, [userID]);
 
     useEffect(() => {
@@ -657,11 +675,11 @@ function MainApp() {
     }, [user?.userID]);
 
     useEffect(() => {
-        if (!user) {
+        if (!userID) {
             return;
         }
         let active = true;
-        const pollWhoAmI = async () => {
+        const maintainAuthSession = async () => {
             if (authProbeInFlightRef.current) {
                 return;
             }
@@ -712,22 +730,20 @@ function MainApp() {
                 }
             } catch (err: unknown) {
                 console.warn(
-                    "[vex-auth] whoami poll failed",
+                    "[vex-auth] session maintenance failed",
                     err instanceof Error ? err.message : String(err),
                 );
             } finally {
                 authProbeInFlightRef.current = false;
             }
         };
-        void pollWhoAmI();
-        const interval = setInterval(() => {
-            void pollWhoAmI();
-        }, 10_000);
+        // The store schedules renewal from the server-provided JWT expiry.
+        // This one probe seeds that timer; app resume handles suspended timers.
+        void maintainAuthSession();
         return () => {
             active = false;
-            clearInterval(interval);
         };
-    }, [logoutWithPushNotificationCleanup, user]);
+    }, [logoutWithPushNotificationCleanup, userID]);
 
     useEffect(() => {
         if (!user) {
@@ -936,7 +952,9 @@ function MainApp() {
         if (!userID) {
             return;
         }
-        void reconcilePushNotificationSubscription();
+        if (!isLocalDevServer()) {
+            void reconcilePushNotificationSubscription();
+        }
         flushPendingNotificationRoutes();
     }, [userID]);
 
@@ -1056,6 +1074,7 @@ function MainApp() {
             >
                 <RootNavigator />
             </NavigationContainer>
+            {productFeatures.voiceCalling ? <VoiceCallOverlay /> : null}
             {showHydrationGate && (
                 <View style={styles.hydrationGate}>
                     <View

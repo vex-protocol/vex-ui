@@ -21,10 +21,18 @@ import {
 } from "react-native";
 
 import {
+    $accountEntitlements,
+    $billingAccount,
+    $billingOperation,
     $channels,
     $localMessageRetentionDays,
     $servers,
     $user,
+    ACCOUNT_TIERS,
+    type AccountEntitlements,
+    type AccountTier,
+    type BillingProduct,
+    type BillingSubscription,
     vexService,
 } from "@vex-chat/store";
 
@@ -35,7 +43,9 @@ import * as ImagePicker from "expo-image-picker";
 
 import { Avatar } from "../components/Avatar";
 import { ChatHeader } from "../components/ChatHeader";
+import { CornerBracketBox } from "../components/CornerBracketBox";
 import { MenuRow, MenuSection } from "../components/MenuRow";
+import { VexField } from "../components/VexField";
 import {
     $appUpdateState,
     checkForAppUpdates,
@@ -45,16 +55,22 @@ import {
     openUnknownAppSourcesSettings,
     restartForOtaUpdate,
 } from "../lib/appUpdates";
-import { $avatarCropResult } from "../lib/avatarCropResult";
+import {
+    $avatarCropResult,
+    nextAvatarCropRequestId,
+} from "../lib/avatarCropResult";
+import { useBillingPurchases } from "../lib/billingPurchases";
 import { buildInfo } from "../lib/buildInfo";
 import { getServerUrl } from "../lib/config";
 import { $devOptionsUnlocked, setDevOptionsUnlocked } from "../lib/devMode";
+import { productFeatures } from "../lib/features";
 import {
     $alwaysOnEnabled,
     openBatteryOptimizationSettings,
     startAlwaysOn,
     stopAlwaysOn,
 } from "../lib/foregroundService";
+import { clearActiveUsername } from "../lib/keychain";
 import { requestNotificationPermission } from "../lib/notifications";
 import {
     $pushNotificationsEnabled,
@@ -63,7 +79,7 @@ import {
     unsubscribeStoredPushNotificationSubscription,
 } from "../lib/pushNotifications";
 import { persistLocalMessageRetentionDays } from "../lib/retentionPreference";
-import { colors, typography } from "../theme";
+import { colors, fontFamilies, typography } from "../theme";
 
 const LOCAL_RETENTION_CHOICES = [7, 14, 21, 30] as const;
 
@@ -76,6 +92,7 @@ export function SettingsSectionScreen({
 }: AppScreenProps<"SettingsSection">) {
     const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
     const appUpdateState = useStore($appUpdateState);
+    const accountEntitlements = useStore($accountEntitlements);
     const channelsByServer = useStore($channels);
     const servers = useStore($servers);
     const user = useStore($user);
@@ -90,6 +107,7 @@ export function SettingsSectionScreen({
     const [avatarUploading, setAvatarUploading] = useState(false);
     const [loggingOut, setLoggingOut] = useState(false);
     const [updateBusy, setUpdateBusy] = useState(false);
+    const [tierBusy, setTierBusy] = useState<AccountTier | null>(null);
     const [wsDebugEnabled, setWsDebugEnabled] = useState(() =>
         vexService.getWebsocketDebugEnabled(),
     );
@@ -171,6 +189,8 @@ export function SettingsSectionScreen({
                 return "About";
             case "account":
                 return "Account";
+            case "billing":
+                return productFeatures.premiumTiers ? "Plan" : "Settings";
             case "connection":
                 return "Connection";
             case "data":
@@ -289,6 +309,7 @@ export function SettingsSectionScreen({
                                     }
                                 }
                                 await vexService.logout();
+                                await clearActiveUsername();
                             } catch {
                                 /* ignore */
                             } finally {
@@ -466,6 +487,24 @@ export function SettingsSectionScreen({
     ): Promise<void> {
         await persistLocalMessageRetentionDays(days);
         vexService.setLocalMessageRetentionDays(days);
+    }
+
+    async function handleSelectAccountTier(tier: AccountTier): Promise<void> {
+        if (tierBusy != null || tier === accountEntitlements.tier) {
+            return;
+        }
+        setTierBusy(tier);
+        try {
+            const result = await vexService.setDevAccountTier(tier);
+            if (!result.ok) {
+                Alert.alert(
+                    "Tier override unavailable",
+                    result.error ?? "The local server rejected the override.",
+                );
+            }
+        } finally {
+            setTierBusy(null);
+        }
     }
 
     function pushNotificationDescription(): string {
@@ -791,22 +830,18 @@ export function SettingsSectionScreen({
         // Non-square asset (the OS cropper was skipped or freeform-cropped).
         // Send the user through our in-app cropper to pick a square region.
         if (!isSquare(width, height) && width != null && height != null) {
-            const requestId = Math.floor(Math.random() * 1_000_000_000);
+            const requestId = nextAvatarCropRequestId();
             expectedCropRequestRef.current = requestId;
             // Pre-clear any stale cropper result (different request id, but
             // safer to start clean).
             $avatarCropResult.set(null);
             navigation.navigate("AvatarCrop", {
+                requestId,
                 sourceHeight: height,
                 sourceUri: asset.uri,
                 sourceWidth: width,
+                title: "Crop avatar",
             });
-            // The useEffect above will pick the result up and finish the
-            // upload when the cropper screen returns.
-            // We can't compare `requestId` directly to the cropper's id
-            // since the cropper makes its own; we just gate on "is this
-            // the most recent crop request we issued?".
-            expectedCropRequestRef.current = null;
             return;
         }
 
@@ -830,7 +865,7 @@ export function SettingsSectionScreen({
     }
 
     return (
-        <View style={styles.container}>
+        <VexField style={styles.container}>
             <ChatHeader title={title} />
             <ScrollView
                 contentContainerStyle={styles.content}
@@ -887,64 +922,78 @@ export function SettingsSectionScreen({
 
                 {section === "account" ? (
                     <>
-                        <MenuSection title="Profile">
-                            <MenuRow
-                                accessory={
-                                    user?.userID ? (
+                        <Pressable
+                            accessibilityRole="button"
+                            disabled={avatarUploading || !user?.userID}
+                            onPress={() => {
+                                void handlePickAvatar();
+                            }}
+                            style={({ pressed }) => [
+                                styles.accountHero,
+                                pressed && styles.accountHeroPressed,
+                            ]}
+                        >
+                            <CornerBracketBox color={colors.accent} size={9}>
+                                <View style={styles.accountAvatarFrame}>
+                                    {user?.userID ? (
                                         <Avatar
                                             displayName={user.username}
-                                            size={40}
+                                            size={76}
                                             userID={user.userID}
                                         />
-                                    ) : null
-                                }
-                                description={
-                                    avatarUploading
-                                        ? "Uploading..."
-                                        : "Tap to change profile image"
-                                }
-                                disabled={avatarUploading}
-                                icon="image-outline"
-                                label="Avatar"
-                                onPress={() => {
-                                    void handlePickAvatar();
-                                }}
-                                showChevron
-                            />
-                            {avatarError !== "" ? (
-                                <View style={styles.statusCardError}>
-                                    <Text style={styles.statusTitle}>
-                                        Avatar upload issue
-                                    </Text>
-                                    <Text style={styles.errorText}>
-                                        {avatarError}
-                                    </Text>
-                                    {avatarLastAttemptBytes != null ? (
-                                        <Text style={styles.statusMeta}>
-                                            Current:{" "}
-                                            {formatBytes(
-                                                avatarLastAttemptBytes,
-                                            )}{" "}
-                                            • Limit:{" "}
-                                            {formatBytes(MAX_AVATAR_BYTES)}
-                                        </Text>
                                     ) : null}
                                 </View>
-                            ) : null}
-                            {avatarError === "" && avatarNotice !== "" ? (
-                                <View style={styles.statusCardOk}>
-                                    <Text style={styles.statusTitleOk}>
-                                        Avatar updated
+                            </CornerBracketBox>
+                            <Text numberOfLines={1} style={styles.accountName}>
+                                {user?.username ?? "Account"}
+                            </Text>
+                            <Text numberOfLines={1} style={styles.accountMeta}>
+                                {shortIdentifier(user?.userID) ?? "No user ID"}{" "}
+                                · {String(serverCount)} groups
+                            </Text>
+                        </Pressable>
+
+                        {avatarError !== "" ? (
+                            <View style={styles.statusCardError}>
+                                <Text style={styles.statusTitle}>
+                                    Avatar upload issue
+                                </Text>
+                                <Text style={styles.errorText}>
+                                    {avatarError}
+                                </Text>
+                                {avatarLastAttemptBytes != null ? (
+                                    <Text style={styles.statusMeta}>
+                                        Current:{" "}
+                                        {formatBytes(avatarLastAttemptBytes)}
+                                        {" · "}
+                                        Limit: {formatBytes(MAX_AVATAR_BYTES)}
                                     </Text>
-                                    <Text style={styles.statusMetaOk}>
-                                        {avatarNotice}
-                                    </Text>
-                                </View>
-                            ) : null}
+                                ) : null}
+                            </View>
+                        ) : null}
+                        {avatarError === "" && avatarNotice !== "" ? (
+                            <View style={styles.statusCardOk}>
+                                <Text style={styles.statusTitleOk}>
+                                    Avatar updated
+                                </Text>
+                                <Text style={styles.statusMetaOk}>
+                                    {avatarNotice}
+                                </Text>
+                            </View>
+                        ) : null}
+
+                        <MenuSection title="Identity">
+                            <MenuRow
+                                icon="person-outline"
+                                label="Display name"
+                                value={user?.username ?? "—"}
+                            />
                             <MenuRow
                                 icon="at-outline"
                                 label="Username"
-                                value={user?.username ?? "—"}
+                                value={
+                                    user?.username ? `@${user.username}` : "—"
+                                }
                             />
                             <MenuRow
                                 icon="finger-print-outline"
@@ -953,16 +1002,33 @@ export function SettingsSectionScreen({
                             />
                         </MenuSection>
 
-                        <MenuSection title="Memberships">
+                        <MenuSection
+                            footer="Your identity key never leaves this device."
+                            title="Security"
+                        >
                             <MenuRow
-                                icon="people-outline"
-                                label="Groups"
-                                value={String(serverCount)}
+                                description={`${String(channelCount)} channels across ${String(serverCount)} groups`}
+                                icon="shield-checkmark-outline"
+                                label="Encryption keys"
+                                onPress={() => {
+                                    navigation.navigate("SessionDetails");
+                                }}
                             />
                             <MenuRow
-                                icon="chatbubbles-outline"
-                                label="Channels"
-                                value={String(channelCount)}
+                                description="Change your account password"
+                                icon="lock-closed-outline"
+                                label="Password"
+                                onPress={() => {
+                                    navigation.navigate("Password");
+                                }}
+                            />
+                            <MenuRow
+                                description="Manage account recovery"
+                                icon="key-outline"
+                                label="Passkeys"
+                                onPress={() => {
+                                    navigation.navigate("Passkeys");
+                                }}
                             />
                         </MenuSection>
 
@@ -979,6 +1045,12 @@ export function SettingsSectionScreen({
                             />
                         </MenuSection>
                     </>
+                ) : null}
+
+                {section === "billing" && productFeatures.premiumTiers ? (
+                    <BillingSettingsContent
+                        accountEntitlements={accountEntitlements}
+                    />
                 ) : null}
 
                 {section === "developer" && devUnlocked ? (
@@ -1112,6 +1184,56 @@ export function SettingsSectionScreen({
                                 label="State transition logs"
                             />
                         </MenuSection>
+                        {productFeatures.premiumTiers ? (
+                            <MenuSection
+                                footer="Requires a local Spire started with dev entitlement overrides enabled."
+                                title="Entitlements"
+                            >
+                                <MenuRow
+                                    description={accountEntitlements.source}
+                                    icon="layers-outline"
+                                    label="Current tier"
+                                    value={formatTierLabel(
+                                        accountEntitlements.tier,
+                                    )}
+                                />
+                                {ACCOUNT_TIERS.map((tier) => {
+                                    const selected =
+                                        tier === accountEntitlements.tier;
+                                    return (
+                                        <MenuRow
+                                            accessory={
+                                                selected ? (
+                                                    <Ionicons
+                                                        color="rgba(255,255,255,0.85)"
+                                                        name="checkmark"
+                                                        size={22}
+                                                    />
+                                                ) : undefined
+                                            }
+                                            description={
+                                                tierBusy === tier
+                                                    ? "Applying override..."
+                                                    : selected
+                                                      ? "Selected"
+                                                      : "Apply local override"
+                                            }
+                                            disabled={
+                                                selected || tierBusy != null
+                                            }
+                                            icon="flask-outline"
+                                            key={tier}
+                                            label={formatTierLabel(tier)}
+                                            onPress={() => {
+                                                void handleSelectAccountTier(
+                                                    tier,
+                                                );
+                                            }}
+                                        />
+                                    );
+                                })}
+                            </MenuSection>
+                        ) : null}
                         <MenuSection
                             footer="Hides this menu again until you re-enter the easter egg in About."
                             title="Visibility"
@@ -1240,12 +1362,229 @@ export function SettingsSectionScreen({
                     </>
                 ) : null}
             </ScrollView>
-        </View>
+        </VexField>
+    );
+}
+
+function BillingSettingsContent({
+    accountEntitlements,
+}: {
+    accountEntitlements: AccountEntitlements;
+}) {
+    const billingAccount = useStore($billingAccount);
+    const billingOperation = useStore($billingOperation);
+    const purchases = useBillingPurchases();
+    const {
+        connected,
+        error: purchaseError,
+        pendingProductID,
+        products: purchaseProducts,
+        refresh: refreshPurchases,
+        restore: restorePurchases,
+        startPurchase,
+        storeProductFor,
+    } = purchases;
+    const [refreshing, setRefreshing] = useState(false);
+    const [restoreBusy, setRestoreBusy] = useState(false);
+    const effectiveEntitlements =
+        billingAccount?.entitlements ?? accountEntitlements;
+    const activeSubscriptions = billingAccount?.subscriptions ?? [];
+    const products = useMemo(
+        () =>
+            [...purchaseProducts].sort(
+                (a, b) => tierSortRank(a.tier) - tierSortRank(b.tier),
+            ),
+        [purchaseProducts],
+    );
+
+    const refreshBilling = useCallback(
+        async (options?: { silent?: boolean }) => {
+            if (refreshing) {
+                return;
+            }
+            if (!options?.silent) {
+                setRefreshing(true);
+            }
+            try {
+                await refreshPurchases();
+            } catch (err: unknown) {
+                if (!options?.silent) {
+                    Alert.alert("Plan unavailable", errorMessage(err));
+                }
+            } finally {
+                if (!options?.silent) {
+                    setRefreshing(false);
+                }
+            }
+        },
+        [refreshPurchases, refreshing],
+    );
+
+    useEffect(() => {
+        void refreshPurchases().catch((err: unknown) => {
+            console.warn("[vex-billing] initial refresh failed", err);
+        });
+    }, [refreshPurchases]);
+
+    async function handlePurchase(product: BillingProduct): Promise<void> {
+        try {
+            await startPurchase(product);
+        } catch (err: unknown) {
+            Alert.alert("Subscription unavailable", errorMessage(err));
+        }
+    }
+
+    async function handleRestore(): Promise<void> {
+        if (restoreBusy) {
+            return;
+        }
+        setRestoreBusy(true);
+        try {
+            await restorePurchases();
+        } catch (err: unknown) {
+            Alert.alert("Restore unavailable", errorMessage(err));
+        } finally {
+            setRestoreBusy(false);
+        }
+    }
+
+    const busy = billingOperation.busy || pendingProductID != null;
+    const billingError = purchaseError;
+
+    return (
+        <>
+            {billingError != null && billingError !== "" ? (
+                <View style={styles.statusCardError}>
+                    <Text style={styles.statusTitle}>Plan issue</Text>
+                    <Text style={styles.errorText}>{billingError}</Text>
+                </View>
+            ) : null}
+
+            <MenuSection title="Current plan">
+                <MenuRow
+                    description={effectiveEntitlements.source}
+                    icon="sparkles-outline"
+                    label="Current tier"
+                    value={formatTierLabel(effectiveEntitlements.tier)}
+                />
+            </MenuSection>
+
+            {activeSubscriptions.length > 0 ? (
+                <MenuSection title="Store subscriptions">
+                    {activeSubscriptions.map((subscription) => (
+                        <MenuRow
+                            description={subscriptionDescription(subscription)}
+                            icon="receipt-outline"
+                            key={subscription.subscriptionID}
+                            label={formatTierLabel(subscription.tier)}
+                            value={subscriptionStatusLabel(subscription)}
+                        />
+                    ))}
+                </MenuSection>
+            ) : null}
+
+            <MenuSection
+                footer={
+                    connected
+                        ? "Subscriptions are verified by Spire before the store transaction is finished on this device."
+                        : "Connect this build to App Store or Google Play services before starting a store purchase."
+                }
+                title="Available tiers"
+            >
+                {products.length > 0 ? (
+                    products.map((product) => {
+                        const nativeProduct = storeProductFor(product);
+                        const selected =
+                            product.tier === effectiveEntitlements.tier;
+                        const pending =
+                            pendingProductID === product.productID ||
+                            pendingProductID === product.storeProductID;
+                        const disabled =
+                            busy || selected || nativeProduct == null;
+                        return (
+                            <MenuRow
+                                accessory={
+                                    selected ? (
+                                        <Ionicons
+                                            color="rgba(255,255,255,0.85)"
+                                            name="checkmark"
+                                            size={22}
+                                        />
+                                    ) : undefined
+                                }
+                                description={productDescription(
+                                    product,
+                                    nativeProduct,
+                                    selected,
+                                    pending,
+                                )}
+                                disabled={disabled}
+                                icon={
+                                    product.tier === "pro"
+                                        ? "diamond-outline"
+                                        : "add-circle-outline"
+                                }
+                                key={product.productID}
+                                label={formatTierLabel(product.tier)}
+                                onPress={() => {
+                                    void handlePurchase(product);
+                                }}
+                                value={nativeProduct?.displayPrice}
+                            />
+                        );
+                    })
+                ) : (
+                    <MenuRow
+                        description="No subscriptions were returned by this Spire environment."
+                        disabled
+                        icon="cloud-offline-outline"
+                        label="Store products"
+                    />
+                )}
+            </MenuSection>
+
+            <MenuSection title="Store actions">
+                <MenuRow
+                    description={
+                        restoreBusy
+                            ? "Checking the device store account..."
+                            : "Verify existing store subscriptions"
+                    }
+                    disabled={restoreBusy || busy}
+                    icon="refresh-outline"
+                    label={restoreBusy ? "Restoring..." : "Restore purchases"}
+                    onPress={() => {
+                        void handleRestore();
+                    }}
+                />
+                <MenuRow
+                    description={
+                        refreshing
+                            ? "Reloading server catalog..."
+                            : "Reload products and entitlement state"
+                    }
+                    disabled={refreshing || busy}
+                    icon="sync-outline"
+                    label={refreshing ? "Refreshing..." : "Refresh plan"}
+                    onPress={() => {
+                        void refreshBilling();
+                    }}
+                />
+            </MenuSection>
+        </>
     );
 }
 
 function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
+}
+
+function formatDate(value: string): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+    return date.toLocaleDateString();
 }
 
 function formatReleaseLabel(
@@ -1256,6 +1595,10 @@ function formatReleaseLabel(
     return target === "development"
         ? `${version}RC-${shortCommit}`
         : `${version}-${shortCommit}`;
+}
+
+function formatTierLabel(tier: AccountTier): string {
+    return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
 function InlineActionButton({
@@ -1283,6 +1626,67 @@ function InlineActionButton({
     );
 }
 
+function productDescription(
+    product: BillingProduct,
+    nativeProduct: null | undefined | { displayPrice?: string },
+    selected: boolean,
+    pending: boolean,
+): string {
+    if (pending) {
+        return "Waiting for store confirmation";
+    }
+    if (selected) {
+        return "Active on this account";
+    }
+    if (!nativeProduct) {
+        return `Configured for ${storeName(product.platform)}, not returned by the store`;
+    }
+    if (nativeProduct.displayPrice) {
+        return `${storeName(product.platform)} subscription`;
+    }
+    return `Subscribe with ${storeName(product.platform)}`;
+}
+
+function shortIdentifier(value: null | string | undefined): null | string {
+    if (!value) return null;
+    if (value.length <= 12) return value;
+    return `${value.slice(0, 6)} · ${value.slice(-4)}`;
+}
+
+function storeName(platform: BillingProduct["platform"]): string {
+    return platform === "apple_app_store" ? "App Store" : "Google Play";
+}
+
+function subscriptionDescription(subscription: BillingSubscription): string {
+    const expires = subscription.expiresAt
+        ? `Renews or expires ${formatDate(subscription.expiresAt)}`
+        : "No expiration reported";
+    return `${storeName(subscription.platform)} · ${expires}`;
+}
+
+function subscriptionStatusLabel(subscription: BillingSubscription): string {
+    switch (subscription.status) {
+        case "active":
+            return "Active";
+        case "billing_retry":
+            return "Retry";
+        case "expired":
+            return "Expired";
+        case "grace_period":
+            return "Grace";
+        case "pending":
+            return "Pending";
+        case "revoked":
+            return "Revoked";
+        default:
+            return subscription.status;
+    }
+}
+
+function tierSortRank(tier: BillingProduct["tier"]): number {
+    return tier === "plus" ? 1 : 2;
+}
+
 function VerifiedCheck() {
     return (
         <View style={styles.verifiedCheck}>
@@ -1296,6 +1700,29 @@ function VerifiedCheck() {
 }
 
 const styles = StyleSheet.create({
+    accountAvatarFrame: {
+        padding: 4,
+    },
+    accountHero: {
+        alignItems: "center",
+        gap: 10,
+        marginBottom: 4,
+    },
+    accountHeroPressed: {
+        opacity: 0.86,
+    },
+    accountMeta: {
+        color: colors.muted,
+        fontFamily: fontFamilies.mono,
+        fontSize: 12,
+        lineHeight: 18,
+    },
+    accountName: {
+        ...typography.headingSmall,
+        color: colors.text,
+        fontSize: 22,
+        lineHeight: 28,
+    },
     container: {
         backgroundColor: colors.bg,
         flex: 1,
@@ -1304,7 +1731,7 @@ const styles = StyleSheet.create({
         gap: 18,
         paddingBottom: 24,
         paddingHorizontal: 14,
-        paddingVertical: 12,
+        paddingTop: 16,
     },
     errorText: {
         ...typography.body,

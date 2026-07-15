@@ -14,10 +14,7 @@ import {
 import * as ImageManipulator from "expo-image-manipulator";
 
 import { ChatHeader } from "../components/ChatHeader";
-import {
-    $avatarCropResult,
-    nextAvatarCropRequestId,
-} from "../lib/avatarCropResult";
+import { $avatarCropResult } from "../lib/avatarCropResult";
 import { colors } from "../theme";
 
 /**
@@ -42,7 +39,8 @@ export function AvatarCropScreen({
     navigation,
     route,
 }: AppScreenProps<"AvatarCrop">) {
-    const { sourceHeight, sourceUri, sourceWidth } = route.params;
+    const { requestId, sourceHeight, sourceUri, sourceWidth, title } =
+        route.params;
     const screen = Dimensions.get("window");
 
     // Square frame size: leave gutter on the sides, never taller than
@@ -165,7 +163,7 @@ export function AvatarCropScreen({
             );
             $avatarCropResult.set({
                 height: cropped.height,
-                requestId: nextAvatarCropRequestId(),
+                requestId,
                 uri: cropped.uri,
                 width: cropped.width,
             });
@@ -185,6 +183,7 @@ export function AvatarCropScreen({
         maxOffsetX,
         maxOffsetY,
         navigation,
+        requestId,
         shortDim,
         sourceHeight,
         sourceUri,
@@ -197,11 +196,10 @@ export function AvatarCropScreen({
 
     return (
         <View style={styles.container}>
-            <ChatHeader onBack={handleCancel} title="Crop avatar" />
+            <ChatHeader onBack={handleCancel} title={title ?? "Crop image"} />
             <View style={styles.body}>
                 <Text style={styles.helper}>
-                    Avatars are square. Drag to choose what stays inside the
-                    frame.
+                    Drag to choose what stays inside the square frame.
                 </Text>
 
                 <View

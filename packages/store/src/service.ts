@@ -6,10 +6,14 @@
  * Components subscribe to readonly atom exports from domains/.
  */
 import type {
+    CallEvent,
+    CallSession,
+    CallSignalPayload,
     Channel,
     ClientEvents,
     ClientOptions,
     Device,
+    IceServerConfig,
     Invite,
     KeyStore,
     Message,
@@ -26,9 +30,34 @@ import type {
 } from "@vex-chat/types";
 
 import { Client, msgpack } from "@vex-chat/libvex";
+import {
+    ACCOUNT_PASSWORD_MAX_LENGTH,
+    ACCOUNT_PASSWORD_MIN_LENGTH,
+} from "@vex-chat/types";
 
 import { validate as uuidValidate } from "uuid";
 
+import {
+    $billingAccountWritable,
+    $billingOperationWritable,
+    $billingProductsWritable,
+    type BillingAccountState,
+    type BillingEnvironment,
+    type BillingProduct,
+    defaultBillingOperationState,
+} from "./domains/billing.ts";
+import {
+    $activeCallsWritable,
+    $currentCallIDWritable,
+    $incomingCallsWritable,
+    $latestCallEventWritable,
+} from "./domains/calls.ts";
+import {
+    $accountEntitlementsWritable,
+    type AccountEntitlements,
+    type AccountTier,
+    defaultAccountEntitlements,
+} from "./domains/entitlements.ts";
 import {
     $authStatusWritable,
     $avatarHashWritable,
@@ -88,6 +117,17 @@ export interface AccountPasskeyAuthResult extends OperationResult {
      */
     hasLocalDevice?: boolean;
     /**
+     * Set when passkey auth failed because the network is unavailable. Callers
+     * should not fall through into registration/device-approval automatically
+     * after this.
+     */
+    networkError?: boolean;
+    /**
+     * Set when saved local credentials were stale and the caller should return
+     * to an explicit sign-in/new-device flow.
+     */
+    requireReauth?: boolean;
+    /**
      * Set when passkey auth failed in a way where the next best UX is the
      * device-approval/new-account path. Examples: the account has no passkey
      * available to this platform credential manager, or the username does not
@@ -113,6 +153,12 @@ export interface AccountProvisioningResult extends AuthResult {
     username?: string;
 }
 
+export interface AppleStoreTransactionInput {
+    environment?: BillingEnvironment;
+    signedTransactionInfo?: string;
+    transactionID?: string;
+}
+
 export type AuthProbeStatus = "authenticated" | "offline" | "unauthorized";
 
 /** Result from any auth flow. */
@@ -120,12 +166,6 @@ export interface AuthResult {
     error?: string;
     keyReplaced?: boolean;
     ok: boolean;
-    /**
-     * Set when signup created the account/device, but the required first
-     * passkey did not finish. Credentials have been saved so callers should
-     * retry auth/passkey setup instead of submitting another registration.
-     */
-    passkeySetupRequired?: boolean;
     pendingDeviceApproval?: boolean;
     pendingRequestID?: string;
     /**
@@ -160,6 +200,10 @@ export interface AuthResult {
 
 export type BackgroundNetworkFetchResult = "failed" | "new_data" | "no_data";
 
+export interface BillingOperationResult extends OperationResult {
+    account?: BillingAccountState;
+}
+
 /** App-provided platform configuration for client bootstrap. */
 export interface BootstrapConfig {
     /**
@@ -190,6 +234,13 @@ export interface DeviceApprovalRequest {
     signKey: string;
     status: "approved" | "expired" | "pending" | "rejected";
     username: string;
+}
+
+export interface GooglePlayPurchaseInput {
+    environment?: BillingEnvironment;
+    packageName?: string;
+    productID?: string;
+    purchaseToken: string;
 }
 
 export interface InvitePreview {
@@ -235,6 +286,11 @@ export interface PasskeySignInBegin {
     requestID: string;
 }
 
+export interface ProductFeatureAvailability {
+    premiumTiers: boolean;
+    voiceCalling: boolean;
+}
+
 export interface PushNotificationSubscriptionInput {
     channel: "expo";
     events?: string[];
@@ -250,6 +306,11 @@ export interface SendMessageOptions {
 
 /** Server connection options — identical across all auth flows. */
 export interface ServerOptions {
+    /**
+     * Dev-only Spire key. When set, libvex sends it as `x-dev-api-key` on
+     * HTTP requests so local/load-test Spire instances can bypass rate limits.
+     */
+    devApiKey?: string;
     host: string;
     inMemoryDb?: boolean;
     /**
@@ -268,8 +329,6 @@ export interface ServerOptions {
     unsafeHttp?: boolean;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
 export interface SessionInfo {
     authStatus:
         | "authenticated"
@@ -285,20 +344,99 @@ export interface SessionInfo {
     username: string;
 }
 
+export interface SetAccountTierResult extends OperationResult {
+    entitlements?: AccountEntitlements;
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
 export interface ThreadDeleteForEveryoneResult extends OperationResult {
     batchCount?: number;
     deletedCount?: number;
     localDeleted?: boolean;
 }
 
+export interface VoiceCallResult extends OperationResult {
+    event?: CallEvent;
+}
+
+interface AuthSessionSnapshot {
+    exp: number;
+    user: User;
+}
+
 interface ClientHttpLike {
-    get?: (...args: unknown[]) => Promise<unknown>;
-    post?: (...args: unknown[]) => Promise<unknown>;
+    delete?: ClientHttpMethod;
+    get?: ClientHttpMethod;
+    patch?: ClientHttpMethod;
+    post?: ClientHttpMethod;
+    put?: ClientHttpMethod;
+}
+
+type ClientHttpMethod = (...args: unknown[]) => Promise<unknown>;
+
+interface ClientWithBillingLike {
+    billing?: {
+        products?: () => Promise<BillingProduct[]>;
+        retrieve?: () => Promise<BillingAccountState>;
+        submitAppleTransaction?: (
+            request: AppleStoreTransactionInput,
+        ) => Promise<BillingAccountState>;
+        submitGooglePurchase?: (
+            request: GooglePlayPurchaseInput,
+        ) => Promise<BillingAccountState>;
+    };
+}
+
+interface ClientWithCallsLike {
+    calls: {
+        accept: (
+            callID: string,
+            signal?: CallSignalPayload,
+        ) => Promise<CallEvent>;
+        active: () => Promise<CallSession[]>;
+        cancel: (callID: string) => Promise<CallEvent>;
+        hangup: (callID: string) => Promise<CallEvent>;
+        ice: (callID: string, signal: CallSignalPayload) => Promise<CallEvent>;
+        iceServers: () => Promise<IceServerConfig[]>;
+        reject: (callID: string) => Promise<CallEvent>;
+        signal: (
+            callID: string,
+            signal: CallSignalPayload,
+        ) => Promise<CallEvent>;
+        startDM: (
+            recipientUserID: string,
+            signal?: CallSignalPayload,
+        ) => Promise<CallEvent>;
+    };
 }
 
 type ClientWithDeviceApprovals = Omit<Client, "devices"> & {
     devices: DevicesWithApprovalLike;
 };
+
+interface ClientWithEnrollmentIntent {
+    requestDeviceEnrollment?: (
+        username: string,
+        password: string,
+    ) => Promise<[null | User, Error | null]>;
+    requestDeviceEnrollmentWithPasskey?: (
+        username: string,
+    ) => Promise<[null | User, Error | null]>;
+}
+
+interface ClientWithEntitlementsLike {
+    entitlements?: {
+        retrieve?: () => Promise<AccountEntitlements>;
+        setDevTier?: (
+            tier: AccountTier,
+            options?: { expiresAt?: null | string },
+        ) => Promise<AccountEntitlements>;
+    };
+    me?: {
+        user?: () => User;
+    };
+}
 
 interface ClientWithInternalHttp {
     http?: ClientHttpLike;
@@ -447,17 +585,22 @@ interface WebSocketDebugLike {
 }
 
 const REGISTER_STEP_TIMEOUT_MS = 12000;
-const PASSKEY_SETUP_TIMEOUT_MS = 5 * 60 * 1000;
-const DEVICE_AUTH_REFRESH_THRESHOLD_MS = 6 * 24 * 60 * 60 * 1000;
-const DEVICE_AUTH_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const DEVICE_AUTH_REFRESH_THRESHOLD_MS = 10 * 60 * 1000;
+const DEVICE_AUTH_REFRESH_RETRY_MS = 60 * 1000;
 const LOCAL_DECRYPT_RECOVERY_ERROR =
     "Local encrypted data could not be recovered on this device. Please sign in again.";
+const INVALID_CREDENTIALS_ERROR = "Incorrect username or password.";
 // WebSocket watchdog: spire pings every 5s, libvex's own keep-alive
 // fires after ~30s of silence (post-fix in 6.1.7+). 45s gives that
 // path a chance to run first; the watchdog only triggers if libvex's
 // detector didn't (older SDK, or some edge case where it didn't).
 const WS_WATCHDOG_CHECK_INTERVAL_MS = 30_000;
 const WS_WATCHDOG_STALE_THRESHOLD_MS = 45_000;
+const VOICE_CALL_REFRESH_TIMEOUT_MS = 8000;
+const DEFAULT_PRODUCT_FEATURES: ProductFeatureAvailability = {
+    premiumTiers: true,
+    voiceCalling: true,
+};
 // Tighter threshold for "is the socket *currently* delivering frames?"
 // used by `refreshSessionAfterForeground` to decide whether the
 // foreground-service kept the connection healthy across the resume.
@@ -536,7 +679,6 @@ class VexService {
         Promise<InvitePreview | null>
     >();
     private lastConnectionRecoveryAt = 0;
-    private lastDeviceAuthRefreshAttemptAt = 0;
     private logoutInFlight: null | Promise<void> = null;
     private passkeyAccountSession: null | {
         deviceKey: string;
@@ -567,6 +709,15 @@ class VexService {
     private populateStateInFlight: null | Promise<void> = null;
     private readonly processedMessageEventMailIDs = new Set<string>();
     private readonly processedReactionMailIDs = new Set<string>();
+    private productFeatures: ProductFeatureAvailability = {
+        ...DEFAULT_PRODUCT_FEATURES,
+    };
+    private readonly serverRefreshes = new Map<string, Promise<void>>();
+    private sessionRefreshInFlight: null | {
+        client: Client;
+        promise: Promise<AuthSessionSnapshot>;
+    } = null;
+    private sessionRefreshTimer: null | ReturnType<typeof setTimeout> = null;
     private wsDebugEnabled = shouldDebugAuth();
     private wsDebugFrameLogsEnabled = shouldDebugAuth();
     private wsDebugInboundListener: ((data: Uint8Array) => void) | null = null;
@@ -615,6 +766,15 @@ class VexService {
             /* row may already be gone */
         }
         this.deferredDeviceApproval = null;
+    }
+
+    async acceptVoiceCall(
+        callID: string,
+        signal?: CallSignalPayload,
+    ): Promise<VoiceCallResult> {
+        return this.runVoiceCallMutation((client) =>
+            client.calls.accept(callID, signal),
+        );
     }
 
     async approveDeviceRequest(requestID: string): Promise<OperationResult> {
@@ -703,7 +863,7 @@ class VexService {
                 });
                 const client = this.requireClient();
 
-                const { authErr, passkeyState } =
+                const { authErr } =
                     await this.loginWithDeviceKeyWithPasskeyRetry(
                         client,
                         creds.username,
@@ -735,12 +895,6 @@ class VexService {
                     return { error: errorMessage(authErr), ok: false };
                 }
 
-                if (passkeyState === "not_registered") {
-                    await this.registerInitialPasskeyForCurrentClient(
-                        config.deviceName || "This device",
-                    );
-                }
-
                 const connectStart = Date.now();
                 await client.connect();
                 debugAuth("autoLogin:connect:ok", {
@@ -765,7 +919,7 @@ class VexService {
                             true,
                         );
                         const recovered = this.requireClient();
-                        const { authErr, passkeyState } =
+                        const { authErr } =
                             await this.loginWithDeviceKeyWithPasskeyRetry(
                                 recovered,
                                 creds.username,
@@ -800,12 +954,6 @@ class VexService {
                             };
                         }
 
-                        if (passkeyState === "not_registered") {
-                            await this.registerInitialPasskeyForCurrentClient(
-                                config.deviceName || "This device",
-                            );
-                        }
-
                         await recovered.connect();
                         $userWritable.set(recovered.me.user());
                         this.setAuthStatus("authenticated");
@@ -815,15 +963,6 @@ class VexService {
                         });
                         return { ok: true };
                     } catch (recoveryErr: unknown) {
-                        if (isPasskeySetupRequiredError(recoveryErr)) {
-                            return {
-                                error: initialPasskeySetupErrorMessage(
-                                    recoveryErr,
-                                ),
-                                ok: false,
-                                passkeySetupRequired: true,
-                            };
-                        }
                         try {
                             await this.close();
                         } catch {
@@ -838,13 +977,6 @@ class VexService {
                             ok: false,
                         };
                     }
-                }
-                if (isPasskeySetupRequiredError(err)) {
-                    return {
-                        error: initialPasskeySetupErrorMessage(err),
-                        ok: false,
-                        passkeySetupRequired: true,
-                    };
                 }
                 try {
                     await this.close();
@@ -944,27 +1076,13 @@ class VexService {
         };
     }
 
-    /**
-     * Zero-input bootstrap flow used on app startup:
-     * 1) attempt device-key auto-login from local credentials
-     * 2) if no credentials exist, auto-provision a fresh key cluster/device
-     */
+    /** Attempt trusted-device auto-login without ever creating an account. */
     async bootstrapAuth(
         keyStore: KeyStore,
         config: BootstrapConfig,
         options: ServerOptions,
     ): Promise<AuthResult> {
-        const existing = await this.autoLogin(keyStore, config, options);
-        if (existing.ok) {
-            return existing;
-        }
-        // Only auto-provision when there is no local credential material.
-        if (existing.error) {
-            return existing;
-        }
-
-        const autoUsername = generateAutoProvisionUsername();
-        return this.register(autoUsername, "", config, options, keyStore);
+        return this.autoLogin(keyStore, config, options);
     }
 
     /**
@@ -994,7 +1112,22 @@ class VexService {
         $pendingApprovalStageWritable.set("idle");
     }
 
+    /** Replace the password after the signed-in user proves the current one. */
+    async changePassword(
+        currentPassword: string,
+        newPassword: string,
+    ): Promise<OperationResult> {
+        try {
+            const client = this.requireClient();
+            await client.me.changePassword(currentPassword, newPassword);
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+    }
+
     async close(): Promise<void> {
+        this.clearSessionRefreshTimer();
         this.passkeyDeviceApprovalRequestInFlight = null;
         this.pendingMessageEventMessages.clear();
         this.pendingReactionMessages.clear();
@@ -1014,6 +1147,7 @@ class VexService {
             const c = this.client;
             this.unwireEvents();
             this.client = null;
+            this.sessionRefreshInFlight = null;
             try {
                 await c.close(true);
             } catch {
@@ -1021,14 +1155,8 @@ class VexService {
                 // half-open WebSocket that throws on teardown.
             }
         }
-    }
-
-    async completeInitialPasskeySetup(
-        config: BootstrapConfig,
-    ): Promise<AuthResult> {
-        return this.trackAuthFlow(() =>
-            this.completeInitialPasskeySetupInternal(config),
-        );
+        this.sessionRefreshInFlight = null;
+        this.clearSessionRefreshTimer();
     }
 
     async completePendingApprovalWithExistingPasskey(): Promise<OperationResult> {
@@ -1107,6 +1235,21 @@ class VexService {
         );
     }
 
+    configureProductFeatures(features: ProductFeatureAvailability): void {
+        this.productFeatures = { ...features };
+        if (!features.premiumTiers) {
+            $billingAccountWritable.set(null);
+            $billingProductsWritable.set([]);
+            $billingOperationWritable.set(defaultBillingOperationState());
+        }
+        if (!features.voiceCalling) {
+            $activeCallsWritable.set({});
+            $incomingCallsWritable.set({});
+            $currentCallIDWritable.set(null);
+            $latestCallEventWritable.set(null);
+        }
+    }
+
     consumeRateLimitNotice(): boolean {
         if (!this.pendingRateLimitNotice) {
             return false;
@@ -1176,6 +1319,21 @@ class VexService {
         this.resetAll();
     }
 
+    async deleteChannel(
+        channelID: string,
+        serverID: string,
+    ): Promise<OperationResult> {
+        try {
+            const client = this.requireClient();
+            await client.channels.delete(channelID);
+            const channels = await client.channels.retrieve(serverID);
+            this.replaceServerChannels(serverID, channels);
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+    }
+
     async deleteLocalMessage(
         conversationKey: string,
         mailID: string,
@@ -1223,8 +1381,6 @@ class VexService {
         return true;
     }
 
-    // ── Server CRUD ─────────────────────────────────────────────────────
-
     async deleteLocalThread(
         conversationKey: string,
         isGroup: boolean,
@@ -1260,6 +1416,8 @@ class VexService {
         }
         return true;
     }
+
+    // ── Server CRUD ─────────────────────────────────────────────────────
 
     async deleteMessageForEveryone(
         conversationKey: string,
@@ -1299,12 +1457,7 @@ class VexService {
         return { ok: true };
     }
 
-    /**
-     * Remove a passkey from the currently signed-in account. Works
-     * with either a device session OR a passkey session — spire's
-     * delete route accepts both, and the UI surfaces this from both
-     * Settings and the recovery screen.
-     */
+    /** Remove a passkey from an account with an approved-device session. */
     async deletePasskey(passkeyID: string): Promise<OperationResult> {
         try {
             const client = this.requireClient();
@@ -1517,8 +1670,6 @@ class VexService {
         return client.channels.userList(channelID);
     }
 
-    // ── Channel operations ──────────────────────────────────────────────
-
     async getDeviceRequest(
         requestID: string,
     ): Promise<DeviceApprovalRequest | null> {
@@ -1542,6 +1693,8 @@ class VexService {
         return client.invites.retrieve(serverID);
     }
 
+    // ── Channel operations ──────────────────────────────────────────────
+
     /** Effective local retention cap (defaults to 30 when signed out). */
     getLocalMessageRetentionDays(): number {
         const c = this.client as unknown as {
@@ -1552,6 +1705,10 @@ class VexService {
             return fromClient;
         }
         return $localMessageRetentionDaysWritable.get();
+    }
+
+    getServerIconURL(iconID: string): string {
+        return this.requireClient().servers.iconURL(iconID);
     }
 
     async getServerPermissions(serverID: string): Promise<Permission[]> {
@@ -1601,6 +1758,10 @@ class VexService {
         }
     }
 
+    async getVoiceIceServers(): Promise<IceServerConfig[]> {
+        return this.requireCallsClient().calls.iceServers();
+    }
+
     getWebsocketDebugEnabled(): boolean {
         return this.wsDebugEnabled;
     }
@@ -1613,6 +1774,12 @@ class VexService {
 
     getWebsocketStateDebugEnabled(): boolean {
         return this.wsDebugStateLogsEnabled;
+    }
+
+    async hangupVoiceCall(callID: string): Promise<VoiceCallResult> {
+        return this.runVoiceCallMutation((client) =>
+            client.calls.hangup(callID),
+        );
     }
 
     isAuthFlowInFlight(): boolean {
@@ -1732,6 +1899,11 @@ class VexService {
         }
         const run = async (): Promise<void> => {
             this.stopPendingApprovalWatcher();
+            try {
+                await this.client?.logout();
+            } catch {
+                // Local teardown remains authoritative when Spire is offline.
+            }
             await this.close();
             this.resetAll();
             this.setAuthStatus("signed_out");
@@ -1777,8 +1949,6 @@ class VexService {
             this.deviceRequestQueueListeners.delete(listener);
         };
     }
-
-    // ── User operations ─────────────────────────────────────────────────
 
     /** Delete a device using the passkey-only session. */
     async passkeyDeleteDevice(deviceID: string): Promise<OperationResult> {
@@ -1830,6 +2000,8 @@ class VexService {
         );
     }
 
+    // ── User operations ─────────────────────────────────────────────────
+
     async previewInvite(inviteID: string): Promise<InvitePreview | null> {
         const cached = this.invitePreviewCache.get(inviteID);
         if (cached) {
@@ -1847,18 +2019,42 @@ class VexService {
     }
 
     async probeAuthSession(): Promise<AuthProbeStatus> {
+        let owner: Client | null = null;
         try {
             const client = this.requireClient();
-            const auth = await client.whoami();
+            owner = client;
+            let auth: AuthSessionSnapshot;
+            try {
+                auth = await client.whoami();
+            } catch (err: unknown) {
+                if (!isUnauthorizedError(err)) {
+                    throw err;
+                }
+                debugAuth("session:probe:expired-token", {
+                    username: this.currentClientUsername(),
+                });
+                auth = await this.refreshSessionWithDeviceKey(client);
+            }
+            if (this.client !== client) {
+                return "offline";
+            }
             $userWritable.set(auth.user);
-            await this.refreshSessionTokenIfStale(auth.exp);
+            const refreshed = await this.refreshSessionTokenIfStale(auth.exp);
+            if (!refreshed) {
+                this.scheduleSessionRefresh(client, auth.exp);
+            }
             this.setAuthStatus("authenticated");
             return "authenticated";
         } catch (err: unknown) {
+            const currentOwner =
+                owner !== null && this.client === owner ? owner : null;
             if (isRateLimitedError(err)) {
                 // 429 should not cascade into forced logout flows.
                 this.markRateLimited("probeAuthSession");
-                this.setAuthStatus("authenticated");
+                if (currentOwner) {
+                    this.scheduleSessionRefreshRetry(currentOwner);
+                    this.setAuthStatus("authenticated");
+                }
                 return "authenticated";
             }
             // 404 here means the user record (or device record, depending on
@@ -1867,10 +2063,16 @@ class VexService {
             // caller's recovery path (refresh → fail → clear creds + bounce
             // to sign-in) fires the same way it does for an expired token.
             if (isStaleCredentialError(err)) {
-                this.setAuthStatus("unauthorized");
+                if (currentOwner) {
+                    this.clearSessionRefreshTimer();
+                    this.setAuthStatus("unauthorized");
+                }
                 return "unauthorized";
             }
-            this.setAuthStatus("offline");
+            if (currentOwner) {
+                this.scheduleSessionRefreshRetry(currentOwner);
+                this.setAuthStatus("offline");
+            }
             return "offline";
         }
     }
@@ -1925,6 +2127,62 @@ class VexService {
         return { ok: true };
     }
 
+    async refreshAccountEntitlements(): Promise<AccountEntitlements> {
+        return this.refreshEntitlementsForClient(this.requireClient());
+    }
+
+    async refreshBillingAccount(): Promise<BillingAccountState | null> {
+        if (!this.productFeatures.premiumTiers) {
+            $billingAccountWritable.set(null);
+            return null;
+        }
+        const client = this.requireClient();
+        const retrieve = (client as unknown as ClientWithBillingLike).billing
+            ?.retrieve;
+        if (typeof retrieve !== "function") {
+            return null;
+        }
+        try {
+            const account = await retrieve();
+            this.publishBillingAccountState(account);
+            return account;
+        } catch (err: unknown) {
+            $billingOperationWritable.set({
+                busy: false,
+                error: errorMessage(err),
+                lastUpdatedAt: new Date().toISOString(),
+            });
+            return null;
+        }
+    }
+
+    async refreshBillingProducts(): Promise<BillingProduct[]> {
+        if (!this.productFeatures.premiumTiers) {
+            $billingProductsWritable.set([]);
+            return [];
+        }
+        const client = this.requireClient();
+        const products = (client as unknown as ClientWithBillingLike).billing
+            ?.products;
+        if (typeof products !== "function") {
+            $billingProductsWritable.set([]);
+            return [];
+        }
+        try {
+            const result = await products();
+            $billingProductsWritable.set(result);
+            return result;
+        } catch (err: unknown) {
+            $billingOperationWritable.set({
+                busy: false,
+                error: errorMessage(err),
+                lastUpdatedAt: new Date().toISOString(),
+            });
+            $billingProductsWritable.set([]);
+            return [];
+        }
+    }
+
     async refreshSessionAfterForeground(): Promise<ResumeNetworkStatus> {
         if (!this.client) {
             this.setAuthStatus("signed_out");
@@ -1932,25 +2190,7 @@ class VexService {
         }
         this.setAuthStatus("checking");
         const probe = await this.probeAuthSession();
-        if (probe === "unauthorized") {
-            const client = this.requireClient();
-            const username = this.currentClientUsername();
-            const { authErr, passkeyState } =
-                await this.loginWithDeviceKeyWithPasskeyRetry(client, username);
-            if (authErr) {
-                this.setAuthStatus("unauthorized");
-                return "unauthorized";
-            }
-            if (passkeyState === "not_registered") {
-                await this.registerInitialPasskeyForCurrentClient(
-                    "This device",
-                );
-            }
-            const afterRelogin = await this.probeAuthSession();
-            if (afterRelogin !== "authenticated") {
-                return afterRelogin;
-            }
-        } else if (probe !== "authenticated") {
+        if (probe !== "authenticated") {
             return probe;
         }
 
@@ -2012,44 +2252,46 @@ class VexService {
         }
     }
 
-    async refreshSessionTokenIfStale(exp: number): Promise<void> {
+    async refreshSessionTokenIfStale(exp: number): Promise<boolean> {
         const expMs = jwtExpToEpochMs(exp);
         if (!Number.isFinite(expMs)) {
-            return;
+            return false;
         }
         const remainingMs = expMs - Date.now();
         if (remainingMs > DEVICE_AUTH_REFRESH_THRESHOLD_MS) {
-            return;
+            return false;
         }
-        const elapsedSinceAttempt =
-            Date.now() - this.lastDeviceAuthRefreshAttemptAt;
-        if (elapsedSinceAttempt < DEVICE_AUTH_REFRESH_INTERVAL_MS) {
-            return;
+        await this.refreshSessionWithDeviceKey(this.requireClient());
+        debugAuth("session:refresh:ok", {
+            remainingMinutes: Math.floor(remainingMs / (1000 * 60)),
+        });
+        return true;
+    }
+
+    async refreshVoiceCalls(): Promise<
+        OperationResult & { calls?: CallSession[] }
+    > {
+        if (!this.productFeatures.voiceCalling) {
+            $activeCallsWritable.set({});
+            $incomingCallsWritable.set({});
+            $currentCallIDWritable.set(null);
+            $latestCallEventWritable.set(null);
+            return { calls: [], ok: true };
         }
-        this.lastDeviceAuthRefreshAttemptAt = Date.now();
+        const client = this.client;
+        if (!client || !hasCallsApi(client)) {
+            return { calls: [], ok: true };
+        }
         try {
-            const client = this.requireClient();
-            const username = this.currentClientUsername();
-            const { authErr, passkeyState } =
-                await this.loginWithDeviceKeyWithPasskeyRetry(client, username);
-            if (authErr) {
-                debugAuth("session:refresh:failed", {
-                    message: errorMessage(authErr),
-                });
-                return;
-            }
-            if (passkeyState === "not_registered") {
-                await this.registerInitialPasskeyForCurrentClient(
-                    "This device",
-                );
-            }
-            debugAuth("session:refresh:ok", {
-                remainingHours: Math.floor(remainingMs / (1000 * 60 * 60)),
-            });
+            const calls = await withTimeout(
+                client.calls.active(),
+                VOICE_CALL_REFRESH_TIMEOUT_MS,
+                "Active voice calls request timed out.",
+            );
+            this.publishActiveCalls(calls);
+            return { calls, ok: true };
         } catch (err: unknown) {
-            debugAuth("session:refresh:error", {
-                message: errorMessage(err),
-            });
+            return { error: errorMessage(err), ok: false };
         }
     }
 
@@ -2058,7 +2300,7 @@ class VexService {
      */
     async register(
         username: string,
-        _password: string,
+        password: string,
         config: BootstrapConfig,
         options: ServerOptions,
         keyStore: KeyStore,
@@ -2066,7 +2308,8 @@ class VexService {
         return this.trackAuthFlow(() =>
             this.registerInternal(
                 username,
-                _password,
+                password,
+                "create-account",
                 config,
                 options,
                 keyStore,
@@ -2091,11 +2334,28 @@ class VexService {
         }
     }
 
+    async rejectVoiceCall(callID: string): Promise<VoiceCallResult> {
+        return this.runVoiceCallMutation((client) =>
+            client.calls.reject(callID),
+        );
+    }
+
     async removeDevice(deviceID: string): Promise<OperationResult> {
         try {
             const client = this.requireClient();
             await client.devices.delete(deviceID);
             await this.listMyDevices();
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+    }
+
+    async removeServerIcon(serverID: string): Promise<OperationResult> {
+        try {
+            const server =
+                await this.requireClient().servers.removeIcon(serverID);
+            $serversWritable.setKey(serverID, server);
             return { ok: true };
         } catch (err: unknown) {
             return { error: errorMessage(err), ok: false };
@@ -2130,9 +2390,41 @@ class VexService {
         });
     }
 
+    async requestDeviceEnrollment(
+        username: string,
+        password: string,
+        config: BootstrapConfig,
+        options: ServerOptions,
+        keyStore: KeyStore,
+    ): Promise<AuthResult> {
+        return this.trackAuthFlow(() =>
+            this.registerInternal(
+                username,
+                password,
+                "enroll-device",
+                config,
+                options,
+                keyStore,
+            ),
+        );
+    }
+
     resetAllUnread(): void {
         $dmUnreadCountsWritable.set({});
         $channelUnreadCountsWritable.set({});
+    }
+
+    /** Replace a forgotten password from a freshly authenticated passkey session. */
+    async resetPasswordWithPasskey(
+        newPassword: string,
+    ): Promise<OperationResult> {
+        try {
+            const client = this.requireClient();
+            await client.passkeys.resetPassword(newPassword);
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
     }
 
     /**
@@ -2165,6 +2457,9 @@ class VexService {
                 await client.syncInboxNow();
             } else {
                 await this.populateState();
+            }
+            if (this.productFeatures.voiceCalling) {
+                await this.refreshVoiceCalls();
             }
             return "new_data";
         } catch {
@@ -2253,6 +2548,24 @@ class VexService {
         }
     }
 
+    async sendVoiceCallIce(
+        callID: string,
+        signal: CallSignalPayload,
+    ): Promise<VoiceCallResult> {
+        return this.runVoiceCallMutation((client) =>
+            client.calls.ice(callID, signal),
+        );
+    }
+
+    async sendVoiceCallSignal(
+        callID: string,
+        signal: CallSignalPayload,
+    ): Promise<VoiceCallResult> {
+        return this.runVoiceCallMutation((client) =>
+            client.calls.signal(callID, signal),
+        );
+    }
+
     async setAvatar(data: Uint8Array): Promise<OperationResult> {
         const bumpVersionForCurrentUser = (): void => {
             $avatarHashWritable.set(Date.now());
@@ -2292,6 +2605,35 @@ class VexService {
         this.backgroundConnectionRecoverySuspended = suspended;
     }
 
+    async setDevAccountTier(
+        tier: AccountTier,
+        options?: { expiresAt?: null | string },
+    ): Promise<SetAccountTierResult> {
+        if (!this.productFeatures.premiumTiers) {
+            return {
+                error: "Premium tiers are disabled in this build.",
+                ok: false,
+            };
+        }
+        try {
+            const client = this.requireClient();
+            const withEntitlements =
+                client as unknown as ClientWithEntitlementsLike;
+            const setDevTier = withEntitlements.entitlements?.setDevTier;
+            if (typeof setDevTier !== "function") {
+                return {
+                    error: "Client does not support entitlement overrides.",
+                    ok: false,
+                };
+            }
+            const entitlements = await setDevTier(tier, options);
+            $accountEntitlementsWritable.set(entitlements);
+            return { entitlements, ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+    }
+
     /**
      * Updates the local message retention preference (1–30 days) and
      * applies it to the live client when connected.
@@ -2307,6 +2649,22 @@ class VexService {
 
     setPasskeyCeremonyDriver(driver: null | PasskeyCeremonyDriver): void {
         this.passkeyCeremonyDriver = driver;
+    }
+
+    async setServerIcon(
+        serverID: string,
+        icon: Uint8Array,
+    ): Promise<OperationResult> {
+        try {
+            const server = await this.requireClient().servers.setIcon(
+                serverID,
+                icon,
+            );
+            $serversWritable.setKey(serverID, server);
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
     }
 
     setWebsocketDebug(enabled: boolean): void {
@@ -2331,7 +2689,26 @@ class VexService {
         this.wsDebugStateLogsEnabled = enabled;
     }
 
-    // ── Unread management ───────────────────────────────────────────────
+    async startVoiceCall(
+        recipientUserID: string,
+        signal?: CallSignalPayload,
+    ): Promise<VoiceCallResult> {
+        return this.runVoiceCallMutation((client) =>
+            client.calls.startDM(recipientUserID, signal),
+        );
+    }
+
+    async submitAppleStoreTransaction(
+        request: AppleStoreTransactionInput,
+    ): Promise<BillingOperationResult> {
+        return this.submitBillingProof("apple", request);
+    }
+
+    async submitGooglePlayPurchase(
+        request: GooglePlayPurchaseInput,
+    ): Promise<BillingOperationResult> {
+        return this.submitBillingProof("google", request);
+    }
 
     async subscribePushNotifications(
         input: PushNotificationSubscriptionInput,
@@ -2388,6 +2765,8 @@ class VexService {
         );
     }
 
+    // ── Unread management ───────────────────────────────────────────────
+
     async unsubscribePushNotifications(subscriptionID: string): Promise<void> {
         const client = this.requireClient();
         const legacyClient =
@@ -2417,7 +2796,74 @@ class VexService {
         );
     }
 
+    async updateChannel(
+        channelID: string,
+        name: string,
+    ): Promise<OperationResult> {
+        try {
+            const channel = await this.requireClient().channels.update(
+                channelID,
+                name,
+            );
+            const channels = $channelsWritable.get()[channel.serverID] ?? [];
+            const present = channels.some(
+                (candidate) => candidate.channelID === channel.channelID,
+            );
+            this.replaceServerChannels(
+                channel.serverID,
+                present
+                    ? channels.map((candidate) =>
+                          candidate.channelID === channel.channelID
+                              ? channel
+                              : candidate,
+                      )
+                    : [...channels, channel],
+            );
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+    }
+
+    async updateServer(
+        serverID: string,
+        name: string,
+    ): Promise<OperationResult> {
+        try {
+            const server = await this.requireClient().servers.update(
+                serverID,
+                name,
+            );
+            $serversWritable.setKey(serverID, server);
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+    }
+
     // ── Notifications ───────────────────────────────────────────────────
+
+    async updateServerMemberRole(
+        permissionID: string,
+        powerLevel: 0 | 50 | 100,
+    ): Promise<OperationResult> {
+        try {
+            const client = this.requireClient();
+            const permission = await client.moderation.setRole(
+                permissionID,
+                powerLevel,
+            );
+            if (permission.userID === client.me.user().userID) {
+                $permissionsWritable.setKey(
+                    permission.permissionID,
+                    permission,
+                );
+            }
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+    }
 
     async uploadFileAttachment(input: {
         contentType: string;
@@ -2751,21 +3197,12 @@ class VexService {
         }
     }
 
-    // ── Private ─────────────────────────────────────────────────────────
-
     private async authenticateAccountWithPasskeyInternal(
         username: string,
         config: BootstrapConfig,
         options: ServerOptions,
         keyStore: KeyStore,
     ): Promise<AccountPasskeyAuthResult> {
-        const driver = this.passkeyCeremonyDriver;
-        if (!driver) {
-            return {
-                error: "Passkeys aren't available on this device.",
-                ok: false,
-            };
-        }
         const normalizedUsername = username.trim().toLowerCase();
         if (normalizedUsername.length === 0) {
             return { error: "Enter your handle to sign in.", ok: false };
@@ -2793,6 +3230,13 @@ class VexService {
                 !localCredentials,
             );
             const client = this.requireClient();
+            const driver = this.passkeyCeremonyDriver;
+            if (!driver) {
+                return {
+                    error: "Passkeys aren't available on this device.",
+                    ok: false,
+                };
+            }
             const begin =
                 await client.passkeys.beginAuthentication(normalizedUsername);
             const response = await driver.authenticate(
@@ -2822,7 +3266,8 @@ class VexService {
             };
         } catch (err: unknown) {
             const message = errorMessage(err);
-            if (isNetworkError(err)) {
+            const networkError = isNetworkError(err);
+            if (networkError) {
                 this.setAuthStatus("offline");
             } else {
                 this.setAuthStatus("signed_out");
@@ -2834,6 +3279,7 @@ class VexService {
             }
             return {
                 error: message,
+                ...(networkError ? { networkError } : {}),
                 ok: false,
                 shouldTryDeviceApproval:
                     shouldTryDeviceApprovalAfterPasskeyFailure(err),
@@ -2873,6 +3319,15 @@ class VexService {
         }
     }
 
+    private canRecoverHttpSession(client: Client, args: unknown[]): boolean {
+        return (
+            this.client === client &&
+            $userWritable.get() !== null &&
+            this.currentDeviceID(client) !== undefined &&
+            !isSessionMaintenanceHttpRequest(args[0])
+        );
+    }
+
     private checkWebsocketWatchdog(): void {
         if (!this.client || this.wsWatchdogLastFrameAt === 0) {
             return;
@@ -2901,6 +3356,15 @@ class VexService {
         }
     }
 
+    private clearSessionRefreshTimer(): void {
+        if (this.sessionRefreshTimer !== null) {
+            clearTimeout(this.sessionRefreshTimer);
+            this.sessionRefreshTimer = null;
+        }
+    }
+
+    // ── Private ─────────────────────────────────────────────────────────
+
     private async clearStoredCredentials(
         keyStore: KeyStore,
         username: string,
@@ -2912,79 +3376,14 @@ class VexService {
         }
     }
 
-    private async completeInitialPasskeySetupInternal(
-        config: BootstrapConfig,
-    ): Promise<AuthResult> {
-        let client: Client;
-        try {
-            client = this.requireClient();
-        } catch (err: unknown) {
-            return { error: errorMessage(err), ok: false };
-        }
-
-        try {
-            await withTimeout(
-                this.registerInitialPasskeyForCurrentClient(
-                    config.deviceName || "This device",
-                ),
-                PASSKEY_SETUP_TIMEOUT_MS,
-                "Signup stalled while adding a passkey.",
-            );
-        } catch (err: unknown) {
-            debugAuth("passkey:registerInitial:retry:failed", {
-                message: errorMessage(err),
-            });
-            if (isUnauthorizedError(err)) {
-                this.setAuthStatus("unauthorized");
-            } else if (isNetworkError(err)) {
-                this.setAuthStatus("offline");
-            }
-            return {
-                error: initialPasskeySetupErrorMessage(err),
-                ok: false,
-                passkeySetupRequired: true,
-            };
-        }
-
-        try {
-            await withTimeout(
-                client.connect(),
-                REGISTER_STEP_TIMEOUT_MS,
-                "Signup stalled while opening realtime connection.",
-            );
-            $userWritable.set(client.me.user());
-            this.setAuthStatus("authenticated");
-            this.kickPopulateState();
-            return { ok: true };
-        } catch (err: unknown) {
-            debugAuth("passkey:registerInitial:retryConnect:failed", {
-                message: errorMessage(err),
-            });
-            if (isUnauthorizedError(err)) {
-                this.setAuthStatus("unauthorized");
-            } else if (isNetworkError(err)) {
-                this.setAuthStatus("offline");
-            }
-            return {
-                error: errorMessage(err),
-                ok: false,
-            };
-        }
-    }
-
     private configureHttpForRuntime(client: Client): void {
-        if (!isReactNativeRuntime()) {
-            return;
-        }
         const internals = client as unknown as ClientWithInternalHttp;
         const http = internals.http;
         if (!http) {
             return;
         }
-        this.wrapHttpMethodsWithTimeout(http);
+        this.wrapHttpMethodsForRuntime(client, http, isReactNativeRuntime());
     }
-
-    // ── Private ─────────────────────────────────────────────────────────
 
     private async createClientWithRecovery(
         privateKey: string,
@@ -3011,6 +3410,17 @@ class VexService {
             return user.username;
         }
         return this.requireClient().me.user().username;
+    }
+
+    private currentDeviceID(client: Client): string | undefined {
+        try {
+            const deviceID = client.me.device().deviceID;
+            return typeof deviceID === "string" && deviceID.length > 0
+                ? deviceID
+                : undefined;
+        } catch {
+            return undefined;
+        }
     }
 
     private async deletePersistedMessage(mailID: string): Promise<void> {
@@ -3064,6 +3474,8 @@ class VexService {
         this.wsWatchdogSocket = null;
         this.wsWatchdogListener = null;
     }
+
+    // ── Private ─────────────────────────────────────────────────────────
 
     private ensureFamiliarCached(userID: string): void {
         if ($familiarsWritable.get()[userID]) return;
@@ -3379,6 +3791,39 @@ class VexService {
         return { ok: true };
     }
 
+    private handleCallEvent(event: CallEvent): void {
+        $latestCallEventWritable.set(event);
+        const callID = event.call.callID;
+        if (isTerminalCallEvent(event)) {
+            this.removeCallState(callID);
+            return;
+        }
+
+        $activeCallsWritable.setKey(callID, event.call);
+        const me = $userWritable.get()?.userID;
+        const isRemoteRingingCall =
+            event.fromUserID !== me && event.call.status === "ringing";
+        if (event.action === "invite" && isRemoteRingingCall) {
+            $incomingCallsWritable.setKey(callID, event);
+            return;
+        }
+        if (
+            isRemoteRingingCall &&
+            $incomingCallsWritable.get()[callID] !== undefined
+        ) {
+            return;
+        }
+
+        this.removeIncomingCall(callID);
+        if (
+            event.action === "accept" ||
+            event.fromUserID === me ||
+            $currentCallIDWritable.get() === null
+        ) {
+            $currentCallIDWritable.set(callID);
+        }
+    }
+
     private handleDirectMessage(msg: Message): void {
         const me = $userWritable.get();
         const isOwnMessage = Boolean(me && msg.authorID === me.userID);
@@ -3532,7 +3977,7 @@ class VexService {
 
     private async loginInternal(
         username: string,
-        _password: string,
+        password: string,
         config: BootstrapConfig,
         options: ServerOptions,
         keyStore: KeyStore,
@@ -3542,42 +3987,35 @@ class VexService {
         debugAuth("login:start", { host: options.host, username });
         let creds: null | StoredCredentials = null;
         const identifier = username.trim();
+        const passwordCandidate = password;
         const resolvedUsername = (): string =>
             identifier.length > 0 ? identifier : (creds?.username ?? "");
         const finishLogin = async (
             client: Client,
             loadedCreds: StoredCredentials,
         ): Promise<AuthResult> => {
-            const { authErr, passkeyState } =
-                await this.loginWithDeviceKeyWithPasskeyRetry(
-                    client,
-                    loadedCreds.username,
-                    loadedCreds.deviceID,
-                );
-            debugAuth("login:device-key:done", {
-                error: authErr?.message ?? null,
-                ok: !authErr,
+            if (passwordCandidate.trim().length === 0) {
+                this.setAuthStatus("signed_out");
+                return {
+                    error: "Enter your password, or use a passkey.",
+                    ok: false,
+                };
+            }
+
+            const loginResult = await client.login(
+                loadedCreds.username,
+                passwordCandidate,
+            );
+            debugAuth("login:password:done", {
+                error: loginResult.error ?? null,
+                ok: loginResult.ok,
             });
-            if (authErr) {
-                if (isStaleCredentialError(authErr)) {
-                    debugAuth("login:stale-credentials:clearingCredentials", {
-                        status: hasHttpStatus(authErr)
-                            ? authErr.response.status
-                            : null,
-                        username: loadedCreds.username,
-                    });
-                    await this.clearStoredCredentials(
-                        keyStore,
-                        loadedCreds.username,
-                    );
-                    this.setAuthStatus("unauthorized");
-                    return {
-                        error: "Session expired. Please sign in again.",
-                        ok: false,
-                        requireReauth: true,
-                    };
-                }
-                return { error: errorMessage(authErr), ok: false };
+            if (!loginResult.ok) {
+                this.setAuthStatus("unauthorized");
+                return {
+                    error: INVALID_CREDENTIALS_ERROR,
+                    ok: false,
+                };
             }
 
             try {
@@ -3586,13 +4024,40 @@ class VexService {
                 /* non-fatal token update */
             }
 
-            if (passkeyState === "not_registered") {
-                await this.registerInitialPasskeyForCurrentClient(
-                    config.deviceName || "This device",
-                );
+            try {
+                await client.connect();
+            } catch (connectErr: unknown) {
+                const pending = this.extractPendingApprovalDetails(connectErr);
+                if (pending) {
+                    this.startPendingApprovalWatcher({
+                        challenge: pending.challenge,
+                        deviceKey: loadedCreds.deviceKey,
+                        deviceName: config.deviceName || "This device",
+                        keyStore,
+                        requestID: pending.requestID,
+                        username: loadedCreds.username,
+                    });
+                    let pendingSignKey: string | undefined;
+                    try {
+                        pendingSignKey = client.getKeys().public;
+                    } catch {
+                        pendingSignKey = undefined;
+                    }
+                    return {
+                        error: "Device approval requested. Confirm this new device from an existing signed-in device.",
+                        ok: false,
+                        pendingDeviceApproval: true,
+                        pendingRequestID: pending.requestID,
+                        ...(pendingSignKey !== undefined
+                            ? { pendingSignKey }
+                            : {}),
+                        ...(pending.userID !== null
+                            ? { pendingUserID: pending.userID }
+                            : {}),
+                    };
+                }
+                throw connectErr;
             }
-
-            await client.connect();
             $userWritable.set(client.me.user());
             this.setAuthStatus("authenticated");
             this.kickPopulateState();
@@ -3668,19 +4133,17 @@ class VexService {
                     ok: false,
                 };
             }
-            if (isPasskeySetupRequiredError(err)) {
-                return {
-                    error: initialPasskeySetupErrorMessage(err),
-                    ok: false,
-                    passkeySetupRequired: true,
-                };
-            }
             if (isStaleCredentialError(err)) {
                 this.setAuthStatus("unauthorized");
             } else if (isNetworkError(err)) {
                 this.setAuthStatus("offline");
             }
-            return { error: errorMessage(err), ok: false };
+            return {
+                error: isUnauthorizedError(err)
+                    ? INVALID_CREDENTIALS_ERROR
+                    : errorMessage(err),
+                ok: false,
+            };
         }
     }
 
@@ -3918,6 +4381,36 @@ class VexService {
         }
     }
 
+    private publishActiveCalls(calls: CallSession[]): void {
+        const next: Record<string, CallSession> = {};
+        for (const call of calls) {
+            if (call.status !== "ended") {
+                next[call.callID] = call;
+            }
+        }
+        $activeCallsWritable.set(next);
+
+        const activeIDs = new Set(Object.keys(next));
+        const incoming = $incomingCallsWritable.get();
+        const nextIncoming: Record<string, CallEvent> = {};
+        for (const [callID, event] of Object.entries(incoming)) {
+            if (activeIDs.has(callID)) {
+                nextIncoming[callID] = event;
+            }
+        }
+        $incomingCallsWritable.set(nextIncoming);
+
+        const currentID = $currentCallIDWritable.get();
+        if (currentID && !activeIDs.has(currentID)) {
+            $currentCallIDWritable.set(null);
+        }
+    }
+
+    private publishBillingAccountState(account: BillingAccountState): void {
+        $billingAccountWritable.set(account);
+        $accountEntitlementsWritable.set(account.entitlements);
+    }
+
     private queuePendingMessageEventMessage(
         conversationKey: string,
         msg: Message,
@@ -4033,46 +4526,184 @@ class VexService {
         }, 200);
     }
 
-    private async registerInitialPasskeyForCurrentClient(
-        name: string,
-    ): Promise<void> {
-        const driver = this.passkeyCeremonyDriver;
-        if (!driver) {
-            throw new Error(
-                "Passkey setup is required before this account can sign in on this device.",
-            );
+    private async refreshBillingAccountForClient(
+        owner: Client,
+    ): Promise<BillingAccountState | null> {
+        if (!this.productFeatures.premiumTiers) {
+            $billingAccountWritable.set(null);
+            return null;
         }
-        const client = this.requireClient();
-        debugAuth("passkey:registerInitial:begin", { name });
-        const begin = await client.passkeys.beginRegistration(name);
-        debugAuth("passkey:registerInitial:challenge", {
-            hasRpID:
-                typeof (
-                    begin.options as {
-                        rp?: { id?: unknown };
+        const retrieve = (owner as unknown as ClientWithBillingLike).billing
+            ?.retrieve;
+        if (typeof retrieve !== "function") {
+            $billingAccountWritable.set(null);
+            return null;
+        }
+
+        try {
+            const account = await retrieve();
+            this.publishBillingAccountState(account);
+            return account;
+        } catch (err: unknown) {
+            debugAuth("billing:account:failed", {
+                message: errorMessage(err),
+                userID: owner.me.user().userID,
+            });
+            $billingAccountWritable.set(null);
+            return null;
+        }
+    }
+
+    private async refreshEntitlementsForClient(
+        owner: Client,
+    ): Promise<AccountEntitlements> {
+        const userID = owner.me.user().userID;
+        const withEntitlements = owner as unknown as ClientWithEntitlementsLike;
+        const retrieve = withEntitlements.entitlements?.retrieve;
+        if (typeof retrieve !== "function") {
+            const fallback = defaultAccountEntitlements(userID);
+            $accountEntitlementsWritable.set(fallback);
+            return fallback;
+        }
+
+        try {
+            const entitlements = await retrieve();
+            $accountEntitlementsWritable.set(entitlements);
+            return entitlements;
+        } catch (err: unknown) {
+            debugAuth("entitlements:refresh:failed", {
+                message: errorMessage(err),
+                userID,
+            });
+            const fallback = defaultAccountEntitlements(userID);
+            $accountEntitlementsWritable.set(fallback);
+            return fallback;
+        }
+    }
+
+    private refreshServerState(serverID: string): Promise<void> {
+        const previous = this.serverRefreshes.get(serverID);
+        const refresh = (previous ?? Promise.resolve())
+            .catch(() => undefined)
+            .then(async () => {
+                const client = this.client;
+                if (!client) return;
+
+                const servers = await client.servers.retrieve();
+                if (this.client !== client) return;
+                const server = servers.find(
+                    (candidate) => candidate.serverID === serverID,
+                );
+                if (!server) {
+                    this.removeServerFromLocalState(serverID);
+                    return;
+                }
+
+                const [channels, permissions] = await Promise.all([
+                    client.channels.retrieve(serverID),
+                    client.permissions.retrieve(),
+                ]);
+                if (this.client !== client) return;
+
+                $serversWritable.setKey(serverID, server);
+                this.replaceServerChannels(serverID, channels);
+                const otherPermissions = Object.fromEntries(
+                    Object.entries($permissionsWritable.get()).filter(
+                        ([, permission]) => permission.resourceID !== serverID,
+                    ),
+                );
+                for (const permission of permissions) {
+                    if (permission.resourceID === serverID) {
+                        otherPermissions[permission.permissionID] = permission;
                     }
-                ).rp?.id === "string",
-            requestID: begin.requestID,
-        });
-        const response = await driver.register(
-            begin.options as PublicKeyCredentialCreationOptionsJSON,
-        );
-        debugAuth("passkey:registerInitial:native:ok", {
-            hasCredentialID: typeof response["id"] === "string",
-        });
-        await client.passkeys.finishRegistration({
-            name,
-            requestID: begin.requestID,
-            response,
-        });
-        debugAuth("passkey:registerInitial:finish:ok", {
-            requestID: begin.requestID,
-        });
+                }
+                $permissionsWritable.set(otherPermissions);
+            });
+        this.serverRefreshes.set(serverID, refresh);
+        const cleanup = (): void => {
+            if (this.serverRefreshes.get(serverID) === refresh) {
+                this.serverRefreshes.delete(serverID);
+            }
+        };
+        void refresh.then(cleanup, cleanup);
+        return refresh;
+    }
+
+    private refreshSessionWithDeviceKey(
+        client: Client,
+    ): Promise<AuthSessionSnapshot> {
+        const existing = this.sessionRefreshInFlight;
+        if (existing?.client === client) {
+            return existing.promise;
+        }
+
+        const run = async (): Promise<AuthSessionSnapshot> => {
+            if (this.client !== client) {
+                throw new Error("The active session changed during refresh.");
+            }
+            const username =
+                $userWritable.get()?.username ?? client.me.user().username;
+            const deviceID = this.currentDeviceID(client);
+            if (!deviceID) {
+                throw new Error(
+                    "No trusted device is available to refresh this session.",
+                );
+            }
+
+            debugAuth("session:refresh:start", { deviceID, username });
+            const { authErr } = await this.loginWithDeviceKeyWithPasskeyRetry(
+                client,
+                username,
+                deviceID,
+            );
+            if (authErr) {
+                throw authErr;
+            }
+
+            // Verify the replacement token and use its server-provided expiry
+            // to schedule the next renewal. /whoami is deliberately excluded
+            // from the HTTP retry wrapper, so this cannot recurse into itself.
+            const auth = await client.whoami();
+            if (this.client === client) {
+                $userWritable.set(auth.user);
+                this.scheduleSessionRefresh(client, auth.exp);
+                this.setAuthStatus("authenticated");
+            }
+            return auth;
+        };
+
+        const promise = run()
+            .catch((err: unknown) => {
+                debugAuth("session:refresh:failed", {
+                    message: errorMessage(err),
+                });
+                if (this.client === client) {
+                    if (isRateLimitedError(err)) {
+                        this.markRateLimited("sessionRefresh");
+                        this.scheduleSessionRefreshRetry(client);
+                    } else if (isStaleCredentialError(err)) {
+                        this.clearSessionRefreshTimer();
+                        this.setAuthStatus("unauthorized");
+                    } else {
+                        this.scheduleSessionRefreshRetry(client);
+                        this.setAuthStatus("offline");
+                    }
+                }
+                throw err;
+            })
+            .finally(() => {
+                if (this.sessionRefreshInFlight?.promise === promise) {
+                    this.sessionRefreshInFlight = null;
+                }
+            });
+        this.sessionRefreshInFlight = { client, promise };
+        return promise;
     }
 
     private async registerInternal(
         username: string,
-        _password: string,
+        password: string,
+        intent: "create-account" | "enroll-device",
         config: BootstrapConfig,
         options: ServerOptions,
         keyStore: KeyStore,
@@ -4081,6 +4712,31 @@ class VexService {
         $pendingApprovalStageWritable.set("idle");
         this.setAuthStatus("checking");
         debugAuth("register:start", { host: options.host, username });
+        const registrationUsername = username.trim().toLowerCase();
+        if (!/^[a-z0-9_]{3,19}$/.test(registrationUsername)) {
+            this.setAuthStatus("signed_out");
+            return {
+                error: "Usernames are 3-19 letters, digits, or underscores.",
+                ok: false,
+            };
+        }
+        if (
+            password.trim().length === 0 ||
+            password.length < ACCOUNT_PASSWORD_MIN_LENGTH
+        ) {
+            this.setAuthStatus("signed_out");
+            return {
+                error: `Password must be at least ${String(ACCOUNT_PASSWORD_MIN_LENGTH)} characters.`,
+                ok: false,
+            };
+        }
+        if (password.length > ACCOUNT_PASSWORD_MAX_LENGTH) {
+            this.setAuthStatus("signed_out");
+            return {
+                error: `Password must be at most ${String(ACCOUNT_PASSWORD_MAX_LENGTH)} characters.`,
+                ok: false,
+            };
+        }
         try {
             this.deferredDeviceApproval = null;
             const privateKey = Client.generateSecretKey();
@@ -4111,12 +4767,23 @@ class VexService {
             // Pre-normalizing here keeps the local view (UI state,
             // logging, error messages) consistent with what will
             // eventually round-trip back as `me.user().username`.
-            const registrationUsername =
-                username.trim().length > 0
-                    ? username.trim().toLowerCase()
-                    : generateAutoProvisionUsername();
+            const enrollmentClient =
+                client as unknown as ClientWithEnrollmentIntent;
+            const registrationRequest =
+                intent === "create-account"
+                    ? client.register(registrationUsername, password)
+                    : enrollmentClient.requestDeviceEnrollment?.(
+                          registrationUsername,
+                          password,
+                      );
+            if (!registrationRequest) {
+                return {
+                    error: "This server client cannot request new-device enrollment yet. Update Vex and try again.",
+                    ok: false,
+                };
+            }
             const [user, regErr] = await withTimeout(
-                client.register(registrationUsername),
+                registrationRequest,
                 REGISTER_STEP_TIMEOUT_MS,
                 `Signup stalled before reaching server registration at ${options.host}.`,
             );
@@ -4192,26 +4859,6 @@ class VexService {
                 username: client.me.user().username,
             });
 
-            try {
-                await withTimeout(
-                    this.registerInitialPasskeyForCurrentClient(
-                        config.deviceName || "This device",
-                    ),
-                    PASSKEY_SETUP_TIMEOUT_MS,
-                    "Signup stalled while adding a passkey.",
-                );
-            } catch (passkeyErr: unknown) {
-                debugAuth("register:passkeySetup:failed", {
-                    message: errorMessage(passkeyErr),
-                });
-                this.setAuthStatus("unauthorized");
-                return {
-                    error: initialPasskeySetupErrorMessage(passkeyErr),
-                    ok: false,
-                    passkeySetupRequired: true,
-                };
-            }
-
             await withTimeout(
                 client.connect(),
                 REGISTER_STEP_TIMEOUT_MS,
@@ -4249,6 +4896,36 @@ class VexService {
         rememberProcessedReactionMailID(this.processedReactionMailIDs, mailID);
     }
 
+    private removeActiveCall(callID: string): void {
+        const current = $activeCallsWritable.get();
+        if (!(callID in current)) {
+            return;
+        }
+        const next = Object.fromEntries(
+            Object.entries(current).filter(([id]) => id !== callID),
+        );
+        $activeCallsWritable.set(next);
+    }
+
+    private removeCallState(callID: string): void {
+        this.removeActiveCall(callID);
+        this.removeIncomingCall(callID);
+        if ($currentCallIDWritable.get() === callID) {
+            $currentCallIDWritable.set(null);
+        }
+    }
+
+    private removeIncomingCall(callID: string): void {
+        const current = $incomingCallsWritable.get();
+        if (!(callID in current)) {
+            return;
+        }
+        const next = Object.fromEntries(
+            Object.entries(current).filter(([id]) => id !== callID),
+        );
+        $incomingCallsWritable.set(next);
+    }
+
     private removeServerFromLocalState(serverID: string): void {
         const servers = new Map(Object.entries($serversWritable.get()));
         servers.delete(serverID);
@@ -4267,12 +4944,53 @@ class VexService {
         }
         $groupMessagesWritable.set(Object.fromEntries(groupMessages));
 
+        const removedChannelIDs = new Set(
+            removedChannels.map((channel) => channel.channelID),
+        );
+        $channelUnreadCountsWritable.set(
+            Object.fromEntries(
+                Object.entries($channelUnreadCountsWritable.get()).filter(
+                    ([channelID]) => !removedChannelIDs.has(channelID),
+                ),
+            ),
+        );
+
         const permissions = Object.fromEntries(
             Object.entries($permissionsWritable.get()).filter(
                 ([, permission]) => permission.resourceID !== serverID,
             ),
         );
         $permissionsWritable.set(permissions);
+    }
+
+    private replaceServerChannels(serverID: string, channels: Channel[]): void {
+        const previous = $channelsWritable.get()[serverID] ?? [];
+        $channelsWritable.setKey(serverID, channels);
+
+        const currentIDs = new Set(
+            channels.map((channel) => channel.channelID),
+        );
+        const removedIDs = new Set(
+            previous
+                .filter((channel) => !currentIDs.has(channel.channelID))
+                .map((channel) => channel.channelID),
+        );
+        if (removedIDs.size === 0) return;
+
+        $groupMessagesWritable.set(
+            Object.fromEntries(
+                Object.entries($groupMessagesWritable.get()).filter(
+                    ([channelID]) => !removedIDs.has(channelID),
+                ),
+            ),
+        );
+        $channelUnreadCountsWritable.set(
+            Object.fromEntries(
+                Object.entries($channelUnreadCountsWritable.get()).filter(
+                    ([channelID]) => !removedIDs.has(channelID),
+                ),
+            ),
+        );
     }
 
     private async requestDeviceApprovalForPasskeyAuthenticatedAccountInternal(
@@ -4337,8 +5055,18 @@ class VexService {
                 };
             }
 
+            const enrollmentClient =
+                client as unknown as ClientWithEnrollmentIntent;
+            const enrollmentRequest =
+                enrollmentClient.requestDeviceEnrollmentWithPasskey?.(username);
+            if (!enrollmentRequest) {
+                return {
+                    error: "This server client cannot request passkey device enrollment yet. Update Vex and try again.",
+                    ok: false,
+                };
+            }
             const [user, regErr] = await withTimeout(
-                client.register(username),
+                enrollmentRequest,
                 REGISTER_STEP_TIMEOUT_MS,
                 `Device approval stalled before reaching server registration at ${options.host}.`,
             );
@@ -4432,12 +5160,25 @@ class VexService {
         }
     }
 
+    private requireCallsClient(): ClientWithCallsLike {
+        if (!this.productFeatures.voiceCalling) {
+            throw new Error("Voice calling is disabled in this build.");
+        }
+        const client = this.requireClient();
+        if (!hasCallsApi(client)) {
+            throw new Error("Voice calls are not supported by this libvex.");
+        }
+        return client;
+    }
+
     private requireClient(): Client {
         if (!this.client) throw new Error("Not authenticated");
         return this.client;
     }
 
     private resetAll(): void {
+        this.clearSessionRefreshTimer();
+        this.sessionRefreshInFlight = null;
         this.stopPendingApprovalWatcher();
         this.activePendingDeviceApproval = null;
         this.deferredDeviceApproval = null;
@@ -4450,7 +5191,12 @@ class VexService {
         this.client = null;
         this.failedUserLookups.clear();
         this.invitePreviewCache.clear();
+        this.serverRefreshes.clear();
         $authStatusWritable.set("signed_out");
+        $accountEntitlementsWritable.set(defaultAccountEntitlements());
+        $billingAccountWritable.set(null);
+        $billingOperationWritable.set(defaultBillingOperationState());
+        $billingProductsWritable.set([]);
         $userWritable.set(null);
         $keyReplacedWritable.set(false);
         $pendingApprovalStageWritable.set("idle");
@@ -4462,7 +5208,6 @@ class VexService {
             totalSteps: 0,
         });
         $avatarVersionsWritable.set({});
-        this.lastDeviceAuthRefreshAttemptAt = 0;
         $familiarsWritable.set({});
         $devicesWritable.set({});
         $avatarHashWritable.set(0);
@@ -4470,6 +5215,10 @@ class VexService {
         $groupMessagesWritable.set({});
         $dmUnreadCountsWritable.set({});
         $channelUnreadCountsWritable.set({});
+        $activeCallsWritable.set({});
+        $incomingCallsWritable.set({});
+        $currentCallIDWritable.set(null);
+        $latestCallEventWritable.set(null);
         $serversWritable.set({});
         $channelsWritable.set({});
         $permissionsWritable.set({});
@@ -4486,6 +5235,22 @@ class VexService {
 
         const shouldStop = (): boolean =>
             this.populateStateAbort || this.client !== owner;
+        if (this.productFeatures.voiceCalling && hasCallsApi(owner)) {
+            try {
+                const calls = await withTimeout(
+                    owner.calls.active(),
+                    VOICE_CALL_REFRESH_TIMEOUT_MS,
+                    "Active voice calls request timed out.",
+                );
+                if (!shouldStop()) {
+                    this.publishActiveCalls(calls);
+                }
+            } catch (err: unknown) {
+                debugAuth("populateState:calls:failed", {
+                    message: errorMessage(err),
+                });
+            }
+        }
         const shouldPublishHydrationProgress =
             !$hydrationStatusWritable.get().ready;
         let hydrationCompletedSteps = 0;
@@ -4507,7 +5272,7 @@ class VexService {
             $hydrationStatusWritable.set({
                 completedSteps: 0,
                 ready: false,
-                stage: "syncing_inbox",
+                stage: "loading_entitlements",
                 totalSteps: hydrationTotalSteps,
             });
         }
@@ -4614,6 +5379,15 @@ class VexService {
         };
 
         let bootstrapChannelsByServer: null | Record<string, Channel[]> = null;
+
+        await this.refreshEntitlementsForClient(owner);
+        if (this.productFeatures.premiumTiers) {
+            await this.refreshBillingAccountForClient(owner);
+        }
+        if (shouldStop()) {
+            return;
+        }
+        publishHydrationProgress("syncing_inbox");
 
         if (hasSyncInboxNow(owner)) {
             try {
@@ -5083,6 +5857,18 @@ class VexService {
         });
     }
 
+    private async runVoiceCallMutation(
+        run: (client: ClientWithCallsLike) => Promise<CallEvent>,
+    ): Promise<VoiceCallResult> {
+        try {
+            const event = await run(this.requireCallsClient());
+            this.handleCallEvent(event);
+            return { event, ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+    }
+
     private async satisfyPasskeyForCurrentClient(
         username: string,
     ): Promise<PasskeySessionState> {
@@ -5122,6 +5908,28 @@ class VexService {
         } catch {
             /* ignore — keystore failures are non-fatal here */
         }
+    }
+
+    private scheduleSessionRefresh(client: Client, exp: number): void {
+        if (this.client !== client) {
+            return;
+        }
+        const expMs = jwtExpToEpochMs(exp);
+        if (!Number.isFinite(expMs)) {
+            return;
+        }
+        const delayMs = Math.max(
+            1,
+            expMs - Date.now() - DEVICE_AUTH_REFRESH_THRESHOLD_MS,
+        );
+        this.setSessionRefreshTimer(client, delayMs);
+    }
+
+    private scheduleSessionRefreshRetry(client: Client): void {
+        if (this.client !== client) {
+            return;
+        }
+        this.setSessionRefreshTimer(client, DEVICE_AUTH_REFRESH_RETRY_MS);
     }
 
     private async sendMessageExtra(
@@ -5179,6 +5987,16 @@ class VexService {
         if ($authStatusWritable.get() !== status) {
             $authStatusWritable.set(status);
         }
+    }
+
+    private setSessionRefreshTimer(client: Client, delayMs: number): void {
+        this.clearSessionRefreshTimer();
+        this.sessionRefreshTimer = setTimeout(() => {
+            this.sessionRefreshTimer = null;
+            if (this.client === client) {
+                void this.probeAuthSession();
+            }
+        }, delayMs);
     }
 
     private startPendingApprovalWatcher({
@@ -5341,6 +6159,67 @@ class VexService {
         this.wsWatchdogLastFrameAt = 0;
     }
 
+    private async submitBillingProof(
+        platform: "apple" | "google",
+        request: AppleStoreTransactionInput | GooglePlayPurchaseInput,
+    ): Promise<BillingOperationResult> {
+        if (!this.productFeatures.premiumTiers) {
+            return {
+                error: "Premium tiers are disabled in this build.",
+                ok: false,
+            };
+        }
+        const client = this.requireClient();
+        const billing = (client as unknown as ClientWithBillingLike).billing;
+        let submit: (
+            request: AppleStoreTransactionInput | GooglePlayPurchaseInput,
+        ) => Promise<BillingAccountState>;
+        if (platform === "apple") {
+            const submitApple = billing?.submitAppleTransaction;
+            if (typeof submitApple !== "function") {
+                return {
+                    error: "Client does not support subscription verification.",
+                    ok: false,
+                };
+            }
+            submit = (input) =>
+                submitApple(input as AppleStoreTransactionInput);
+        } else {
+            const submitGoogle = billing?.submitGooglePurchase;
+            if (typeof submitGoogle !== "function") {
+                return {
+                    error: "Client does not support subscription verification.",
+                    ok: false,
+                };
+            }
+            submit = (input) => submitGoogle(input as GooglePlayPurchaseInput);
+        }
+
+        $billingOperationWritable.set({
+            busy: true,
+            error: null,
+            lastUpdatedAt: null,
+        });
+        try {
+            const account = await submit(request);
+            this.publishBillingAccountState(account);
+            $billingOperationWritable.set({
+                busy: false,
+                error: null,
+                lastUpdatedAt: new Date().toISOString(),
+            });
+            return { account, ok: true };
+        } catch (err: unknown) {
+            const error = errorMessage(err);
+            $billingOperationWritable.set({
+                busy: false,
+                error,
+                lastUpdatedAt: new Date().toISOString(),
+            });
+            return { error, ok: false };
+        }
+    }
+
     private subscribe<E extends keyof ClientEvents>(
         evt: E,
         fn: ClientEvents[E],
@@ -5465,6 +6344,30 @@ class VexService {
                 this.handleDirectMessage(msg);
             }
         });
+        if (this.productFeatures.voiceCalling) {
+            this.subscribe("call", (event) => {
+                this.handleCallEvent(event);
+            });
+        }
+        this.subscribe("permission", (permission) => {
+            $permissionsWritable.setKey(permission.permissionID, permission);
+            void this.refreshServerState(permission.resourceID).catch(
+                (err: unknown) => {
+                    debugAuth("server:permission-refresh:failed", {
+                        message: errorMessage(err),
+                        serverID: permission.resourceID,
+                    });
+                },
+            );
+        });
+        this.subscribe("serverChange", (serverID) => {
+            void this.refreshServerState(serverID).catch((err: unknown) => {
+                debugAuth("server:change-refresh:failed", {
+                    message: errorMessage(err),
+                    serverID,
+                });
+            });
+        });
         this.subscribeToDeviceRequestQueueChanges();
         // Initial bind for the socket the freshly-connected client
         // already owns (in case `connected` fired before this method
@@ -5472,26 +6375,76 @@ class VexService {
         this.attachWebsocketWatchdog();
     }
 
-    private wrapHttpMethodsWithTimeout(http: ClientHttpLike): void {
+    private wrapHttpMethodsForRuntime(
+        client: Client,
+        http: ClientHttpLike,
+        applyMobileTimeout: boolean,
+    ): void {
         const wrapMethod = (
-            method: (...args: unknown[]) => Promise<unknown>,
+            method: ClientHttpMethod,
             label: string,
-        ): ((...args: unknown[]) => Promise<unknown>) => {
+        ): ClientHttpMethod => {
             return async (...args: unknown[]): Promise<unknown> => {
-                return withTimeout(
-                    method(...args),
-                    15000,
-                    `HTTP ${label} timed out before dispatch/response.`,
-                );
+                const request = (): Promise<unknown> => {
+                    const pending = method(...args);
+                    if (!applyMobileTimeout) {
+                        return pending;
+                    }
+                    return withTimeout(
+                        pending,
+                        15000,
+                        `HTTP ${label} timed out before dispatch/response.`,
+                    );
+                };
+
+                try {
+                    return await request();
+                } catch (err: unknown) {
+                    if (
+                        !isUnauthorizedError(err) ||
+                        !this.canRecoverHttpSession(client, args)
+                    ) {
+                        throw err;
+                    }
+                    debugAuth("session:http-401:refresh", {
+                        method: label,
+                        path: httpRequestPath(args[0]),
+                    });
+                    try {
+                        await this.refreshSessionWithDeviceKey(client);
+                    } catch (refreshErr: unknown) {
+                        // Surface the refresh failure (network, rate limit, or
+                        // revoked device) instead of the expired-token 401.
+                        throw refreshErr;
+                    }
+                    if (this.client !== client) {
+                        throw err;
+                    }
+                    // One retry only. Calling the captured method directly
+                    // prevents a persistent 401 from entering a retry loop.
+                    return request();
+                }
             };
         };
+        if (typeof http.delete === "function") {
+            const original = http.delete.bind(http);
+            http.delete = wrapMethod(original, "DELETE");
+        }
         if (typeof http.get === "function") {
             const original = http.get.bind(http);
             http.get = wrapMethod(original, "GET");
         }
+        if (typeof http.patch === "function") {
+            const original = http.patch.bind(http);
+            http.patch = wrapMethod(original, "PATCH");
+        }
         if (typeof http.post === "function") {
             const original = http.post.bind(http);
             http.post = wrapMethod(original, "POST");
+        }
+        if (typeof http.put === "function") {
+            const original = http.put.bind(http);
+            http.put = wrapMethod(original, "PUT");
         }
     }
 }
@@ -5740,18 +6693,6 @@ function extractServerErrorPayload(
     }
 }
 
-function generateAutoProvisionUsername(): string {
-    const bytes = new Uint8Array(4);
-    if (typeof globalThis.crypto?.getRandomValues !== "function") {
-        throw new Error("Secure random generator unavailable.");
-    }
-    globalThis.crypto.getRandomValues(bytes);
-    const entropy = Array.from(bytes, (b) =>
-        b.toString(16).padStart(2, "0"),
-    ).join("");
-    return `key_${entropy}`;
-}
-
 function getClientSocket(client: Client): null | WebSocketDebugLike {
     const container = client as unknown as ClientWithSocketLike;
     const maybeSocket = container.socket;
@@ -5766,6 +6707,21 @@ function getHttpResponseData(response: unknown): unknown {
         throw new Error("Expected HTTP response data");
     }
     return response["data"];
+}
+
+function hasCallsApi(client: Client): client is Client & ClientWithCallsLike {
+    const calls = (client as unknown as Partial<ClientWithCallsLike>).calls;
+    return (
+        typeof calls?.accept === "function" &&
+        typeof calls.active === "function" &&
+        typeof calls.cancel === "function" &&
+        typeof calls.hangup === "function" &&
+        typeof calls.ice === "function" &&
+        typeof calls.iceServers === "function" &&
+        typeof calls.reject === "function" &&
+        typeof calls.signal === "function" &&
+        typeof calls.startDM === "function"
+    );
 }
 
 function hasHttpStatus(err: unknown): err is HttpErrorLike {
@@ -5800,20 +6756,17 @@ function hasSyncInboxNow(client: Client): client is Client & {
     return typeof maybeClient.syncInboxNow === "function";
 }
 
-function initialPasskeySetupErrorMessage(err: unknown): string {
-    const message = errorMessage(err).trim();
-    const retry = "Tap Retry to finish passkey setup for this account.";
-    if (message.length === 0) {
-        return `Passkey setup did not finish. ${retry}`;
+function httpRequestPath(value: unknown): null | string {
+    if (typeof value !== "string") {
+        return null;
     }
-    if (
-        /abort|cancel|interrupt|timed out/i.test(message) ||
-        isPasskeySetupRequiredError(err)
-    ) {
-        return `Passkey setup did not finish. ${retry}`;
+    const withoutQuery = value.split(/[?#]/u, 1)[0] ?? value;
+    const protocolIndex = withoutQuery.indexOf("://");
+    if (protocolIndex < 0) {
+        return withoutQuery;
     }
-    const normalizedMessage = message.replace(/\.+$/, "");
-    return `Passkey setup failed: ${normalizedMessage}. ${retry}`;
+    const pathIndex = withoutQuery.indexOf("/", protocolIndex + 3);
+    return pathIndex < 0 ? "/" : withoutQuery.slice(pathIndex);
 }
 
 function isDecryptMismatchError(err: unknown): boolean {
@@ -5905,23 +6858,41 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null;
 }
 
+function isSessionMaintenanceHttpRequest(value: unknown): boolean {
+    const path = httpRequestPath(value);
+    return (
+        path === "/auth" ||
+        path === "/auth/device" ||
+        path === "/auth/device/verify" ||
+        path === "/goodbye" ||
+        path === "/whoami"
+    );
+}
+
 /**
  * "These credentials no longer authenticate."
  *
- * Both 401 and 404 from the device-auth endpoints (`/auth/device`,
- * `/auth/device/verify`, and `whoami`) mean the same thing for the
- * caller: the stored deviceID/deviceKey on this client refers to
- * something the server will no longer let us in with. 401 is the
- * classic "token rejected" path (token expired, signature failed),
- * 404 is the "your device or its owning user has been removed
- * server-side" path. Either way the recovery is identical — drop the
- * stale keychain entry and bounce the user to the sign-in flow.
+ * A 401 from a bearer-token request can simply mean that the short-lived JWT
+ * expired, so callers must attempt device-key renewal before using this
+ * predicate. Once renewal itself returns 401 or 404, the stored device no
+ * longer authenticates and the user must return to the sign-in flow.
  *
  * Bundling them under one predicate keeps the auth flows in this
  * file from forgetting one of the two whenever they handle the other.
  */
 function isStaleCredentialError(err: unknown): boolean {
     return isUnauthorizedError(err) || isNotFoundError(err);
+}
+
+function isTerminalCallEvent(event: CallEvent): boolean {
+    return (
+        event.call.status === "ended" ||
+        event.action === "cancel" ||
+        event.action === "end" ||
+        event.action === "hangup" ||
+        event.action === "reject" ||
+        event.action === "timeout"
+    );
 }
 
 function isUnauthorizedError(err: unknown): boolean {

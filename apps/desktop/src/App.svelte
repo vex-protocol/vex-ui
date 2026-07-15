@@ -1,9 +1,11 @@
 <script lang="ts">
     import Router, { location, push } from "svelte-spa-router";
+    import { wrap } from "svelte-spa-router/wrap";
 
     import ChannelBar from "./lib/ChannelBar.svelte";
     import { setupDeepLinks } from "./lib/deeplink.js";
     import FamiliarsList from "./lib/FamiliarsList.svelte";
+    import { productFeatures } from "./lib/features.js";
     import MembersPanel from "./lib/MembersPanel.svelte";
     import { setupNotifications } from "./lib/notifications.js";
     import ServerBar from "./lib/ServerBar.svelte";
@@ -13,98 +15,112 @@
         keyReplaced,
         servers,
         user,
+        vexService,
     } from "./lib/store/index.js";
+    import { memberPanelOpen } from "./lib/stores/layout.js";
     import UserMenu from "./lib/UserMenu.svelte";
-    import Home from "./routes/Home.svelte";
+    import VoiceCallOverlay from "./lib/VoiceCallOverlay.svelte";
     import Launch from "./routes/Launch.svelte";
-    import Login from "./routes/Login.svelte";
-    import Messaging from "./routes/Messaging.svelte";
-    import Register from "./routes/Register.svelte";
-    import ServerChannel from "./routes/ServerChannel.svelte";
-    import Settings from "./routes/Settings.svelte";
+
+    vexService.configureProductFeatures(productFeatures);
 
     const routes = {
         "/": Launch,
-        "/home": Home,
+        "/home": wrap({
+            asyncComponent: () => import("./routes/Home.svelte"),
+        }),
         "/launch": Launch,
-        "/login": Login,
-        "/messaging/:userID": Messaging,
-        "/register": Register,
-        "/server/:serverID/:channelID": ServerChannel,
-        "/settings": Settings,
+        "/login": wrap({
+            asyncComponent: () => import("./routes/Login.svelte"),
+        }),
+        "/messaging/:userID": wrap({
+            asyncComponent: () => import("./routes/Messaging.svelte"),
+        }),
+        "/recover": wrap({
+            asyncComponent: () => import("./routes/RecoverPassword.svelte"),
+        }),
+        "/register": wrap({
+            asyncComponent: () => import("./routes/Register.svelte"),
+        }),
+        "/server/:serverID/:channelID": wrap({
+            asyncComponent: () => import("./routes/ServerChannel.svelte"),
+        }),
+        "/settings": wrap({
+            asyncComponent: () => import("./routes/Settings.svelte"),
+        }),
+        "/settings/passkeys": wrap({
+            asyncComponent: () => import("./routes/SettingsPasskeys.svelte"),
+        }),
+        "/settings/password": wrap({
+            asyncComponent: () => import("./routes/SettingsPassword.svelte"),
+        }),
     };
 
-    // Auth routes show no sidebars
-    const AUTH_ROUTES = ["/", "/login", "/register", "/launch"];
-    const isAuthRoute = $derived(AUTH_ROUTES.some((p) => $location === p));
-
-    // Derive active server/channel from URL
+    const AUTH_ROUTES = ["/", "/login", "/recover", "/register", "/launch"];
+    const isAuthRoute = $derived(AUTH_ROUTES.includes($location));
     const activeServerID = $derived(
         $location.startsWith("/server/") ? ($location.split("/")[2] ?? "") : "",
     );
     const activeChannelID = $derived(
         $location.startsWith("/server/") ? ($location.split("/")[3] ?? "") : "",
     );
-
-    // Derive server list and channel list from atoms
-    const serverList = $derived(Object.values($servers));
+    const serverList = $derived(
+        Object.values($servers).sort((a, b) => a.name.localeCompare(b.name)),
+    );
     const activeChannels = $derived(
         activeServerID ? ($channels[activeServerID] ?? []) : [],
     );
-    const activeServerName = $derived(
-        $servers[activeServerID]?.name ?? "Server",
-    );
 
-    // Handle key replaced — server rotated our key; force re-login
     $effect(() => {
-        if ($keyReplaced) {
-            void push("/login");
-        }
+        if ($keyReplaced) void push("/login");
     });
 
-    // Auth guard — unauthenticated access to protected routes → /login
     $effect(() => {
-        if (!$user && !isAuthRoute) {
-            void push("/login");
-        }
+        if (!$user && !isAuthRoute) void push("/login");
     });
 
-    // Desktop notifications — subscribe to message atoms, not Client events
     $effect(() => {
         if (!$user) return;
-        const unsub = setupNotifications(
-            (uid) => $familiars[uid]?.username,
-            (cid) => {
-                for (const [sid, chs] of Object.entries($channels)) {
-                    const ch = chs.find((c) => c.channelID === cid);
-                    if (ch)
+        const unsubscribe = setupNotifications(
+            (userID) => $familiars[userID]?.username,
+            (channelID) => {
+                for (const [serverID, serverChannels] of Object.entries(
+                    $channels,
+                )) {
+                    const channel = serverChannels.find(
+                        (candidate) => candidate.channelID === channelID,
+                    );
+                    if (channel) {
                         return {
-                            channelName: ch.name,
-                            serverName: $servers[sid]?.name ?? "Server",
+                            channelName: channel.name,
+                            serverName: $servers[serverID]?.name ?? "Group",
                         };
+                    }
                 }
                 return undefined;
             },
         );
-        return () => {
-            unsub();
-        };
+        return unsubscribe;
     });
 
-    // Register vex:// deep-link handler
     $effect(() => {
-        let unsub: (() => void) | undefined;
-        void setupDeepLinks().then((fn) => {
-            unsub = fn;
+        let unsubscribe: (() => void) | undefined;
+        void setupDeepLinks().then((cleanup) => {
+            unsubscribe = cleanup;
         });
-        return () => {
-            unsub?.();
-        };
+        return () => unsubscribe?.();
     });
 
-    // When navigating to a server without a channel, redirect to the first channel
     $effect(() => {
-        if (activeServerID && !activeChannelID) {
+        if (!activeServerID) return;
+        if (!$servers[activeServerID]) {
+            void push("/home");
+            return;
+        }
+        const channelExists = activeChannels.some(
+            (channel) => channel.channelID === activeChannelID,
+        );
+        if (!channelExists) {
             const first = activeChannels[0];
             if (first) {
                 void push(`/server/${activeServerID}/${first.channelID}`);
@@ -113,75 +129,93 @@
     });
 </script>
 
-<div class="app">
-    <div class="app__body">
-        {#if !isAuthRoute}
-            <div class="app__sidebar">
-                <ServerBar
-                    {serverList}
-                    {activeServerID}
-                    channelMap={$channels}
-                />
-
-                {#if activeServerID}
-                    <ChannelBar
-                        serverID={activeServerID}
-                        serverName={activeServerName}
-                        channels={activeChannels}
-                        {activeChannelID}
-                    />
-                {/if}
-            </div>
-        {/if}
-
-        <div class="app__content">
+<div class="app-shell">
+    {#if isAuthRoute}
+        <main class="app-shell__auth">
             <Router {routes} />
-        </div>
+        </main>
+    {:else}
+        <ServerBar {serverList} {activeServerID} channelMap={$channels} />
 
-        {#if !isAuthRoute}
+        <div class="app-shell__navigation">
             {#if activeServerID}
-                <MembersPanel
-                    channelID={activeChannelID}
+                <ChannelBar
                     serverID={activeServerID}
+                    channels={activeChannels}
+                    {activeChannelID}
                 />
             {:else}
                 <FamiliarsList />
             {/if}
-        {/if}
-    </div>
+            <UserMenu
+                username={$user?.username ?? ""}
+                userID={$user?.userID ?? ""}
+            />
+        </div>
 
-    {#if !isAuthRoute}
-        <UserMenu
-            username={$user?.username ?? ""}
-            userID={$user?.userID ?? ""}
-        />
+        <main class="app-shell__content">
+            <Router {routes} />
+        </main>
+
+        {#if activeServerID && $memberPanelOpen}
+            <div class="app-shell__members">
+                <MembersPanel
+                    channelID={activeChannelID}
+                    serverID={activeServerID}
+                />
+            </div>
+        {/if}
+
+        {#if productFeatures.voiceCalling}
+            <VoiceCallOverlay />
+        {/if}
     {/if}
 </div>
 
 <style>
-    .app {
+    .app-shell {
+        position: relative;
+        width: 100%;
         height: 100%;
         display: flex;
-        flex-direction: column;
+        overflow: hidden;
         background: var(--bg-primary);
-        overflow: hidden;
     }
 
-    .app__body {
-        flex: 1;
-        display: flex;
-        overflow: hidden;
-    }
-
-    .app__sidebar {
-        display: flex;
-        flex-shrink: 0;
-    }
-
-    .app__content {
+    .app-shell__auth,
+    .app-shell__content {
+        min-width: 0;
         flex: 1;
         display: flex;
         flex-direction: column;
         overflow: hidden;
+    }
+
+    .app-shell__navigation {
+        width: var(--channelbar-width);
+        min-width: var(--channelbar-width);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-right: 1px solid var(--border);
+        background: var(--bg-secondary);
+    }
+
+    .app-shell__members {
+        width: var(--members-width);
+        min-width: var(--members-width);
+        display: flex;
+        overflow: hidden;
+    }
+
+    @media (max-width: 1050px) {
+        .app-shell__members {
+            position: absolute;
+            z-index: 80;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            box-shadow: -12px 0 32px rgba(0, 0, 0, 0.34);
+        }
     }
 </style>

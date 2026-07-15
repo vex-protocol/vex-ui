@@ -1,12 +1,15 @@
 <script lang="ts">
     import type { Permission, User } from "@vex-chat/libvex";
 
+    import { X } from "@lucide/svelte";
+
     import MemberRow from "./MembersPanelMemberRow.svelte";
     import {
         user as currentUser,
         permissions,
         vexService,
     } from "./store/index.js";
+    import { memberPanelOpen } from "./stores/layout.js";
 
     let { channelID, serverID }: { channelID?: string; serverID?: string } =
         $props();
@@ -17,6 +20,7 @@
     let serverPermissions: Permission[] = $state([]);
     let kickingUserID: null | string = $state(null);
     let loading = $state(false);
+    let error = $state("");
 
     function isOnline(user: User): boolean {
         if (!user.lastSeen) return false;
@@ -113,18 +117,19 @@
         ) {
             return;
         }
-        if (!window.confirm(`Remove ${member.username} from server?`)) {
+        if (!window.confirm(`Remove ${member.username} from this group?`)) {
             return;
         }
 
         kickingUserID = member.userID;
+        error = "";
         try {
             const result = await vexService.kickServerMember(
                 serverID,
                 member.userID,
             );
             if (!result.ok) {
-                window.alert(result.error ?? "Could not remove this member.");
+                error = result.error ?? "Could not remove this member.";
                 return;
             }
             members = members.filter((item) => item.userID !== member.userID);
@@ -164,10 +169,17 @@
             .then(() => {
                 if (active) {
                     loading = false;
+                    error = "";
                 }
             })
-            .catch(() => {
-                if (active) loading = false;
+            .catch((err: unknown) => {
+                if (active) {
+                    loading = false;
+                    error =
+                        err instanceof Error
+                            ? err.message
+                            : "Could not load members.";
+                }
             });
 
         const interval = setInterval(() => {
@@ -183,10 +195,25 @@
 
 <aside class="members-panel" aria-label="Members">
     <div class="members-panel__header">
-        <span class="members-panel__title">Members — {members.length}</span>
+        <div>
+            <span class="members-panel__eyebrow">Group</span>
+            <span class="members-panel__title">Members · {members.length}</span>
+        </div>
+        <button
+            type="button"
+            title="Hide members"
+            aria-label="Hide members"
+            onclick={() => memberPanelOpen.set(false)}
+        >
+            <X size={17} />
+        </button>
     </div>
 
     <div class="members-panel__list">
+        {#if error}
+            <div class="members-panel__error" role="alert">{error}</div>
+        {/if}
+
         {#if owners.length > 0}
             <div class="members-panel__section-label">Owner</div>
             {#each owners as user (user.userID)}
@@ -247,8 +274,9 @@
 
 <style>
     .members-panel {
-        width: 220px;
-        flex-shrink: 0;
+        width: 100%;
+        min-width: 0;
+        flex: 1;
         background: var(--bg-secondary);
         border-left: 1px solid var(--border);
         display: flex;
@@ -257,17 +285,47 @@
     }
 
     .members-panel__header {
-        padding: 12px 12px 8px;
+        height: var(--topbar-height);
+        flex: 0 0 var(--topbar-height);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 10px 0 14px;
         border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
+    }
+
+    .members-panel__header > div {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+
+    .members-panel__header button {
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+        color: var(--text-faint);
+    }
+
+    .members-panel__header button:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
     }
 
     .members-panel__title {
-        font-size: 11px;
+        font-family: var(--font-heading);
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--text-secondary);
+    }
+
+    .members-panel__eyebrow {
+        color: var(--text-faint);
+        font-size: 9px;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--text-muted);
     }
 
     .members-panel__list {
@@ -280,9 +338,20 @@
         font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0;
         color: var(--text-muted);
         padding: 12px 4px 4px;
+    }
+
+    .members-panel__error {
+        margin: 7px 4px 2px;
+        padding: 7px 8px;
+        border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent);
+        border-radius: 6px;
+        background: color-mix(in srgb, var(--danger) 10%, transparent);
+        color: var(--danger);
+        font-size: 11px;
+        line-height: 1.4;
     }
 
     .members-panel__empty {

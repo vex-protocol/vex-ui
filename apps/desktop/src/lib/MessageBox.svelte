@@ -1,9 +1,11 @@
 <script lang="ts">
     import type { Message } from "@vex-chat/libvex";
 
-    import { onMount } from "svelte";
+    import { onMount, tick } from "svelte";
 
     import { messageEmbed, type MessageEmbed } from "@vex-chat/store";
+
+    import { MessageCircle, Pencil, ShieldX, Trash2 } from "@lucide/svelte";
 
     import Avatar from "./Avatar.svelte";
     import { getServerUrl } from "./config.js";
@@ -20,12 +22,14 @@
     const serverUrl = getServerUrl();
 
     let {
+        contextKey,
         messages,
         onDeleteMessageForEveryone,
         onDeleteMessageForMe,
         onEditMessage,
         usernames,
     }: {
+        contextKey?: string;
         messages: Message[];
         onDeleteMessageForEveryone?: (message: Message) => void;
         onDeleteMessageForMe?: (message: Message) => void;
@@ -36,10 +40,29 @@
     // silently strips destructure defaults on svelte files.
     const usernameMap = $derived(usernames ?? {});
 
-    const chunks = $derived(chunkMessages(messages));
+    const MESSAGE_PAGE_SIZE = 250;
+    let visibleLimit = $state(MESSAGE_PAGE_SIZE);
+    let activeContext: string | undefined = $state(undefined);
+    const visibleMessages = $derived(
+        messages.length > visibleLimit
+            ? messages.slice(messages.length - visibleLimit)
+            : messages,
+    );
+    const hiddenMessageCount = $derived(
+        Math.max(0, messages.length - visibleMessages.length),
+    );
+    const chunks = $derived(chunkMessages(visibleMessages));
 
     let containerEl: HTMLDivElement | null = $state(null);
     let autoScroll = true;
+
+    $effect(() => {
+        if (contextKey === activeContext) return;
+        activeContext = contextKey;
+        visibleLimit = MESSAGE_PAGE_SIZE;
+        autoScroll = true;
+        setTimeout(scrollToBottom, 0);
+    });
 
     function scrollToBottom(): void {
         if (containerEl && autoScroll) {
@@ -54,6 +77,14 @@
             containerEl.scrollTop -
             containerEl.clientHeight;
         autoScroll = distFromBottom < 120;
+    }
+
+    async function loadOlderMessages(): Promise<void> {
+        if (!containerEl || hiddenMessageCount === 0) return;
+        const previousHeight = containerEl.scrollHeight;
+        visibleLimit += MESSAGE_PAGE_SIZE;
+        await tick();
+        containerEl.scrollTop += containerEl.scrollHeight - previousHeight;
     }
 
     // Scroll to bottom whenever messages change
@@ -89,100 +120,121 @@
     aria-live="polite"
 >
     {#if chunks.length === 0}
-        <div class="message-box__empty">No messages yet.</div>
+        <div class="message-box__empty">
+            <span><MessageCircle size={24} /></span>
+            <strong>Start the conversation</strong>
+            <small>Messages sent here are end-to-end encrypted.</small>
+        </div>
+    {/if}
+
+    {#if hiddenMessageCount > 0}
+        <button
+            class="message-box__older"
+            type="button"
+            onclick={() => void loadOlderMessages()}
+        >
+            Load {Math.min(hiddenMessageCount, MESSAGE_PAGE_SIZE)} older messages
+        </button>
     {/if}
 
     {#each chunks as chunk (chunk.messages[0]?.mailID ?? chunk.firstTime + chunk.authorID)}
         <div class="message-chunk">
-            <div class="message-chunk__header">
+            <div class="message-chunk__avatar">
                 <Avatar userID={chunk.authorID} size={36} {serverUrl} />
+            </div>
+            <div class="message-chunk__body">
                 <div class="message-chunk__meta">
                     <span
                         class="message-chunk__author"
                         class:message-chunk__author--self={chunk.authorID ===
                             $user?.userID}
                     >
-                        {chunk.authorID === $user?.userID
-                            ? "You"
-                            : (usernameMap[chunk.authorID] ??
-                              chunk.authorID.slice(0, 8))}
+                        {usernameMap[chunk.authorID] ??
+                            (chunk.authorID === $user?.userID
+                                ? $user.username
+                                : chunk.authorID.slice(0, 8))}
                     </span>
                     <span class="message-chunk__time"
                         >{formatTime(chunk.firstTime)}</span
                     >
                 </div>
-            </div>
 
-            {#each chunk.messages as msg (msg.mailID)}
-                {@const embed = messageEmbed(msg)}
-                {@const isOwn = msg.authorID === $user?.userID}
-                <div class="message" class:message--own={isOwn}>
-                    {#if onDeleteMessageForMe || (isOwn && (onEditMessage || onDeleteMessageForEveryone))}
-                        <div class="message__actions">
-                            {#if isOwn && onEditMessage}
-                                <button
-                                    class="message__action"
-                                    type="button"
-                                    onclick={() => onEditMessage?.(msg)}
-                                    aria-label="Edit message"
-                                    title="Edit message">Edit</button
-                                >
-                            {/if}
-                            {#if onDeleteMessageForMe}
-                                <button
-                                    class="message__action message__action--danger"
-                                    type="button"
-                                    onclick={() => onDeleteMessageForMe?.(msg)}
-                                    aria-label="Delete message for me"
-                                    title="Delete message for me"
-                                    >Delete for me</button
-                                >
-                            {/if}
-                            {#if isOwn && onDeleteMessageForEveryone}
-                                <button
-                                    class="message__action message__action--danger"
-                                    type="button"
-                                    onclick={() =>
-                                        onDeleteMessageForEveryone?.(msg)}
-                                    aria-label="Delete message for everyone"
-                                    title="Delete message for everyone"
-                                    >Delete for everyone</button
-                                >
-                            {/if}
-                        </div>
-                    {/if}
-                    {#if !msg.decrypted}
-                        <div class="message__decrypt-failure" role="alert">
-                            <span
-                                class="message__decrypt-failure-icon"
-                                aria-hidden="true">!</span
-                            >
-                            <span class="message__decrypt-failure-body">
-                                <span class="message__decrypt-failure-title">
-                                    Message could not be decrypted
-                                </span>
-                                <span class="message__decrypt-failure-text">
-                                    This device received the notification, but
-                                    could not open the encrypted payload.
-                                </span>
-                                <span class="message__decrypt-failure-meta">
-                                    Mail {msg.mailID.slice(0, 8)}
-                                </span>
-                            </span>
-                        </div>
-                    {:else}
-                        {#if embed}
-                            <MessageEmbedCard message={msg} />
+                {#each chunk.messages as msg (msg.mailID)}
+                    {@const embed = messageEmbed(msg)}
+                    {@const isOwn = msg.authorID === $user?.userID}
+                    <div class="message" class:message--own={isOwn}>
+                        {#if onDeleteMessageForMe || (isOwn && (onEditMessage || onDeleteMessageForEveryone))}
+                            <div class="message__actions">
+                                {#if isOwn && onEditMessage}
+                                    <button
+                                        class="message__action"
+                                        type="button"
+                                        onclick={() => onEditMessage?.(msg)}
+                                        aria-label="Edit message"
+                                        title="Edit message"
+                                        ><Pencil size={15} /></button
+                                    >
+                                {/if}
+                                {#if onDeleteMessageForMe}
+                                    <button
+                                        class="message__action message__action--danger"
+                                        type="button"
+                                        onclick={() =>
+                                            onDeleteMessageForMe?.(msg)}
+                                        aria-label="Delete message for me"
+                                        title="Delete message from this device"
+                                        ><Trash2 size={15} /></button
+                                    >
+                                {/if}
+                                {#if isOwn && onDeleteMessageForEveryone}
+                                    <button
+                                        class="message__action message__action--danger"
+                                        type="button"
+                                        onclick={() =>
+                                            onDeleteMessageForEveryone?.(msg)}
+                                        aria-label="Delete message for everyone"
+                                        title="Delete message for everyone"
+                                        ><ShieldX size={15} /></button
+                                    >
+                                {/if}
+                            </div>
                         {/if}
-                        {#if !embed || (embed.display !== "replace" && !embedConsumesMessage(embed))}
-                            <MessageContent content={msg.message} />
+                        {#if !msg.decrypted}
+                            <div class="message__decrypt-failure" role="alert">
+                                <span
+                                    class="message__decrypt-failure-icon"
+                                    aria-hidden="true">!</span
+                                >
+                                <span class="message__decrypt-failure-body">
+                                    <span
+                                        class="message__decrypt-failure-title"
+                                    >
+                                        Message could not be decrypted
+                                    </span>
+                                    <span class="message__decrypt-failure-text">
+                                        This device received the notification,
+                                        but could not open the encrypted
+                                        payload.
+                                    </span>
+                                    <span class="message__decrypt-failure-meta">
+                                        Mail {msg.mailID.slice(0, 8)}
+                                    </span>
+                                </span>
+                            </div>
+                        {:else}
+                            {#if embed}
+                                <MessageEmbedCard message={msg} />
+                            {/if}
+                            {#if !embed || (embed.display !== "replace" && !embedConsumesMessage(embed))}
+                                <MessageContent content={msg.message} />
+                            {/if}
+                            {#if !embed?.suppressLinkPreview}
+                                <LinkPreviewCard content={msg.message} />
+                            {/if}
                         {/if}
-                        {#if !embed?.suppressLinkPreview}
-                            <LinkPreviewCard content={msg.message} />
-                        {/if}
-                    {/if}
-                </div>
-            {/each}
+                    </div>
+                {/each}
+            </div>
         </div>
     {/each}
 </div>
@@ -193,8 +245,7 @@
         overflow-y: auto;
         display: flex;
         flex-direction: column;
-        padding: 12px 16px;
-        gap: 2px;
+        padding: 12px 16px 10px;
     }
 
     .message-box__empty {
@@ -202,43 +253,83 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        color: var(--text-muted);
-        font-size: 14px;
-        font-style: italic;
-    }
-
-    .message-system {
-        padding: 4px 16px;
+        flex-direction: column;
+        gap: 6px;
+        color: var(--text-faint);
         text-align: center;
     }
 
-    .message-system__text {
+    .message-box__empty > span {
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        margin-bottom: 5px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-surface);
+        color: var(--accent-hover);
+    }
+
+    .message-box__empty strong {
+        color: var(--text-secondary);
+        font-family: var(--font-heading);
+        font-size: 14px;
+    }
+
+    .message-box__empty small {
+        font-size: 11px;
+    }
+
+    .message-box__older {
+        align-self: center;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text-secondary);
         font-size: 12px;
-        color: var(--text-muted);
-        font-style: italic;
+        margin: 2px 0 10px;
+        padding: 6px 12px;
+    }
+
+    .message-box__older:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
     }
 
     .message-chunk {
-        padding: 4px 0;
+        width: 100%;
+        max-width: 960px;
+        display: grid;
+        grid-template-columns: 36px minmax(0, 1fr);
+        column-gap: 10px;
+        padding: 7px 6px 4px;
+        border-radius: 5px;
     }
 
-    .message-chunk__header {
-        display: flex;
-        align-items: flex-start;
-        gap: 10px;
-        margin-bottom: 2px;
+    .message-chunk:hover {
+        background: color-mix(in srgb, var(--bg-hover) 18%, transparent);
+    }
+
+    .message-chunk__avatar {
+        padding-top: 1px;
+    }
+
+    .message-chunk__body {
+        min-width: 0;
     }
 
     .message-chunk__meta {
         display: flex;
         align-items: baseline;
-        gap: 8px;
-        padding-top: 8px;
+        gap: 7px;
+        min-height: 19px;
     }
 
     .message-chunk__author {
         font-weight: 600;
-        font-size: 14px;
+        font-size: 13.5px;
+        line-height: 18px;
         color: var(--text-primary);
     }
 
@@ -247,18 +338,22 @@
     }
 
     .message-chunk__time {
-        font-size: 11px;
-        color: var(--text-muted);
+        font-size: 10px;
+        color: var(--text-faint);
     }
 
     .message {
         position: relative;
-        padding-left: 46px;
-        padding-right: 76px;
-        font-size: 14px;
-        line-height: 1.5;
+        min-height: 20px;
+        padding: 0 72px 0 0;
+        font-size: 13.5px;
+        line-height: 1.48;
         color: var(--text-secondary);
         word-break: break-word;
+    }
+
+    .message + .message {
+        margin-top: 1px;
     }
 
     .message__actions {
@@ -267,11 +362,12 @@
         right: 0;
         display: none;
         align-items: center;
-        gap: 4px;
-        padding: 2px;
-        background: var(--bg-primary);
+        gap: 2px;
+        padding: 3px;
+        background: var(--bg-elevated);
         border: 1px solid var(--border);
         border-radius: 6px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
     }
 
     .message:hover .message__actions,
@@ -284,12 +380,15 @@
         background: transparent;
         color: var(--text-muted);
         cursor: pointer;
-        font-size: 11px;
-        line-height: 1;
-        padding: 4px 6px;
+        width: 28px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        border-radius: 4px;
     }
 
     .message__action:hover {
+        background: var(--bg-hover);
         color: var(--text-primary);
     }
 
@@ -351,61 +450,6 @@
         font-family: "SF Mono", "Fira Code", monospace;
         font-size: 11px;
         line-height: 1.3;
-    }
-
-    /* ── File attachment styles ── */
-    .message__image {
-        max-width: 400px;
-        max-height: 300px;
-        border-radius: 6px;
-        margin: 4px 0;
-        display: block;
-        cursor: pointer;
-    }
-
-    .message__file {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        background: var(--bg-surface);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        margin: 4px 0;
-        text-decoration: none;
-        cursor: pointer;
-        transition: background 0.1s;
-    }
-
-    .message__file:hover {
-        background: var(--bg-hover);
-    }
-
-    .message__file-icon {
-        font-size: 20px;
-        filter: grayscale(1);
-        flex-shrink: 0;
-    }
-
-    .message__file-info {
-        display: flex;
-        flex-direction: column;
-        gap: 1px;
-        min-width: 0;
-    }
-
-    .message__file-name {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--accent);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .message__file-size {
-        font-size: 11px;
-        color: var(--text-muted);
     }
 
     /* ── Markdown element styles ── */

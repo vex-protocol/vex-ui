@@ -1,16 +1,62 @@
 // ── VexService (primary API for apps) ───────────────────────────────────────
 
 export {
+    decodeVexDbAtRestKey,
+    encodeVexDbAtRestKey,
+    generateVexDbAtRestKey,
+} from "./database-key.ts";
+export {
     extractInviteID,
     formatInviteAppLink,
     formatInviteLink,
     parseInviteID,
     parseVexLink,
 } from "./deeplink.ts";
-export type { VexLink } from "./deeplink.ts";
 
 // ── Domain atoms (readonly — apps can subscribe, not write) ─────────────────
 
+export type { VexLink } from "./deeplink.ts";
+export {
+    $billingAccount,
+    $billingAccountWritable,
+    $billingOperation,
+    $billingOperationWritable,
+    $billingProducts,
+    $billingProductsWritable,
+    defaultBillingOperationState,
+} from "./domains/billing.ts";
+export type {
+    BillingAccountState,
+    BillingEnvironment,
+    BillingOperationState,
+    BillingPlatform,
+    BillingProduct,
+    BillingSubscription,
+    BillingSubscriptionStatus,
+} from "./domains/billing.ts";
+export {
+    $activeCalls,
+    $currentCallID,
+    $incomingCalls,
+    $latestCallEvent,
+} from "./domains/calls.ts";
+export {
+    $accountEntitlements,
+    $accountEntitlementsWritable,
+    $accountTier,
+    ACCOUNT_TIERS,
+    accountHasCapability,
+    accountLimitValue,
+    accountTierAtLeast,
+    defaultAccountEntitlements,
+} from "./domains/entitlements.ts";
+export type {
+    AccountEntitlementCapability,
+    AccountEntitlementLimit,
+    AccountEntitlements,
+    AccountEntitlementSource,
+    AccountTier,
+} from "./domains/entitlements.ts";
 export {
     $authStatus,
     $avatarHash,
@@ -31,6 +77,7 @@ export type {
     HydrationStatus,
     PendingApprovalStage,
 } from "./domains/identity.ts";
+
 export {
     $channelUnreadCounts,
     $dmUnreadCounts,
@@ -47,6 +94,8 @@ export {
     $servers,
 } from "./domains/servers.ts";
 
+// ── Utilities (pure functions, no state) ────────────────────────────────────
+
 export {
     $localMessageRetentionDays,
     $localMessageRetentionDaysWritable,
@@ -54,9 +103,6 @@ export {
     MAX_LOCAL_MESSAGE_RETENTION_DAYS,
     setLocalMessageRetentionDaysPreference,
 } from "./domains/settings.ts";
-
-// ── Utilities (pure functions, no state) ────────────────────────────────────
-
 export { createCachedLinkPreviewLoader } from "./link-preview-cache.ts";
 export type {
     CachedLinkPreviewLoader,
@@ -76,6 +122,8 @@ export type {
     LinkPreviewHtmlResult,
     LinkPreviewMetadata,
 } from "./link-preview.ts";
+
+export { MemoryStorage } from "./memory-storage.ts";
 export {
     applyEmoji,
     applyMessageDeleteEvent,
@@ -141,10 +189,9 @@ export {
     formatGroupNotificationSubtitle,
     shouldNotify,
 } from "./notifications.ts";
-
 export type { NotificationPayload } from "./notifications.ts";
-export { vexService } from "./service.ts";
 
+export { vexService } from "./service.ts";
 export type {
     AuthProbeStatus,
     AuthResult,
@@ -158,15 +205,11 @@ export type {
     PasskeyCeremonyDriver,
     PasskeyDeviceRestoreResult,
     PasskeySignInBegin,
+    ProductFeatureAvailability,
     ResumeNetworkStatus,
     SendMessageOptions,
     ServerOptions,
     SessionInfo,
+    SetAccountTierResult,
+    VoiceCallResult,
 } from "./service.ts";
-export {
-    decodeVexDbAtRestKey,
-    deriveLegacyMobileAtRestAesKey,
-    encodeVexDbAtRestKey,
-    generateVexDbAtRestKey,
-    rewrapVexSqliteAtRestKey,
-} from "./sqlite-at-rest-migration.ts";

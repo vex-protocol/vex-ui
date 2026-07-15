@@ -17,6 +17,8 @@
                 "VEX_PASSKEY_RP_HOST": "dev.vex.wtf",
                 "VEX_IOS_ASSOCIATED_DOMAIN_MODE": "normal",
                 "EXPO_PUBLIC_ENABLE_DEV_SERVER": "1",
+                "EXPO_PUBLIC_ENABLE_PREMIUM_TIERS": "0",
+                "EXPO_PUBLIC_ENABLE_VOICE_CALLING": "0",
                 "EXPO_PUBLIC_SERVER_URL": "dev.vex.wtf"
             },
             "autoIncrement": true
@@ -34,6 +36,8 @@
                 "VEX_PASSKEY_RP_HOST": "api.vex.wtf",
                 "VEX_IOS_ASSOCIATED_DOMAIN_MODE": "normal",
                 "EXPO_PUBLIC_ENABLE_DEV_SERVER": "0",
+                "EXPO_PUBLIC_ENABLE_PREMIUM_TIERS": "0",
+                "EXPO_PUBLIC_ENABLE_VOICE_CALLING": "0",
                 "EXPO_PUBLIC_SERVER_URL": "api.vex.wtf"
             },
             "autoIncrement": true

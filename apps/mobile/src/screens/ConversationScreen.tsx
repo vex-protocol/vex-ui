@@ -31,7 +31,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChatHeader } from "../components/ChatHeader";
 import { MessageBubbleRN } from "../components/MessageBubbleRN";
 import { MessageInputBar } from "../components/MessageInputBar";
-import { pickFileAttachment, pickImageAttachment } from "../lib/attachments";
+import { VexField } from "../components/VexField";
+import {
+    cameraPhotoAttachmentFromUri,
+    pickFileAttachment,
+    pickImageAttachment,
+} from "../lib/attachments";
+import {
+    $cameraCaptureResult,
+    clearCameraCaptureResult,
+} from "../lib/cameraCaptureResult";
+import { productFeatures } from "../lib/features";
+import { voiceCallEngine } from "../lib/voiceCallEngine";
 import { colors, typography } from "../theme";
 
 const GROUP_WINDOW_MS = 10 * 60 * 1000;
@@ -42,6 +53,7 @@ export function ConversationScreen({
 }: AppScreenProps<"Conversation">) {
     const { userID, username } = route.params;
     const allMessages = useStore($messages);
+    const cameraCaptureResult = useStore($cameraCaptureResult);
     const user = useStore($user);
 
     // Store keeps messages oldest-first; inverted FlatList needs newest-first
@@ -75,8 +87,11 @@ export function ConversationScreen({
         null,
     );
     const [sending, setSending] = useState(false);
+    const [attachingCameraPhoto, setAttachingCameraPhoto] = useState(false);
     const [error, setError] = useState("");
     const listRef = useRef<FlatList<Message>>(null);
+    const cameraAttachmentInFlightRef = useRef(false);
+    const handledCameraCaptureRequestIdRef = useRef<null | number>(null);
     const sendInFlightRef = useRef(false);
     const insets = useSafeAreaInsets();
     const authorNameForMessage = useCallback(
@@ -100,13 +115,63 @@ export function ConversationScreen({
         [authorNameForMessage, liveReplyingToMessage],
     );
 
+    useFocusEffect(
+        useCallback(() => {
+            if (
+                !cameraCaptureResult ||
+                handledCameraCaptureRequestIdRef.current ===
+                    cameraCaptureResult.requestId
+            ) {
+                return;
+            }
+            if (
+                cameraCaptureResult.source.kind !== "conversation" ||
+                cameraCaptureResult.source.userID !== userID
+            ) {
+                return;
+            }
+            handledCameraCaptureRequestIdRef.current =
+                cameraCaptureResult.requestId;
+            clearCameraCaptureResult();
+            cameraAttachmentInFlightRef.current = true;
+            setAttachingCameraPhoto(true);
+
+            void (async () => {
+                setError("");
+                try {
+                    const picked = await cameraPhotoAttachmentFromUri({
+                        height: cameraCaptureResult.height,
+                        uri: cameraCaptureResult.uri,
+                        width: cameraCaptureResult.width,
+                    });
+                    setEditingMessage(null);
+                    setAttachment(picked);
+                } catch (err: unknown) {
+                    setError(
+                        err instanceof Error
+                            ? err.message
+                            : "Could not attach photo",
+                    );
+                } finally {
+                    cameraAttachmentInFlightRef.current = false;
+                    setAttachingCameraPhoto(false);
+                }
+            })();
+        }, [cameraCaptureResult, userID]),
+    );
+
     const sendMessage = useCallback(async () => {
         const content = text.trim();
         const pendingEdit = editingMessage;
         const pendingAttachment = attachment;
         const pendingReply = liveReplyingToMessage;
         if (pendingEdit) {
-            if (!content || !user || sendInFlightRef.current) {
+            if (
+                !content ||
+                !user ||
+                sendInFlightRef.current ||
+                cameraAttachmentInFlightRef.current
+            ) {
                 return;
             }
             sendInFlightRef.current = true;
@@ -145,7 +210,8 @@ export function ConversationScreen({
         if (
             (!content && !pendingAttachment) ||
             !user ||
-            sendInFlightRef.current
+            sendInFlightRef.current ||
+            cameraAttachmentInFlightRef.current
         ) {
             return;
         }
@@ -262,14 +328,23 @@ export function ConversationScreen({
     );
 
     const openAttachmentMenu = useCallback(() => {
-        if (sending) return;
+        if (sending || attachingCameraPhoto) return;
         Alert.alert("Attach", undefined, [
             { style: "cancel", text: "Cancel" },
             {
                 onPress: () => {
+                    setError("");
+                    navigation.navigate("CameraCapture", {
+                        source: { kind: "conversation", userID },
+                    });
+                },
+                text: "Camera",
+            },
+            {
+                onPress: () => {
                     handlePickAttachment("image");
                 },
-                text: "Photo",
+                text: "Photo Library",
             },
             {
                 onPress: () => {
@@ -278,7 +353,24 @@ export function ConversationScreen({
                 text: "File",
             },
         ]);
-    }, [handlePickAttachment, sending]);
+    }, [
+        attachingCameraPhoto,
+        handlePickAttachment,
+        navigation,
+        sending,
+        userID,
+    ]);
+
+    const startVoiceCall = useCallback(() => {
+        setError("");
+        void voiceCallEngine
+            .startDmCall(userID, username)
+            .catch((err: unknown) => {
+                setError(
+                    err instanceof Error ? err.message : "Failed to start call",
+                );
+            });
+    }, [userID, username]);
 
     const deleteMessageForEveryone = useCallback(
         (message: Message) => {
@@ -400,70 +492,75 @@ export function ConversationScreen({
             keyboardVerticalOffset={insets.top}
             style={styles.container}
         >
-            <ChatHeader
-                onTitlePress={() => {
-                    navigation.navigate("DMList");
-                }}
-                subtitle={`@${username}`}
-                title="Direct Messages"
-            />
-
-            {messages.length === 0 ? (
-                <View style={styles.empty}>
-                    <Text style={styles.emptyText}>No messages yet.</Text>
-                    <Text style={styles.emptyHint}>
-                        Say hello to {username}!
-                    </Text>
-                </View>
-            ) : (
-                <FlatList
-                    contentContainerStyle={styles.list}
-                    data={messages}
-                    inverted
-                    keyExtractor={(m) => m.mailID}
-                    onScrollToIndexFailed={(info) => {
-                        listRef.current?.scrollToOffset({
-                            animated: true,
-                            offset: info.averageItemLength * info.index,
-                        });
+            <VexField style={styles.field}>
+                <ChatHeader
+                    {...(productFeatures.voiceCalling
+                        ? { onVoiceCall: startVoiceCall }
+                        : {})}
+                    onTitlePress={() => {
+                        navigation.navigate("DMList");
                     }}
-                    ref={listRef}
-                    renderItem={renderMessage}
+                    subtitle={`@${username}`}
+                    title="Direct Messages"
                 />
-            )}
 
-            {error !== "" && (
-                <View style={styles.errorBar}>
-                    <Text style={styles.errorText}>{error}</Text>
-                </View>
-            )}
+                {messages.length === 0 ? (
+                    <View style={styles.empty}>
+                        <Text style={styles.emptyText}>No messages yet.</Text>
+                        <Text style={styles.emptyHint}>
+                            Say hello to {username}!
+                        </Text>
+                    </View>
+                ) : (
+                    <FlatList
+                        contentContainerStyle={styles.list}
+                        data={messages}
+                        inverted
+                        keyExtractor={(m) => m.mailID}
+                        onScrollToIndexFailed={(info) => {
+                            listRef.current?.scrollToOffset({
+                                animated: true,
+                                offset: info.averageItemLength * info.index,
+                            });
+                        }}
+                        ref={listRef}
+                        renderItem={renderMessage}
+                    />
+                )}
 
-            <MessageInputBar
-                attachment={attachment}
-                bottomInset={insets.bottom}
-                editing={editingMessage !== null}
-                onAttachPress={openAttachmentMenu}
-                onCancelEdit={() => {
-                    setEditingMessage(null);
-                    setText("");
-                }}
-                onCancelReply={() => {
-                    setReplyingToMessage(null);
-                }}
-                onChangeText={setText}
-                onRemoveAttachment={() => {
-                    setAttachment(null);
-                }}
-                onSend={() => void sendMessage()}
-                onVoiceMemoError={setError}
-                onVoiceMemoRecorded={setAttachment}
-                placeholder={
-                    editingMessage ? "Edit message" : `Message @${username}`
-                }
-                replyingTo={replyReference}
-                sending={sending}
-                value={text}
-            />
+                {error !== "" && (
+                    <View style={styles.errorBar}>
+                        <Text style={styles.errorText}>{error}</Text>
+                    </View>
+                )}
+
+                <MessageInputBar
+                    attachment={attachment}
+                    bottomInset={insets.bottom}
+                    editing={editingMessage !== null}
+                    onAttachPress={openAttachmentMenu}
+                    onCancelEdit={() => {
+                        setEditingMessage(null);
+                        setText("");
+                    }}
+                    onCancelReply={() => {
+                        setReplyingToMessage(null);
+                    }}
+                    onChangeText={setText}
+                    onRemoveAttachment={() => {
+                        setAttachment(null);
+                    }}
+                    onSend={() => void sendMessage()}
+                    onVoiceMemoError={setError}
+                    onVoiceMemoRecorded={setAttachment}
+                    placeholder={
+                        editingMessage ? "Edit message" : `Message @${username}`
+                    }
+                    replyingTo={replyReference}
+                    sending={sending || attachingCameraPhoto}
+                    value={text}
+                />
+            </VexField>
         </KeyboardAvoidingView>
     );
 }
@@ -505,6 +602,9 @@ const styles = StyleSheet.create({
     errorText: {
         ...typography.body,
         color: colors.error,
+    },
+    field: {
+        flex: 1,
     },
     list: {
         paddingVertical: 8,

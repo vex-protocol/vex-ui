@@ -12,7 +12,13 @@
         "process:default",
         "sql:default",
         "sql:allow-execute",
-        "keyring:default",
+        {
+            "identifier": "http:default",
+            "allow": [
+                { "url": "https://api.vex.wtf" },
+                { "url": "https://dev.vex.wtf" }
+            ]
+        },
         "log:default"
     ]
 }
