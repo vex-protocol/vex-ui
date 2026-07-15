@@ -129,6 +129,42 @@ test("ignores a review submitted before the trusted request", () => {
     assert.equal(state.kind, "pending");
 });
 
+test("accepts a PR thumbs-up after scoped activity expires", () => {
+    const state = evaluateReviewState(
+        pullRequest({
+            comments: {
+                nodes: [
+                    reviewRequest({
+                        acknowledgedAt: "2026-07-15T12:01:00Z",
+                        reactions: [
+                            {
+                                content: "EYES",
+                                createdAt: "2026-07-15T11:30:00Z",
+                                user: { login: "chatgpt-codex-connector" },
+                            },
+                        ],
+                    }),
+                ],
+            },
+            reactions: {
+                nodes: [
+                    {
+                        content: "+1",
+                        createdAt: "2026-07-15T12:03:00Z",
+                        user: { login: "chatgpt-codex-connector" },
+                    },
+                ],
+            },
+        }),
+        headSha,
+        baseRef,
+        Date.parse("2026-07-15T12:05:00Z"),
+        20 * 60_000,
+    );
+    assert.equal(state.kind, "clean");
+    assert.equal(state.source, "pull-request-reaction");
+});
+
 test("accepts a thumbs-up on the scoped review request", () => {
     const state = evaluateReviewState(
         pullRequest({
@@ -230,6 +266,8 @@ test("ignores a PR thumbs-up while the acknowledged request is active", () => {
         }),
         headSha,
         baseRef,
+        Date.parse("2026-07-15T12:05:00Z"),
+        20 * 60_000,
     );
     assert.equal(state.kind, "pending");
 });
@@ -268,6 +306,8 @@ test("ignores a PR thumbs-up while another scoped request is active", () => {
         }),
         headSha,
         baseRef,
+        Date.parse("2026-07-15T12:05:00Z"),
+        20 * 60_000,
     );
     assert.equal(state.kind, "pending");
 });

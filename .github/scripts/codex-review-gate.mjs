@@ -181,6 +181,8 @@ export function evaluateReviewState(
     pullRequest,
     expectedHeadSha,
     expectedBaseRef,
+    now = Date.now(),
+    activeWindowMs = DEFAULT_RETRY_MS,
 ) {
     if (
         !pullRequest ||
@@ -263,7 +265,7 @@ export function evaluateReviewState(
     }
 
     const hasActiveScopedRequest = requests.some((request) =>
-        hasCodexEyes(request.reactions),
+        hasRecentCodexEyes(request.reactions, now, activeWindowMs),
     );
     const acknowledgedRequest = hasActiveScopedRequest
         ? undefined
@@ -521,10 +523,22 @@ async function acknowledgeReviewRequests(
     return changed;
 }
 
-async function publishLgtm(repository, number, pullRequest, headSha, baseRef) {
+async function publishLgtm(
+    repository,
+    number,
+    pullRequest,
+    headSha,
+    baseRef,
+    activeWindowMs,
+) {
     if (
-        evaluateReviewState(pullRequest, headSha, baseRef).source ===
-        "codex-comment"
+        evaluateReviewState(
+            pullRequest,
+            headSha,
+            baseRef,
+            Date.now(),
+            activeWindowMs,
+        ).source === "codex-comment"
     ) {
         await publishGateComment(
             repository,
@@ -600,7 +614,13 @@ async function recoverOpenPullRequests(
                     summary.number,
                 );
             }
-            const state = evaluateReviewState(pullRequest, headSha, baseRef);
+            const state = evaluateReviewState(
+                pullRequest,
+                headSha,
+                baseRef,
+                Date.now(),
+                retryMs,
+            );
             if (state.kind === "clean") {
                 await publishLgtm(
                     repository,
@@ -608,6 +628,7 @@ async function recoverOpenPullRequests(
                     pullRequest,
                     headSha,
                     baseRef,
+                    retryMs,
                 );
                 await publishCommitStatus(
                     repository,
@@ -746,7 +767,13 @@ export async function main() {
             ) {
                 pullRequest = await fetchPullRequest(owner, name, number);
             }
-            const state = evaluateReviewState(pullRequest, headSha, baseRef);
+            const state = evaluateReviewState(
+                pullRequest,
+                headSha,
+                baseRef,
+                Date.now(),
+                retryMs,
+            );
 
             if (state.kind === "clean") {
                 await publishLgtm(
@@ -755,6 +782,7 @@ export async function main() {
                     pullRequest,
                     headSha,
                     baseRef,
+                    retryMs,
                 );
                 await publishCommitStatus(
                     repository,
