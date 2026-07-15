@@ -133,11 +133,29 @@ function hasCodexEyes(reactions) {
     );
 }
 
-export function hasActiveCodexReview(pullRequest) {
+function hasRecentCodexEyes(reactions, now, activeWindowMs) {
+    return (reactions?.nodes ?? []).some((reaction) => {
+        const createdAt = Date.parse(reaction.createdAt ?? "");
+        return (
+            isCodex(reaction.user?.login) &&
+            isEyes(reaction.content) &&
+            Number.isFinite(createdAt) &&
+            createdAt >= now - activeWindowMs
+        );
+    });
+}
+
+export function hasActiveCodexReview(
+    pullRequest,
+    headSha,
+    baseRef,
+    now = Date.now(),
+    activeWindowMs = DEFAULT_RETRY_MS,
+) {
     return (
-        hasCodexEyes(pullRequest.reactions) ||
-        (pullRequest.comments?.nodes ?? []).some((comment) =>
-            hasCodexEyes(comment.reactions),
+        hasRecentCodexEyes(pullRequest.reactions, now, activeWindowMs) ||
+        trustedReviewRequests(pullRequest, headSha, baseRef).some((request) =>
+            hasRecentCodexEyes(request.reactions, now, activeWindowMs),
         )
     );
 }
@@ -163,6 +181,8 @@ export function evaluateReviewState(
     pullRequest,
     expectedHeadSha,
     expectedBaseRef,
+    now = Date.now(),
+    activeWindowMs = DEFAULT_RETRY_MS,
 ) {
     if (
         !pullRequest ||
@@ -245,7 +265,7 @@ export function evaluateReviewState(
     }
 
     const hasActiveScopedRequest = requests.some((request) =>
-        hasCodexEyes(request.reactions),
+        hasRecentCodexEyes(request.reactions, now, activeWindowMs),
     );
     const acknowledgedRequest = hasActiveScopedRequest
         ? undefined
@@ -441,7 +461,9 @@ async function ensureReviewRequest(
     retryMs,
 ) {
     const marker = reviewRequestMarker(headSha, baseRef);
-    if (hasActiveCodexReview(pullRequest)) {
+    if (
+        hasActiveCodexReview(pullRequest, headSha, baseRef, Date.now(), retryMs)
+    ) {
         return;
     }
     if (
@@ -501,10 +523,22 @@ async function acknowledgeReviewRequests(
     return changed;
 }
 
-async function publishLgtm(repository, number, pullRequest, headSha, baseRef) {
+async function publishLgtm(
+    repository,
+    number,
+    pullRequest,
+    headSha,
+    baseRef,
+    activeWindowMs,
+) {
     if (
-        evaluateReviewState(pullRequest, headSha, baseRef).source ===
-        "codex-comment"
+        evaluateReviewState(
+            pullRequest,
+            headSha,
+            baseRef,
+            Date.now(),
+            activeWindowMs,
+        ).source === "codex-comment"
     ) {
         await publishGateComment(
             repository,
@@ -580,7 +614,13 @@ async function recoverOpenPullRequests(
                     summary.number,
                 );
             }
-            const state = evaluateReviewState(pullRequest, headSha, baseRef);
+            const state = evaluateReviewState(
+                pullRequest,
+                headSha,
+                baseRef,
+                Date.now(),
+                retryMs,
+            );
             if (state.kind === "clean") {
                 await publishLgtm(
                     repository,
@@ -588,6 +628,7 @@ async function recoverOpenPullRequests(
                     pullRequest,
                     headSha,
                     baseRef,
+                    retryMs,
                 );
                 await publishCommitStatus(
                     repository,
@@ -726,7 +767,13 @@ export async function main() {
             ) {
                 pullRequest = await fetchPullRequest(owner, name, number);
             }
-            const state = evaluateReviewState(pullRequest, headSha, baseRef);
+            const state = evaluateReviewState(
+                pullRequest,
+                headSha,
+                baseRef,
+                Date.now(),
+                retryMs,
+            );
 
             if (state.kind === "clean") {
                 await publishLgtm(
@@ -735,6 +782,7 @@ export async function main() {
                     pullRequest,
                     headSha,
                     baseRef,
+                    retryMs,
                 );
                 await publishCommitStatus(
                     repository,
