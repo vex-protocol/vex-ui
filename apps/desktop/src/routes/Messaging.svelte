@@ -3,6 +3,11 @@
 
     import { buildMessageBodyWithAttachment } from "../lib/attachments.js";
     import ChatInput from "../lib/ChatInput.svelte";
+    import {
+        clearComposerDraft,
+        readComposerDraft,
+        writeComposerDraft,
+    } from "../lib/composerDrafts.js";
     // Route: /messaging/:userID
     import MessageBox from "../lib/MessageBox.svelte";
     import { familiars, messages, vexService } from "../lib/store/index.js";
@@ -28,23 +33,23 @@
     let sending = $state(false);
     let sendError = $state("");
     let composerValue = $state("");
+    let activeDraftKey = $state("");
     let editingMessage: Message | null = $state(null);
     let calling = $state(false);
-    let showFingerprint = $state(false);
-    let fingerprint = $state("");
-    let _theirSignKey = $state("");
 
-    // Fetch the recipient's signKey and compute the fingerprint
     $effect(() => {
-        if (!targetUserID) return;
-        // TODO: fetchKeyBundle and getFingerprint not yet exposed in public API
-        void targetUserID;
+        const nextKey = `dm:${targetUserID}`;
+        if (nextKey === activeDraftKey) return;
+        activeDraftKey = nextKey;
+        composerValue = readComposerDraft(nextKey);
+        editingMessage = null;
     });
 
-    // TODO: verified key UI removed — needs secure storage re-implementation
-
-    async function handleSend(content: string, attachment?: File) {
-        if (sending) return;
+    async function handleSend(
+        content: string,
+        attachment?: File,
+    ): Promise<boolean> {
+        if (sending) return false;
         sending = true;
         sendError = "";
         try {
@@ -60,11 +65,11 @@
                     sendError = result.error ?? "Failed to edit message";
                     composerValue = content;
                     editingMessage = pendingEdit;
-                    return;
+                    return false;
                 }
                 editingMessage = null;
                 composerValue = "";
-                return;
+                return true;
             }
 
             const body = await buildMessageBodyWithAttachment(
@@ -74,15 +79,18 @@
             );
             if (!body.ok) {
                 sendError = body.error;
-                return;
+                return false;
             }
 
             const result = await vexService.sendDM(targetUserID, body.body);
             if (!result.ok) {
                 sendError = result.error ?? "Failed to send";
+                return false;
             }
+            return true;
         } catch (err: unknown) {
             sendError = err instanceof Error ? err.message : "Failed to send";
+            return false;
         } finally {
             sending = false;
         }
@@ -154,6 +162,11 @@
         composerValue = message.message;
     }
 
+    function updateComposer(value: string): void {
+        composerValue = value;
+        writeComposerDraft(activeDraftKey, value);
+    }
+
     function handleStartVoiceCall(): void {
         if (calling || !targetUserID || $voiceCallState.phase !== "idle") {
             return;
@@ -178,27 +191,12 @@
     <header class="dm-pane__header">
         <span class="dm-pane__title">@{targetUsername}</span>
         <div class="dm-pane__actions">
-            {#if fingerprint}
-                <button
-                    class="dm-pane__action dm-pane__shield"
-                    title="Session fingerprint"
-                    aria-label="Session fingerprint"
-                    onclick={() => {
-                        showFingerprint = !showFingerprint;
-                    }}
-                >
-                    🟡
-                </button>
-            {/if}
             <button
                 class="dm-pane__action dm-pane__action--text"
                 title="Start voice call"
                 aria-label="Start voice call"
                 disabled={calling || $voiceCallState.phase !== "idle"}
                 onclick={handleStartVoiceCall}>Call</button
-            >
-            <button class="dm-pane__action" title="Search" aria-label="Search"
-                >🔍</button
             >
             <button
                 class="dm-pane__action dm-pane__action--danger dm-pane__action--text"
@@ -216,9 +214,8 @@
         </div>
     </header>
 
-    <!-- TODO: fingerprint verification panel — needs secure storage for verified keys -->
-
     <MessageBox
+        contextKey={activeDraftKey}
         messages={threadMessages}
         onDeleteMessageForEveryone={handleDeleteMessageForEveryone}
         onDeleteMessageForMe={handleDeleteMessageForMe}
@@ -231,13 +228,13 @@
     {/if}
 
     <ChatInput
+        contextKey={activeDraftKey}
         onSend={handleSend}
-        onChange={(value: string) => {
-            composerValue = value;
-        }}
+        onChange={updateComposer}
         onCancelEdit={() => {
             editingMessage = null;
             composerValue = "";
+            clearComposerDraft(activeDraftKey);
         }}
         editing={editingMessage !== null}
         {sending}
@@ -313,54 +310,6 @@
         font-size: 12px;
         filter: none;
         white-space: nowrap;
-    }
-
-    .dm-pane__shield {
-        filter: none;
-        opacity: 1;
-    }
-
-    .dm-pane__shield--verified {
-        filter: none;
-        opacity: 1;
-    }
-
-    .fingerprint-panel {
-        padding: 12px 16px;
-        background: var(--bg-secondary);
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-    }
-
-    .fingerprint-panel__header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 8px;
-    }
-
-    .fingerprint-panel__title {
-        font-size: 12px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--text-muted);
-    }
-
-    .fingerprint-panel__close {
-        width: 24px;
-        height: 24px;
-        border-radius: 4px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 12px;
-        color: var(--text-muted);
-    }
-
-    .fingerprint-panel__close:hover {
-        background: var(--bg-hover);
-        color: var(--text-primary);
     }
 
     .dm-pane__error {

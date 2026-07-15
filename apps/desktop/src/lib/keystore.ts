@@ -1,6 +1,7 @@
 import type { KeyStore, StoredCredentials } from "@vex-chat/libvex";
 
 import { getServerIdentity } from "./config.js";
+import { clearDesktopDatabaseKey } from "./platform.js";
 
 const SERVICE_PREFIX = "com.vex-chat.desktop";
 const ACTIVE_USER_LS_PREFIX = "vex-active-user";
@@ -32,6 +33,12 @@ class KeyringKeyStore implements KeyStore {
         if (this.getActiveUser() === username) {
             localStorage.removeItem(activeUserKey());
         }
+        await clearDesktopDatabaseKey(username);
+    }
+
+    deactivate(): Promise<void> {
+        localStorage.removeItem(activeUserKey());
+        return Promise.resolve();
     }
 
     async load(username?: string): Promise<null | StoredCredentials> {
@@ -118,17 +125,60 @@ function serviceName(): string {
     return `${SERVICE_PREFIX}.${scopeFromHost(getServerIdentity())}`;
 }
 
-// ── localStorage fallback (dev mode without Tauri runtime) ──────────────────
+// ── Browser-only stores ─────────────────────────────────────────────────────
 
 const LS_PREFIX = "vex-ks";
 
+/**
+ * Production browser builds must never persist identity keys in web storage.
+ * Desktop releases use the OS keychain; this store only keeps a non-Tauri
+ * session usable until the tab closes.
+ */
+class EphemeralKeyStore implements KeyStore {
+    private activeUser: null | string = null;
+    private credentials = new Map<string, StoredCredentials>();
+
+    async clear(username: string): Promise<void> {
+        this.credentials.delete(username);
+        if (this.activeUser === username) this.activeUser = null;
+        await clearDesktopDatabaseKey(username);
+    }
+
+    deactivate(): Promise<void> {
+        this.activeUser = null;
+        return Promise.resolve();
+    }
+
+    load(username?: string): Promise<null | StoredCredentials> {
+        const user = username ?? this.activeUser;
+        return Promise.resolve(
+            user ? (this.credentials.get(user) ?? null) : null,
+        );
+    }
+
+    loadActive(): Promise<null | StoredCredentials> {
+        return this.load();
+    }
+
+    save(creds: StoredCredentials): Promise<void> {
+        this.credentials.set(creds.username, creds);
+        this.activeUser = creds.username;
+        return Promise.resolve();
+    }
+}
+
 class LocalStorageKeyStore implements KeyStore {
-    clear(username: string): Promise<void> {
+    async clear(username: string): Promise<void> {
         const scope = scopeFromHost(getServerIdentity());
         localStorage.removeItem(`${LS_PREFIX}.${scope}.${username}`);
         if (localStorage.getItem(activeUserKey()) === username) {
             localStorage.removeItem(activeUserKey());
         }
+        await clearDesktopDatabaseKey(username);
+    }
+
+    deactivate(): Promise<void> {
+        localStorage.removeItem(activeUserKey());
         return Promise.resolve();
     }
 
@@ -162,10 +212,13 @@ class LocalStorageKeyStore implements KeyStore {
 
 // ── Export ───────────────────────────────────────────────────────────────────
 
-/** Uses OS keychain via tauri-plugin-keyring in Tauri, falls back to localStorage in dev browser. */
+/** Uses the OS keychain in Tauri; browser persistence is development-only. */
 export const keyStore: KeyStore & {
+    deactivate(): Promise<void>;
     loadActive(): Promise<null | StoredCredentials>;
 } =
     typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
         ? new KeyringKeyStore()
-        : new LocalStorageKeyStore();
+        : import.meta.env.DEV
+          ? new LocalStorageKeyStore()
+          : new EphemeralKeyStore();

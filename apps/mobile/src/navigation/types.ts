@@ -27,6 +27,7 @@ export type AppStackParamList = {
     JoinGroup: undefined | { inviteID?: string };
     OnboardingEmpty: undefined;
     Passkeys: undefined;
+    Password: undefined;
     ServerSettings: { serverID: string; serverName?: string };
     SessionDetails: undefined;
     Settings: undefined;
@@ -53,12 +54,21 @@ export type AuthStackParamList = {
     Authenticate:
         | undefined
         | { requestID?: string; signKey?: string; username?: string };
-    HangTight: undefined | { force?: boolean; fromAccountPicker?: boolean };
+    HangTight:
+        | undefined
+        | {
+              force?: boolean;
+              fromAccountPicker?: boolean;
+              mode?: "signin" | "signup";
+              notice?: string;
+              username?: string;
+          };
     ProvisionDevice: {
         hasLocalDevice: boolean;
         userID?: string;
         username: string;
     };
+    RecoverPassword: undefined | { username?: string };
     Welcome: undefined;
 };
 

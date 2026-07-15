@@ -3,6 +3,11 @@
 
     import { buildMessageBodyWithAttachment } from "../lib/attachments.js";
     import ChatInput from "../lib/ChatInput.svelte";
+    import {
+        clearComposerDraft,
+        readComposerDraft,
+        writeComposerDraft,
+    } from "../lib/composerDrafts.js";
     // Route: /server/:serverID/:channelID
     import MessageBox from "../lib/MessageBox.svelte";
     import {
@@ -25,8 +30,17 @@
     let sending = $state(false);
     let sendError = $state("");
     let composerValue = $state("");
+    let activeDraftKey = $state("");
     let editingMessage: Message | null = $state(null);
     let usernames: Record<string, string> = $state({});
+
+    $effect(() => {
+        const nextKey = `channel:${channelID}`;
+        if (nextKey === activeDraftKey) return;
+        activeDraftKey = nextKey;
+        composerValue = readComposerDraft(nextKey);
+        editingMessage = null;
+    });
 
     // Load channel members to resolve userIDs → usernames.
     // Re-runs when channelID or channels change (serverChange notify triggers $channels update).
@@ -43,8 +57,11 @@
             .catch(() => {});
     });
 
-    async function handleSend(content: string, attachment?: File) {
-        if (!$user || sending) return;
+    async function handleSend(
+        content: string,
+        attachment?: File,
+    ): Promise<boolean> {
+        if (!$user || sending) return false;
         sending = true;
         sendError = "";
         try {
@@ -60,11 +77,11 @@
                     sendError = result.error ?? "Failed to edit message";
                     composerValue = content;
                     editingMessage = pendingEdit;
-                    return;
+                    return false;
                 }
                 editingMessage = null;
                 composerValue = "";
-                return;
+                return true;
             }
 
             const body = await buildMessageBodyWithAttachment(
@@ -74,7 +91,7 @@
             );
             if (!body.ok) {
                 sendError = body.error;
-                return;
+                return false;
             }
 
             const result = await vexService.sendGroupMessage(
@@ -83,9 +100,12 @@
             );
             if (!result.ok) {
                 sendError = result.error ?? "Failed to send";
+                return false;
             }
+            return true;
         } catch (err: unknown) {
             sendError = err instanceof Error ? err.message : "Failed to send";
+            return false;
         } finally {
             sending = false;
         }
@@ -117,6 +137,11 @@
         editingMessage = message;
         composerValue = message.message;
     }
+
+    function updateComposer(value: string): void {
+        composerValue = value;
+        writeComposerDraft(activeDraftKey, value);
+    }
 </script>
 
 <div class="channel-pane">
@@ -125,26 +150,10 @@
             <span class="channel-pane__hash">#</span>
             <span class="channel-pane__name">{channelName}</span>
         </div>
-        <div class="channel-pane__actions">
-            <button
-                class="channel-pane__action"
-                title="Notification settings"
-                aria-label="Notification settings">🔔</button
-            >
-            <button
-                class="channel-pane__action"
-                title="Toggle members"
-                aria-label="Toggle members">👥</button
-            >
-            <button
-                class="channel-pane__action"
-                title="Search"
-                aria-label="Search">🔍</button
-            >
-        </div>
     </header>
 
     <MessageBox
+        contextKey={activeDraftKey}
         messages={channelMessages}
         onDeleteMessageForEveryone={handleDeleteMessageForEveryone}
         onDeleteMessageForMe={handleDeleteMessageForMe}
@@ -157,13 +166,13 @@
     {/if}
 
     <ChatInput
+        contextKey={activeDraftKey}
         onSend={handleSend}
-        onChange={(value: string) => {
-            composerValue = value;
-        }}
+        onChange={updateComposer}
         onCancelEdit={() => {
             editingMessage = null;
             composerValue = "";
+            clearComposerDraft(activeDraftKey);
         }}
         disabled={!$user}
         editing={editingMessage !== null}
@@ -209,33 +218,6 @@
         font-size: 15px;
         font-weight: 600;
         color: var(--text-primary);
-    }
-
-    .channel-pane__actions {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-    }
-
-    .channel-pane__action {
-        width: 32px;
-        height: 32px;
-        border-radius: 4px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14px;
-        color: var(--text-secondary);
-        transition:
-            background 0.1s,
-            color 0.1s;
-        filter: grayscale(1);
-        opacity: 0.6;
-    }
-
-    .channel-pane__action:hover {
-        background: var(--bg-hover);
-        opacity: 1;
     }
 
     .channel-pane__error {

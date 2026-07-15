@@ -9,26 +9,23 @@
 
     let username = $state("");
     let password = $state("");
+    let confirmPassword = $state("");
     let errors: Record<string, string> = $state({});
     let loading = $state(false);
-    let needsPasskeyRetry = $state(false);
+    let showPassword = $state(false);
 
-    const USERNAME_RE = /^[a-z0-9_-]+$/i;
-    const LEADING_TRAILING_RE = /^[-_]|[-_]$/;
+    const USERNAME_RE = /^[a-z0-9_]{3,19}$/;
 
     function validateUsername(value: string): null | string {
-        if (value.length < 3) return "Username must be at least 3 characters";
-        if (!USERNAME_RE.test(value))
-            return "Username can only contain letters, numbers, hyphens, and underscores";
-        if (LEADING_TRAILING_RE.test(value))
-            return "Username cannot start or end with a hyphen or underscore";
+        if (!USERNAME_RE.test(value)) {
+            return "Use 3-19 letters, numbers, or underscores";
+        }
         return null;
     }
 
     async function handleRegister(e: SubmitEvent) {
         e.preventDefault();
         errors = {};
-        needsPasskeyRetry = false;
 
         // Usernames are case-insensitive at the protocol level —
         // the server canonicalizes to lowercase, so do the same here
@@ -40,8 +37,16 @@
             errors = { username: usernameError };
             return;
         }
-        if (password.trim().length === 0) {
-            errors = { password: "Enter a password" };
+        if (password.length < 15) {
+            errors = { password: "Use at least 15 characters" };
+            return;
+        }
+        if (password.length > 1024) {
+            errors = { password: "Password is too long" };
+            return;
+        }
+        if (password !== confirmPassword) {
+            errors = { confirmPassword: "Passwords do not match" };
             return;
         }
 
@@ -56,42 +61,6 @@
         );
 
         if (!result.ok) {
-            if (result.pendingDeviceApproval) {
-                const published =
-                    await vexService.publishDeferredDeviceApprovalAndStartWatching(
-                        keyStore,
-                    );
-                if (!published.ok) {
-                    errors = {
-                        form:
-                            published.error ??
-                            result.error ??
-                            "Could not start device approval.",
-                    };
-                    playError();
-                    loading = false;
-                    return;
-                }
-                errors = {
-                    form:
-                        result.error ??
-                        "Check your other signed-in device to approve this one.",
-                };
-                playError();
-                loading = false;
-                return;
-            }
-            if (result.passkeySetupRequired) {
-                errors = {
-                    form:
-                        result.error ??
-                        "Passkey setup did not finish. Retry to complete account setup.",
-                };
-                needsPasskeyRetry = true;
-                playError();
-                loading = false;
-                return;
-            }
             errors = { form: result.error ?? "Registration failed" };
             playError();
             loading = false;
@@ -108,26 +77,6 @@
             playError();
             loading = false;
         }
-    }
-
-    async function handlePasskeyRetry(): Promise<void> {
-        errors = {};
-        loading = true;
-        const result =
-            await vexService.completeInitialPasskeySetup(desktopConfig());
-        if (result.ok && userAtom.get()) {
-            playUnlock();
-            void push("/home");
-            return;
-        }
-        errors = {
-            form:
-                result.error ??
-                "Passkey setup did not finish. Retry to complete account setup.",
-        };
-        needsPasskeyRetry = result.passkeySetupRequired === true;
-        playError();
-        loading = false;
     }
 </script>
 
@@ -147,7 +96,9 @@
                     id="username"
                     type="text"
                     autocomplete="username"
+                    autocapitalize="none"
                     placeholder="pick a username"
+                    spellcheck="false"
                     bind:value={username}
                     disabled={loading}
                     required
@@ -161,9 +112,11 @@
                 <label for="password">Password</label>
                 <input
                     id="password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     autocomplete="new-password"
                     placeholder="choose a password"
+                    minlength={15}
+                    maxlength={1024}
                     bind:value={password}
                     disabled={loading}
                     required
@@ -173,19 +126,32 @@
                     >{/if}
             </div>
 
+            <div class="auth-form__field">
+                <label for="confirm-password">Confirm password</label>
+                <input
+                    id="confirm-password"
+                    type={showPassword ? "text" : "password"}
+                    autocomplete="new-password"
+                    placeholder="enter it again"
+                    minlength={15}
+                    maxlength={1024}
+                    bind:value={confirmPassword}
+                    disabled={loading}
+                    required
+                />
+                {#if errors.confirmPassword}<span class="field-error"
+                        >{errors.confirmPassword}</span
+                    >{/if}
+            </div>
+
+            <label class="auth-form__check">
+                <input type="checkbox" bind:checked={showPassword} />
+                <span>Show password</span>
+            </label>
+
             <button class="auth-form__submit" type="submit" disabled={loading}>
                 {loading ? "Creating account..." : "Create account"}
             </button>
-            {#if needsPasskeyRetry}
-                <button
-                    class="auth-form__secondary"
-                    type="button"
-                    disabled={loading}
-                    onclick={() => void handlePasskeyRetry()}
-                >
-                    Finish passkey setup
-                </button>
-            {/if}
         </form>
 
         <p class="auth-card__footer">
@@ -210,7 +176,7 @@
         border: 1px solid var(--border);
         border-radius: 8px;
         padding: 32px;
-        width: 360px;
+        width: min(360px, calc(100vw - 32px));
         display: flex;
         flex-direction: column;
         gap: 16px;
@@ -248,7 +214,7 @@
         font-weight: 600;
         color: var(--text-secondary);
         text-transform: uppercase;
-        letter-spacing: 0.04em;
+        letter-spacing: 0;
     }
     .auth-form__submit {
         background: var(--accent);
@@ -267,21 +233,20 @@
         opacity: 0.5;
         cursor: not-allowed;
     }
-    .auth-form__secondary {
-        border: 1px solid var(--border);
-        background: var(--bg-surface);
-        color: var(--text-primary);
-        padding: 10px;
-        border-radius: 4px;
-        font-size: 14px;
-        font-weight: 600;
+    .auth-form__check {
+        align-items: center;
+        color: var(--text-secondary);
+        display: flex;
+        font-size: 13px;
+        gap: 8px;
+        width: fit-content;
     }
-    .auth-form__secondary:hover:not(:disabled) {
-        background: var(--bg-hover);
-    }
-    .auth-form__secondary:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
+    .auth-form__check input {
+        accent-color: var(--accent);
+        flex: 0 0 auto;
+        height: 16px;
+        margin: 0;
+        width: 16px;
     }
     .auth-card__footer {
         font-size: 13px;

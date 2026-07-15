@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { Channel } from "@vex-chat/libvex";
 
+    import { tick } from "svelte";
     import { push } from "svelte-spa-router";
 
     import InviteModal from "./InviteModal.svelte";
@@ -73,11 +74,14 @@
     let addingChannel = $state(false);
     let newChannelName = $state("");
     let addingError = $state("");
+    let addChannelInput: HTMLInputElement | null = $state(null);
 
-    function startAddChannel(): void {
+    async function startAddChannel(): Promise<void> {
         addingChannel = true;
         newChannelName = "";
         addingError = "";
+        await tick();
+        addChannelInput?.focus();
     }
 
     function cancelAddChannel(): void {
@@ -224,13 +228,13 @@
             <li class="channel-bar__add-row">
                 <form onsubmit={submitAddChannel}>
                     <input
+                        bind:this={addChannelInput}
                         class="channel-bar__add-input"
                         type="text"
                         placeholder="channel-name"
                         bind:value={newChannelName}
                         onkeydown={onInputKeydown}
                         maxlength={32}
-                        autofocus
                         autocomplete="off"
                     />
                     {#if addingError}
@@ -459,16 +463,6 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-    }
-
-    .channel-bar__badge {
-        background: var(--danger);
-        color: #fff;
-        border-radius: 8px;
-        font-size: 11px;
-        font-weight: 700;
-        padding: 1px 5px;
-        flex-shrink: 0;
     }
 
     /* Add channel inline form */

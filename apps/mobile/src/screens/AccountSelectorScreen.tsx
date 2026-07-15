@@ -10,8 +10,6 @@ import {
     View,
 } from "react-native";
 
-import { vexService } from "@vex-chat/store";
-
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 
@@ -21,15 +19,12 @@ import { ScreenLayout } from "../components/ScreenLayout";
 import { SectionDivider } from "../components/SectionDivider";
 import { VexButton } from "../components/VexButton";
 import { VexLogo } from "../components/VexLogo";
-import { getServerOptions } from "../lib/config";
 import { haptic } from "../lib/haptics";
 import {
     clearCredentials,
-    keychainKeyStore,
     type KnownAccount,
     listKnownAccounts,
 } from "../lib/keychain";
-import { mobileConfig } from "../lib/platform";
 import { colors, fontFamilies, typography } from "../theme";
 
 interface AccountRowProps {
@@ -43,15 +38,12 @@ interface AccountRowProps {
 type Props = AuthScreenProps<"AccountSelector">;
 
 /**
- * Account picker: saved slots on this device. Choosing one uses the saved Vex
- * device key directly. Long-press removes key material for that slot.
+ * Account picker: saved slots on this device. Choosing one opens credential
+ * entry for that account. Long-press removes key material for that slot.
  */
 export function AccountSelectorScreen({ navigation, route }: Props) {
     const [accounts, setAccounts] = useState<KnownAccount[]>([]);
     const [hydrated, setHydrated] = useState(false);
-    const [signingInUsername, setSigningInUsername] = useState<null | string>(
-        null,
-    );
     const [errorText, setErrorText] = useState<null | string>(null);
     const routeError = route.params?.error ?? null;
 
@@ -69,56 +61,17 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
     );
 
     const handleSelect = useCallback(
-        async (account: KnownAccount) => {
-            if (signingInUsername !== null) {
-                return;
-            }
+        (account: KnownAccount) => {
             haptic("confirm");
             setErrorText(null);
-            setSigningInUsername(account.username);
-            try {
-                const result = await vexService.login(
-                    account.username,
-                    "",
-                    mobileConfig(),
-                    getServerOptions(),
-                    keychainKeyStore,
-                );
-                if (!result.ok && result.passkeySetupRequired) {
-                    const retry =
-                        await vexService.completeInitialPasskeySetup(
-                            mobileConfig(),
-                        );
-                    if (retry.ok) {
-                        return;
-                    }
-                    setErrorText(
-                        retry.error ??
-                            result.error ??
-                            "Could not finish account setup.",
-                    );
-                    await refresh();
-                    return;
-                }
-                if (result.ok) {
-                    return;
-                }
-                setErrorText(
-                    result.error ?? "Could not activate this account.",
-                );
-                await refresh();
-            } catch (err: unknown) {
-                setErrorText(
-                    err instanceof Error
-                        ? err.message
-                        : "Could not activate this account.",
-                );
-                await refresh();
-            } finally {
-                setSigningInUsername(null);
-            }
+            navigation.navigate("HangTight", {
+                force: true,
+                fromAccountPicker: true,
+                mode: "signin",
+                username: account.username,
+            });
         },
-        [refresh, signingInUsername],
+        [navigation],
     );
 
     const handleRemove = useCallback(
@@ -150,7 +103,19 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
     const handleAddAccount = useCallback(() => {
         haptic("tap");
         setErrorText(null);
-        navigation.navigate("HangTight", { force: true });
+        navigation.navigate("HangTight", {
+            force: true,
+            mode: "signin",
+        });
+    }, [navigation]);
+
+    const handleCreateAccount = useCallback(() => {
+        haptic("tap");
+        setErrorText(null);
+        navigation.navigate("HangTight", {
+            force: true,
+            mode: "signup",
+        });
     }, [navigation]);
 
     if (!hydrated) {
@@ -181,13 +146,19 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
                         </View>
                     ) : null}
                     <VexButton
-                        disabled={signingInUsername !== null}
                         glow
                         icon="log-in-outline"
                         onPress={handleAddAccount}
                         style={styles.addButton}
-                        title="Get started"
+                        title="Sign in"
                         variant="primary"
+                    />
+                    <VexButton
+                        icon="person-add-outline"
+                        onPress={handleCreateAccount}
+                        style={styles.addButton}
+                        title="Create account"
+                        variant="outline"
                     />
                 </ScrollView>
             </ScreenLayout>
@@ -197,7 +168,7 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
     return (
         <ScreenLayout glows>
             <View style={styles.header}>
-                <Text style={styles.kicker}>SIGNED IN</Text>
+                <Text style={styles.kicker}>SAVED ACCOUNTS</Text>
                 <Text style={styles.heading}>Choose account</Text>
             </View>
 
@@ -215,27 +186,30 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
                 {accounts.map((account) => (
                     <AccountRow
                         account={account}
-                        busy={signingInUsername === account.username}
-                        disabled={
-                            signingInUsername !== null &&
-                            signingInUsername !== account.username
-                        }
+                        busy={false}
+                        disabled={false}
                         key={account.username}
                         onLongPress={() => {
                             handleRemove(account);
                         }}
                         onPress={() => {
-                            void handleSelect(account);
+                            handleSelect(account);
                         }}
                     />
                 ))}
                 <SectionDivider label="Or" />
                 <VexButton
-                    disabled={signingInUsername !== null}
                     icon="add"
                     onPress={handleAddAccount}
                     style={styles.addButton}
                     title="Add another account"
+                    variant="outline"
+                />
+                <VexButton
+                    icon="person-add-outline"
+                    onPress={handleCreateAccount}
+                    style={styles.createButton}
+                    title="Create account"
                     variant="outline"
                 />
             </ScrollView>
@@ -295,9 +269,7 @@ function AccountRow({
                             @{account.username}
                         </Text>
                         <Text numberOfLines={1} style={styles.deviceLine}>
-                            {userID
-                                ? shortDeviceID(userID)
-                                : `device ${shortDeviceID(account.deviceID)}`}
+                            device {shortDeviceID(account.deviceID)}
                         </Text>
                     </View>
                     {busy ? (
@@ -305,11 +277,29 @@ function AccountRow({
                             <Text style={styles.currentBadgeText}>Opening</Text>
                         </View>
                     ) : (
-                        <Ionicons
-                            color="rgba(255,255,255,0.48)"
-                            name="chevron-forward"
-                            size={18}
-                        />
+                        <View style={styles.rowActions}>
+                            <Pressable
+                                accessibilityLabel={`Remove @${account.username} from this device`}
+                                accessibilityRole="button"
+                                hitSlop={8}
+                                onPress={(event) => {
+                                    event.stopPropagation();
+                                    onLongPress();
+                                }}
+                                style={styles.removeButton}
+                            >
+                                <Ionicons
+                                    color="rgba(255,255,255,0.48)"
+                                    name="trash-outline"
+                                    size={17}
+                                />
+                            </Pressable>
+                            <Ionicons
+                                color="rgba(255,255,255,0.48)"
+                                name="chevron-forward"
+                                size={18}
+                            />
+                        </View>
                     )}
                 </View>
             </CornerBracketBox>
@@ -334,6 +324,10 @@ const styles = StyleSheet.create({
         backgroundColor: colors.successBg,
     },
     addButton: {
+        width: "100%",
+    },
+    createButton: {
+        marginTop: 10,
         width: "100%",
     },
     currentBadge: {
@@ -409,6 +403,17 @@ const styles = StyleSheet.create({
     listContent: {
         gap: 8,
         paddingBottom: 8,
+    },
+    removeButton: {
+        alignItems: "center",
+        height: 36,
+        justifyContent: "center",
+        width: 36,
+    },
+    rowActions: {
+        alignItems: "center",
+        flexDirection: "row",
+        gap: 2,
     },
     rowDisabled: {
         opacity: 0.38,

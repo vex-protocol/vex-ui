@@ -45,7 +45,7 @@ type MockClient = {
         finishRegistration: ReturnType<typeof vi.fn>;
     };
     permissions: { retrieve: ReturnType<typeof vi.fn> };
-    register: ReturnType<typeof vi.fn>;
+    requestDeviceEnrollmentWithPasskey: ReturnType<typeof vi.fn>;
     servers: {
         retrieve: ReturnType<typeof vi.fn>;
         retrieveWithChannels: ReturnType<typeof vi.fn>;
@@ -113,7 +113,7 @@ function makeClient(): MockClient {
             })),
         },
         permissions: { retrieve: vi.fn(async () => []) },
-        register: vi.fn(async () => [
+        requestDeviceEnrollmentWithPasskey: vi.fn(async () => [
             null,
             Object.assign(new Error("Device approval required."), {
                 challenge: "a".repeat(64),
@@ -311,8 +311,12 @@ describe("vexService passkey-primary sign-in", () => {
             username: "blood",
         });
         expect(libvexMock.create).toHaveBeenCalledOnce();
-        expect(authClient.register).toHaveBeenCalledWith("blood");
-        expect(authClient.register).toHaveBeenCalledOnce();
+        expect(
+            authClient.requestDeviceEnrollmentWithPasskey,
+        ).toHaveBeenCalledWith("blood");
+        expect(
+            authClient.requestDeviceEnrollmentWithPasskey,
+        ).toHaveBeenCalledOnce();
         expect(
             authClient.devices.publishPendingRegistration,
         ).toHaveBeenCalledWith({
@@ -399,7 +403,9 @@ describe("vexService passkey-primary sign-in", () => {
             pendingRequestID: "pending-request",
             pendingSignKey: "new-device-sign-key",
         });
-        expect(authClient.register).toHaveBeenCalledOnce();
+        expect(
+            authClient.requestDeviceEnrollmentWithPasskey,
+        ).toHaveBeenCalledOnce();
         expect(
             authClient.devices.publishPendingRegistration,
         ).toHaveBeenCalledTimes(2);

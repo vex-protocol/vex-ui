@@ -1,6 +1,7 @@
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity } from "react-native";
+import { StyleSheet, TouchableOpacity } from "react-native";
 
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 
 import { colors } from "../theme";
@@ -17,6 +18,8 @@ export function BackButton({ onPress }: BackButtonProps) {
     return (
         <CornerBracketBox color={colors.border} size={6}>
             <TouchableOpacity
+                accessibilityLabel="Go back"
+                accessibilityRole="button"
                 activeOpacity={0.7}
                 onPress={
                     onPress ??
@@ -26,17 +29,13 @@ export function BackButton({ onPress }: BackButtonProps) {
                 }
                 style={styles.button}
             >
-                <Text style={styles.arrow}>←</Text>
+                <Ionicons color={colors.text} name="arrow-back" size={21} />
             </TouchableOpacity>
         </CornerBracketBox>
     );
 }
 
 const styles = StyleSheet.create({
-    arrow: {
-        color: colors.text,
-        fontSize: 20,
-    },
     button: {
         alignItems: "center",
         borderColor: colors.border,

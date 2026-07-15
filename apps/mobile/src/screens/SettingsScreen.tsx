@@ -60,8 +60,15 @@ export function SettingsScreen({ navigation }: AppScreenProps<"Settings">) {
             },
         },
         {
-            description:
-                "Recover and manage your account if you lose every device",
+            description: "Change your account password",
+            icon: "lock-closed-outline",
+            label: "Password",
+            onPress: () => {
+                navigation.navigate("Password");
+            },
+        },
+        {
+            description: "Optional sign-in and recovery methods",
             icon: "key-outline",
             label: "Passkeys",
             onPress: () => {

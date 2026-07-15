@@ -51,7 +51,8 @@ Pruned periodically.
 | SDK crypto: SessionManager, box encrypt/decrypt | v0.1 |
 | Mitosis design primitives (Svelte + React) | v0.1 |
 | React Native mobile scaffold | v0.1 |
-| PBKDF2 security fix (1,000 -> 210,000 iterations) | v0.1 |
+| Argon2id password hashing and modern password policy | v0.1 |
+| Password-first auth, optional passkeys, passkey recovery, and device approvals | v0.4 |
 | Mail + keys HTTP routes and WS delivery | v0.1 |
 | packages/crypto | v0.1 |
 | packages/types | v0.1 |

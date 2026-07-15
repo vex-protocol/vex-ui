@@ -3,7 +3,11 @@ import type { User } from "@vex-chat/libvex";
 import { $user, type AuthResult, vexService } from "@vex-chat/store";
 
 import { getServerOptions, getServerUrl } from "./config";
-import { keychainKeyStore, setUserIDForUsername } from "./keychain";
+import {
+    clearActiveUsername,
+    keychainKeyStore,
+    setUserIDForUsername,
+} from "./keychain";
 import { mobileConfig } from "./platform";
 import { voiceCallEngine } from "./voiceCallEngine";
 
@@ -31,6 +35,7 @@ export async function handleLocalDevAutomationLink(url: string): Promise<void> {
 
     if (action === "logout") {
         await vexService.logout();
+        await clearActiveUsername();
         console.info("[vex-dev] logged out");
         return;
     }
@@ -71,9 +76,10 @@ async function registerLocalDevUser(username: string): Promise<void> {
     }
 
     await vexService.logout().catch(() => undefined);
+    await clearActiveUsername().catch(() => undefined);
     const result = await vexService.register(
         normalized,
-        "",
+        "local-dev-password",
         mobileConfig(),
         getServerOptions(),
         keychainKeyStore,

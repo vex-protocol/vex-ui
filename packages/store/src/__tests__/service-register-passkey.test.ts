@@ -31,6 +31,7 @@ type MockClient = {
         finishRegistration: ReturnType<typeof vi.fn>;
     };
     register: ReturnType<typeof vi.fn>;
+    requestDeviceEnrollment: ReturnType<typeof vi.fn>;
     xKeyRing: Record<string, never>;
 };
 
@@ -76,6 +77,10 @@ function makeClient(): MockClient {
             })),
         },
         register: vi.fn(async () => [
+            { userID: "user-blood", username: "blood" },
+            null,
+        ]),
+        requestDeviceEnrollment: vi.fn(async () => [
             { userID: "user-blood", username: "blood" },
             null,
         ]),
@@ -138,14 +143,17 @@ describe("vexService.register password-first signup", () => {
 
         const result = await vexService.register(
             "Blood",
-            "correct horse",
+            "correct horse battery staple",
             config,
             options,
             keyStore,
         );
 
         expect(result).toEqual({ ok: true });
-        expect(client.register).toHaveBeenCalledWith("blood", "correct horse");
+        expect(client.register).toHaveBeenCalledWith(
+            "blood",
+            "correct horse battery staple",
+        );
         expect(saveCredentials).toHaveBeenCalledWith({
             deviceID: "device-blood",
             deviceKey: "generated-private-key",
@@ -170,7 +178,7 @@ describe("vexService.register password-first signup", () => {
 
         const resultPromise = vexService.register(
             "blood",
-            "correct horse",
+            "correct horse battery staple",
             config,
             options,
             keyStore,
@@ -196,28 +204,27 @@ describe("vexService.register password-first signup", () => {
 
         const result = await vexService.register(
             "blood",
-            "correct horse",
+            "correct horse battery staple",
             config,
             options,
             keyStore,
         );
 
         expect(result).toEqual({ ok: true });
-        expect(client.register).toHaveBeenCalledWith("blood", "correct horse");
+        expect(client.register).toHaveBeenCalledWith(
+            "blood",
+            "correct horse battery staple",
+        );
         expect(client.passkeys.beginRegistration).not.toHaveBeenCalled();
         expect(client.connect).toHaveBeenCalledOnce();
         expect(saveCredentials).toHaveBeenCalledOnce();
     });
 
-    test("surfaces a password registration error without saving credentials", async () => {
+    test("rejects a short password before creating a client", async () => {
         const client = makeClient();
         const config = makeConfig();
         const { keyStore, saveCredentials } = makeKeyStore();
         const options: ServerOptions = { host: "api.vex.wtf" };
-        const regErr = new Error(
-            "Password is required to register a new account.",
-        );
-        client.register.mockResolvedValueOnce([null, regErr]);
         libvexMock.create.mockResolvedValueOnce(client);
 
         const result = await vexService.register(
@@ -229,10 +236,11 @@ describe("vexService.register password-first signup", () => {
         );
 
         expect(result).toEqual({
-            error: "Password is required to register a new account.",
+            error: "Password must be at least 15 characters.",
             ok: false,
         });
-        expect(client.register).toHaveBeenCalledWith("blood", "");
+        expect(client.register).not.toHaveBeenCalled();
+        expect(libvexMock.create).not.toHaveBeenCalled();
         expect(saveCredentials).not.toHaveBeenCalled();
         expect(client.passkeys.beginRegistration).not.toHaveBeenCalled();
         expect(client.connect).not.toHaveBeenCalled();
@@ -248,7 +256,7 @@ describe("vexService.register password-first signup", () => {
 
         const result = await vexService.register(
             "blood",
-            "correct horse",
+            "correct horse battery staple",
             config,
             options,
             keyStore,
@@ -264,55 +272,29 @@ describe("vexService.register password-first signup", () => {
         expect(saveCredentials).toHaveBeenCalledOnce();
     });
 
-    test("keeps legacy connect-required passkey setup retryable", async () => {
+    test("uses an explicit enrollment request for a new device", async () => {
         const client = makeClient();
         const config = makeConfig();
         const { keyStore, saveCredentials } = makeKeyStore();
         const options: ServerOptions = { host: "api.vex.wtf" };
-        const passkeyRequired = Object.assign(
-            new Error("Request failed with status 403"),
-            {
-                response: {
-                    data: "Passkey setup required before connect.",
-                    status: 403,
-                },
-            },
-        );
-        const response = { id: "credential-blood" };
-        const registerPasskey = vi.fn(async () => response);
-        client.connect
-            .mockRejectedValueOnce(passkeyRequired)
-            .mockResolvedValueOnce(undefined);
-        vexService.setPasskeyCeremonyDriver({
-            authenticate: vi.fn(),
-            register: registerPasskey,
-        });
         libvexMock.create.mockResolvedValueOnce(client);
 
-        const first = await vexService.register(
+        const result = await vexService.requestDeviceEnrollment(
             "blood",
-            "correct horse",
+            "correct horse battery staple",
             config,
             options,
             keyStore,
         );
-        const second = await vexService.completeInitialPasskeySetup(config);
 
-        expect(first).toEqual({
-            error: "Passkey setup did not finish. Tap Retry to finish passkey setup for this account.",
-            ok: false,
-            passkeySetupRequired: true,
-        });
-        expect(saveCredentials).toHaveBeenCalledOnce();
-        expect(client.passkeys.beginRegistration).toHaveBeenCalledWith(
-            "test-device",
+        expect(result).toEqual({ ok: true });
+        expect(client.requestDeviceEnrollment).toHaveBeenCalledWith(
+            "blood",
+            "correct horse battery staple",
         );
-        expect(client.passkeys.finishRegistration).toHaveBeenCalledWith({
-            name: "test-device",
-            requestID: "passkey-request",
-            response,
-        });
-        expect(second).toEqual({ ok: true });
-        expect(client.connect).toHaveBeenCalledTimes(2);
+        expect(client.register).not.toHaveBeenCalled();
+        expect(saveCredentials).toHaveBeenCalledOnce();
+        expect(client.passkeys.beginRegistration).not.toHaveBeenCalled();
+        expect(client.connect).toHaveBeenCalledOnce();
     });
 });

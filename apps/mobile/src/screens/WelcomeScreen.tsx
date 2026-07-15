@@ -26,11 +26,25 @@ export function WelcomeScreen({ navigation }: Props) {
                     <VexButton
                         glow
                         onPress={() => {
-                            navigation.navigate("HangTight", { force: true });
+                            navigation.navigate("HangTight", {
+                                force: true,
+                                mode: "signin",
+                            });
                         }}
                         style={styles.actionButton}
                         title="Sign in"
                         variant="primary"
+                    />
+                    <VexButton
+                        onPress={() => {
+                            navigation.navigate("HangTight", {
+                                force: true,
+                                mode: "signup",
+                            });
+                        }}
+                        style={styles.actionButton}
+                        title="Create account"
+                        variant="outline"
                     />
                 </View>
 
