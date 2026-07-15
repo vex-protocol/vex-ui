@@ -16,6 +16,15 @@ query CodexReviewGate($owner: String!, $name: String!, $number: Int!) {
       baseRefName
       headRefOid
       isDraft
+      reactions(first: 50) {
+        nodes {
+          content
+          createdAt
+          user {
+            login
+          }
+        }
+      }
       reviews(last: 50) {
         nodes {
           author {
@@ -201,6 +210,23 @@ export function evaluateReviewState(
                     source: "review-request-reaction",
                 });
             }
+        }
+    }
+
+    for (const reaction of pullRequest.reactions?.nodes ?? []) {
+        const reactionCreatedAt = Date.parse(reaction.createdAt ?? "");
+        if (
+            isCodex(reaction.user?.login) &&
+            isThumbsUp(reaction.content) &&
+            Number.isFinite(reactionCreatedAt) &&
+            reactionCreatedAt >= requestCreatedAt
+        ) {
+            signals.push({
+                at: reactionCreatedAt,
+                findingCount: 0,
+                kind: "clean",
+                source: "pull-request-reaction",
+            });
         }
     }
 

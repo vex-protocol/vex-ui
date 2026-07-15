@@ -48,6 +48,7 @@ function pullRequest(overrides = {}) {
         comments: { nodes: [reviewRequest()] },
         headRefOid: headSha,
         isDraft: false,
+        reactions: { nodes: [] },
         reviews: { nodes: [] },
         ...overrides,
     };
@@ -144,6 +145,45 @@ test("accepts a thumbs-up on the scoped review request", () => {
     );
     assert.equal(state.kind, "clean");
     assert.equal(state.source, "review-request-reaction");
+});
+
+test("accepts Codex's standard pull request thumbs-up after the request", () => {
+    const state = evaluateReviewState(
+        pullRequest({
+            reactions: {
+                nodes: [
+                    {
+                        content: "THUMBS_UP",
+                        createdAt: "2026-07-15T12:03:00Z",
+                        user: { login: "chatgpt-codex-connector[bot]" },
+                    },
+                ],
+            },
+        }),
+        headSha,
+        baseRef,
+    );
+    assert.equal(state.kind, "clean");
+    assert.equal(state.source, "pull-request-reaction");
+});
+
+test("ignores a pull request thumbs-up from before the scoped request", () => {
+    const state = evaluateReviewState(
+        pullRequest({
+            reactions: {
+                nodes: [
+                    {
+                        content: "+1",
+                        createdAt: "2026-07-15T11:59:00Z",
+                        user: { login: "chatgpt-codex-connector" },
+                    },
+                ],
+            },
+        }),
+        headSha,
+        baseRef,
+    );
+    assert.equal(state.kind, "pending");
 });
 
 test("ignores a thumbs-up on a request for an older head", () => {
