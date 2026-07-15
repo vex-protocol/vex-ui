@@ -149,10 +149,10 @@
                         class:message-chunk__author--self={chunk.authorID ===
                             $user?.userID}
                     >
-                        {chunk.authorID === $user?.userID
-                            ? "You"
-                            : (usernameMap[chunk.authorID] ??
-                              chunk.authorID.slice(0, 8))}
+                        {usernameMap[chunk.authorID] ??
+                            (chunk.authorID === $user?.userID
+                                ? $user.username
+                                : chunk.authorID.slice(0, 8))}
                     </span>
                     <span class="message-chunk__time"
                         >{formatTime(chunk.firstTime)}</span
