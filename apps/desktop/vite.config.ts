@@ -9,12 +9,17 @@ type DesktopAppEnvironment = "development" | "production";
 
 function desktopManualChunk(id: string): string | undefined {
     const normalized = id.replaceAll("\\", "/");
-    if (normalized.includes("/vex-protocol/packages/crypto/")) {
+    if (
+        normalized.includes("/vex-protocol/packages/crypto/") ||
+        normalized.includes("/node_modules/@vex-chat/crypto/")
+    ) {
         return "vex-crypto";
     }
     if (
-        normalized.includes("/vex-protocol/packages/libvex/") &&
-        !normalized.includes("/packages/libvex/src/storage/")
+        (normalized.includes("/vex-protocol/packages/libvex/") ||
+            normalized.includes("/node_modules/@vex-chat/libvex/")) &&
+        !normalized.includes("/packages/libvex/src/storage/") &&
+        !normalized.includes("/node_modules/@vex-chat/libvex/dist/storage/")
     ) {
         return "vex-protocol";
     }
