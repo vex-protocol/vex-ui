@@ -13,7 +13,6 @@ export interface ConnectedServerInfo {
     status?: {
         canary?: boolean | undefined;
         checkDurationMs?: number | undefined;
-        cryptoProfile?: string | undefined;
         ok?: boolean | undefined;
         version?: string | undefined;
     };
@@ -117,7 +116,6 @@ function parseStatus(result: {
     return {
         canary: boolField(record, "canary"),
         checkDurationMs: numberField(record, "checkDurationMs"),
-        cryptoProfile: stringField(record, "cryptoProfile"),
         ok: boolField(record, "ok"),
         version: stringField(record, "version"),
     };
