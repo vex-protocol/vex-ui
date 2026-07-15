@@ -38,6 +38,22 @@ pnpm desktop:dev:build
 pnpm desktop:prod:build
 ```
 
+## CI packages
+
+The `Desktop - Package` workflow builds native installers whenever desktop or
+shared store code changes on a pull request or on `development` and `master`.
+Development targets the development server, while `master` targets production;
+a manual run can select either flavor explicitly.
+
+Each run uploads separate artifacts for macOS Apple Silicon (`.dmg`), macOS
+Intel (`.dmg`), Windows x64 (`.msi` and NSIS `.exe`), and Linux x64 (`.deb`).
+Every artifact also contains `SHA256SUMS.txt` and `manifest.json` so downloaded
+installers can be checked before use.
+
+CI packages are currently unsigned test builds. Public distribution still
+requires Apple Developer ID signing and notarization for macOS and a trusted
+code-signing certificate for Windows.
+
 Install and launch an existing flavor explicitly:
 
 ```sh
@@ -73,5 +89,4 @@ The first launch after replacing an ad-hoc build may ask once for access to the
 legacy Keychain entries. After that read, Vex copies them into versioned slots
 owned by the stable signed app, so subsequent launches do not depend on a
 repeated password allowance. Cancelling access is treated as an error and never
-as a missing database key. Public production distribution still requires the
-normal Apple Developer ID signing and notarization pipeline.
+as a missing database key.
