@@ -55,11 +55,17 @@ module.exports = function withIosAppIconName(config, props) {
                 `${iconName}.appiconset`,
             );
 
-            await fs.promises.rm(versionedIcon, {
-                force: true,
-                recursive: true,
-            });
-            await fs.promises.rename(defaultIcon, versionedIcon);
+            if (fs.existsSync(defaultIcon)) {
+                await fs.promises.rm(versionedIcon, {
+                    force: true,
+                    recursive: true,
+                });
+                await fs.promises.rename(defaultIcon, versionedIcon);
+            } else if (!fs.existsSync(versionedIcon)) {
+                throw new Error(
+                    `Could not find an iOS app icon catalog in ${assetCatalog}.`,
+                );
+            }
             return modConfig;
         },
     ]);

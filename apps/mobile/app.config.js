@@ -103,7 +103,12 @@ module.exports = ({ config }) => {
         ) || (devMode ? DEV_PASSKEY_RP_HOST : PROD_PASSKEY_RP_HOST);
     const associatedDomainMode =
         process.env.VEX_IOS_ASSOCIATED_DOMAIN_MODE?.trim().toLowerCase();
-    const useDeveloperAssociatedDomain = associatedDomainMode === "developer";
+    const iosAssociatedDomainMode =
+        iosCapabilitiesEnabled && associatedDomainMode === "developer"
+            ? "developer"
+            : "normal";
+    const useDeveloperAssociatedDomain =
+        iosAssociatedDomainMode === "developer";
     const passkeyAssociatedDomain = `webcredentials:${passkeyRpHost}${
         useDeveloperAssociatedDomain ? "?mode=developer" : ""
     }`;
@@ -199,7 +204,7 @@ module.exports = ({ config }) => {
         runtimeVersion: { policy: "fingerprint" },
         extra: {
             ...config.extra,
-            vex: { environment, updateChannel },
+            vex: { environment, iosAssociatedDomainMode, updateChannel },
             eas: { projectId: EAS_PROJECT_ID },
         },
         plugins: [

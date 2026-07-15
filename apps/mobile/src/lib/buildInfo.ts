@@ -30,6 +30,10 @@ const environment =
             ? vexExtra["environment"]
             : undefined,
     ) ?? "production";
+const iosAssociatedDomainMode =
+    vexExtra?.["iosAssociatedDomainMode"] === "developer"
+        ? "developer"
+        : "normal";
 const configuredUpdateChannel = normalize(
     typeof vexExtra?.["updateChannel"] === "string"
         ? vexExtra["updateChannel"]
@@ -58,6 +62,7 @@ export const buildInfo = {
     displayVersion,
     environment,
     fingerprint: runtimeVersion,
+    iosAssociatedDomainMode,
     isEmbeddedLaunch: Updates.isEmbeddedLaunch,
     label: displayVersion,
     nativeBuildVersion,

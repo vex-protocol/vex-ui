@@ -593,6 +593,20 @@ function isNativeReleaseNewer(
         return false;
     }
 
+    const matchesReleaseCommit = sameCommit(
+        buildInfo.commit,
+        release.targetCommit,
+    );
+    // Local iOS installs intentionally use a developer associated-domain
+    // entitlement, which gives the same source commit a distinct fingerprint.
+    if (
+        matchesReleaseCommit &&
+        Platform.OS === "ios" &&
+        buildInfo.iosAssociatedDomainMode === "developer"
+    ) {
+        return false;
+    }
+
     const releaseFingerprint = normalizeFingerprint(release.fingerprint);
     const buildFingerprint = normalizeFingerprint(buildInfo.fingerprint);
     if (
@@ -603,7 +617,7 @@ function isNativeReleaseNewer(
         return true;
     }
 
-    if (sameCommit(buildInfo.commit, release.targetCommit)) {
+    if (matchesReleaseCommit) {
         return false;
     }
 
