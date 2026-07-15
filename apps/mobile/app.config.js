@@ -132,6 +132,7 @@ module.exports = ({ config }) => {
         ...config,
         version: appVersion,
         name: appDisplayName,
+        userInterfaceStyle: "automatic",
         icon: iconPath,
         splash: {
             backgroundColor: "#0a0a0a",
