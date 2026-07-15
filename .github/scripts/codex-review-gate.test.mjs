@@ -129,6 +129,64 @@ test("ignores a thumbs-up on a request for an older head", () => {
     assert.equal(state.kind, "pending");
 });
 
+test("ignores a spoofed request marker from a pull request author", () => {
+    const state = evaluateReviewState(
+        pullRequest({
+            comments: {
+                nodes: [
+                    {
+                        author: { login: "contributor" },
+                        body: `@codex review\n\n<!-- codex-review-request:${headSha} -->`,
+                        createdAt: "2026-07-15T12:02:00Z",
+                        reactions: {
+                            nodes: [
+                                {
+                                    content: "THUMBS_UP",
+                                    createdAt: "2026-07-15T12:03:00Z",
+                                    user: {
+                                        login: "chatgpt-codex-connector",
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+            },
+        }),
+        headSha,
+    );
+    assert.equal(state.kind, "pending");
+});
+
+test("ignores a reaction timestamped before its review request", () => {
+    const state = evaluateReviewState(
+        pullRequest({
+            comments: {
+                nodes: [
+                    {
+                        author: { login: "github-actions[bot]" },
+                        body: `@codex review\n\n<!-- codex-review-request:${headSha} -->`,
+                        createdAt: "2026-07-15T12:03:00Z",
+                        reactions: {
+                            nodes: [
+                                {
+                                    content: "THUMBS_UP",
+                                    createdAt: "2026-07-15T12:02:00Z",
+                                    user: {
+                                        login: "chatgpt-codex-connector",
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+            },
+        }),
+        headSha,
+    );
+    assert.equal(state.kind, "pending");
+});
+
 test("requires an LGTM comment to name the current head", () => {
     const state = evaluateReviewState(
         pullRequest({

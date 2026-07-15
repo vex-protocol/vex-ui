@@ -60,6 +60,10 @@ function isCodex(login) {
     return normalizedLogin(login) === CODEX_LOGIN;
 }
 
+function isGitHubActions(login) {
+    return normalizedLogin(login) === "github-actions";
+}
+
 function isThumbsUp(content) {
     return content === "THUMBS_UP" || content === "+1";
 }
@@ -113,13 +117,26 @@ export function evaluateReviewState(pullRequest, expectedHeadSha) {
             });
         }
 
-        if (!comment.body?.includes(reviewRequestMarker(expectedHeadSha))) {
+        if (
+            !isGitHubActions(comment.author?.login) ||
+            !comment.body?.includes(reviewRequestMarker(expectedHeadSha))
+        ) {
+            continue;
+        }
+        const requestCreatedAt = Date.parse(comment.createdAt ?? "");
+        if (!Number.isFinite(requestCreatedAt)) {
             continue;
         }
         for (const reaction of comment.reactions?.nodes ?? []) {
-            if (isCodex(reaction.user?.login) && isThumbsUp(reaction.content)) {
+            const reactionCreatedAt = Date.parse(reaction.createdAt ?? "");
+            if (
+                isCodex(reaction.user?.login) &&
+                isThumbsUp(reaction.content) &&
+                Number.isFinite(reactionCreatedAt) &&
+                reactionCreatedAt >= requestCreatedAt
+            ) {
                 signals.push({
-                    at: Date.parse(reaction.createdAt ?? "") || 0,
+                    at: reactionCreatedAt,
                     findingCount: 0,
                     kind: "clean",
                     source: "review-request-reaction",
@@ -243,6 +260,16 @@ async function publishCommitStatus(repository, headSha, state, description) {
         console.log(`[dry run] ${STATUS_CONTEXT}: ${state} - ${description}`);
         return;
     }
+    const combinedStatus = await githubRequest(
+        `/repos/${repository}/commits/${headSha}/status`,
+    );
+    const current = combinedStatus.statuses?.find(
+        (status) => status.context === STATUS_CONTEXT,
+    );
+    if (current?.state === state && current.description === description) {
+        console.log(`${STATUS_CONTEXT} is already ${state}; no update needed.`);
+        return;
+    }
     const runUrl = process.env.GITHUB_RUN_ID
         ? `https://github.com/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`
         : `https://github.com/${repository}/commit/${headSha}`;
@@ -305,7 +332,7 @@ async function recoverOpenPullRequests(repository, owner, name) {
     const failures = [];
 
     for (const summary of summaries) {
-        if (!TARGET_BRANCHES.has(summary.base?.ref)) {
+        if (summary.draft || !TARGET_BRANCHES.has(summary.base?.ref)) {
             continue;
         }
         try {

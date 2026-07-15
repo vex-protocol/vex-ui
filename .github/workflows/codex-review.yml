@@ -27,7 +27,7 @@ permissions:
 
 jobs:
     codex-review:
-        name: Codex Review
+        name: Monitor Codex Review
         if: github.event_name == 'pull_request_target' && github.event.pull_request.draft == false
         runs-on: ubuntu-latest
         timeout-minutes: 42
