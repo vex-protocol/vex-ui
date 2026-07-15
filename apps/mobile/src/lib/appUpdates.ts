@@ -580,9 +580,6 @@ function isNativeReleaseNewer(
     releaseCompareStatus: GitHubCompareStatus | undefined,
 ): boolean {
     if (!release) return false;
-    if (sameCommit(buildInfo.commit, release.targetCommit)) {
-        return false;
-    }
     // APK releases are native baselines and may lag branch HEAD after OTA-only
     // commits. Only suppress one when the running app already contains it.
     if (releaseCompareStatus === "ahead") {
@@ -604,6 +601,10 @@ function isNativeReleaseNewer(
         releaseFingerprint !== buildFingerprint
     ) {
         return true;
+    }
+
+    if (sameCommit(buildInfo.commit, release.targetCommit)) {
+        return false;
     }
 
     if (__DEV__) {
