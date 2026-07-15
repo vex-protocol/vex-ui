@@ -675,11 +675,11 @@ function MainApp() {
     }, [user?.userID]);
 
     useEffect(() => {
-        if (!user) {
+        if (!userID) {
             return;
         }
         let active = true;
-        const pollWhoAmI = async () => {
+        const maintainAuthSession = async () => {
             if (authProbeInFlightRef.current) {
                 return;
             }
@@ -730,22 +730,20 @@ function MainApp() {
                 }
             } catch (err: unknown) {
                 console.warn(
-                    "[vex-auth] whoami poll failed",
+                    "[vex-auth] session maintenance failed",
                     err instanceof Error ? err.message : String(err),
                 );
             } finally {
                 authProbeInFlightRef.current = false;
             }
         };
-        void pollWhoAmI();
-        const interval = setInterval(() => {
-            void pollWhoAmI();
-        }, 10_000);
+        // The store schedules renewal from the server-provided JWT expiry.
+        // This one probe seeds that timer; app resume handles suspended timers.
+        void maintainAuthSession();
         return () => {
             active = false;
-            clearInterval(interval);
         };
-    }, [logoutWithPushNotificationCleanup, user]);
+    }, [logoutWithPushNotificationCleanup, userID]);
 
     useEffect(() => {
         if (!user) {
