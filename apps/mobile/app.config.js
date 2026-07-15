@@ -30,7 +30,7 @@ const ANDROID_ASSET_STATEMENTS_PLUGIN = "./plugins/withAndroidAssetStatements";
 const IOS_APP_ICON_NAME_PLUGIN = "./plugins/withIosAppIconName";
 // Bump this name when icon geometry changes so SpringBoard cannot reuse an
 // older compiled icon rendition after an in-place ad hoc install.
-const IOS_APP_ICON_NAME = "VexAppIconV2";
+const IOS_APP_ICON_NAME = "VexAppIconV3";
 
 const withoutPersonalTeamUnsupportedIosCapabilities = (config) =>
     withEntitlementsPlist(config, (modConfig) => {
