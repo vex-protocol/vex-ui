@@ -1,0 +1,27 @@
+{
+    "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+    "productName": "vex-chat",
+    "identifier": "com.vex-chat.app",
+    "app": {
+        "windows": [
+            {
+                "create": false,
+                "title": "Vex Chat",
+                "width": 1100,
+                "height": 700,
+                "minWidth": 800,
+                "minHeight": 500,
+                "resizable": true,
+                "fullscreen": false,
+                "decorations": true
+            }
+        ]
+    },
+    "plugins": {
+        "deep-link": {
+            "desktop": {
+                "schemes": ["vex"]
+            }
+        }
+    }
+}

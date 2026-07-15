@@ -1,11 +1,15 @@
 <script lang="ts">
     import { push } from "svelte-spa-router";
 
+    import { ArrowLeft, KeyRound, LoaderCircle } from "@lucide/svelte";
+
+    import "../auth.css";
     import { getServerOptions } from "../lib/config.js";
     import { keyStore } from "../lib/keystore.js";
     import { desktopConfig } from "../lib/platform.js";
     import { playError } from "../lib/sounds.js";
     import { vexService } from "../lib/store/index.js";
+    import VexLogo from "../lib/VexLogo.svelte";
 
     const USERNAME_RE = /^[a-z0-9_]{3,19}$/;
 
@@ -67,170 +71,91 @@
 </script>
 
 <div class="auth-page">
-    <div class="auth-card">
-        <button class="auth-card__back" onclick={() => push("/login")}
-            >← Back to sign in</button
+    <main class="auth-card">
+        <VexLogo size={39} />
+        <button
+            class="auth-card__back"
+            type="button"
+            onclick={() => push("/login")}
         >
-        <h1 class="auth-card__title">Reset password</h1>
-        <p class="auth-card__subtitle">Verify with an account passkey</p>
+            <ArrowLeft size={15} />
+            Back to sign in
+        </button>
+        <header class="auth-card__header">
+            <span class="auth-card__eyebrow">Account recovery</span>
+            <h1 class="auth-card__title">Reset your password</h1>
+            <p class="auth-card__subtitle">
+                An existing account passkey will verify this change.
+            </p>
+        </header>
 
         {#if error}
             <p class="auth-card__error" role="alert">{error}</p>
         {/if}
 
         <form class="auth-form" onsubmit={handleReset}>
-            <div class="auth-form__field">
-                <label for="recover-username">Username</label>
+            <label class="auth-form__field" for="recover-username">
+                <span>Username</span>
                 <input
                     id="recover-username"
                     type="text"
                     autocomplete="username"
                     autocapitalize="none"
+                    placeholder="your username"
                     bind:value={username}
                     disabled={loading}
                     required
                 />
-            </div>
-            <div class="auth-form__field">
-                <label for="recover-password">New password</label>
+            </label>
+            <label class="auth-form__field" for="recover-password">
+                <span>New password</span>
                 <input
                     id="recover-password"
                     type={showPassword ? "text" : "password"}
                     autocomplete="new-password"
+                    placeholder="15 characters or more"
                     minlength={15}
                     maxlength={1024}
                     bind:value={newPassword}
                     disabled={loading}
                     required
                 />
-                <span class="auth-form__hint">15 characters minimum</span>
-            </div>
-            <div class="auth-form__field">
-                <label for="recover-confirm">Confirm new password</label>
+            </label>
+            <label class="auth-form__field" for="recover-confirm">
+                <span>Confirm new password</span>
                 <input
                     id="recover-confirm"
                     type={showPassword ? "text" : "password"}
                     autocomplete="new-password"
+                    placeholder="enter it again"
                     minlength={15}
                     maxlength={1024}
                     bind:value={confirmPassword}
                     disabled={loading}
                     required
                 />
-            </div>
-            <label class="auth-form__check">
-                <input type="checkbox" bind:checked={showPassword} />
-                <span>Show password</span>
             </label>
-            <button class="auth-form__submit" type="submit" disabled={loading}>
-                {loading ? "Verifying passkey..." : "Verify and reset"}
+            <label class="auth-form__check">
+                <input
+                    type="checkbox"
+                    bind:checked={showPassword}
+                    disabled={loading}
+                />
+                <span>Show passwords</span>
+            </label>
+            <button
+                class="auth-button auth-button--primary"
+                type="submit"
+                disabled={loading}
+            >
+                {#if loading}
+                    <LoaderCircle class="spin" size={17} />
+                    Verifying passkey...
+                {:else}
+                    <KeyRound size={17} />
+                    Verify and reset
+                {/if}
             </button>
         </form>
-    </div>
+    </main>
 </div>
-
-<style>
-    .auth-page {
-        align-items: center;
-        background: var(--bg-primary);
-        display: flex;
-        flex: 1;
-        justify-content: center;
-    }
-
-    .auth-card {
-        background: var(--bg-secondary);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-        padding: 32px;
-        width: min(360px, calc(100vw - 32px));
-    }
-
-    .auth-card__back {
-        align-self: flex-start;
-        color: var(--text-secondary);
-        font-size: 13px;
-    }
-
-    .auth-card__back:hover {
-        color: var(--text-primary);
-    }
-
-    .auth-card__title {
-        color: var(--text-primary);
-        font-size: 22px;
-        font-weight: 700;
-    }
-
-    .auth-card__subtitle {
-        color: var(--text-secondary);
-        font-size: 13px;
-        margin-top: -10px;
-    }
-
-    .auth-card__error {
-        background: color-mix(in srgb, var(--danger) 15%, transparent);
-        border: 1px solid var(--danger);
-        border-radius: 4px;
-        color: var(--danger);
-        font-size: 13px;
-        padding: 8px 12px;
-    }
-
-    .auth-form,
-    .auth-form__field {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .auth-form {
-        gap: 14px;
-    }
-
-    .auth-form__field {
-        gap: 5px;
-    }
-
-    .auth-form__field label {
-        color: var(--text-secondary);
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: 0;
-        text-transform: uppercase;
-    }
-
-    .auth-form__hint {
-        color: var(--text-muted);
-        font-size: 11px;
-    }
-
-    .auth-form__check {
-        align-items: center;
-        color: var(--text-secondary);
-        display: flex;
-        font-size: 13px;
-        gap: 8px;
-        width: fit-content;
-    }
-
-    .auth-form__check input {
-        accent-color: var(--accent);
-    }
-
-    .auth-form__submit {
-        background: var(--accent);
-        border-radius: 4px;
-        color: #fff;
-        font-size: 14px;
-        font-weight: 600;
-        padding: 10px;
-    }
-
-    .auth-form__submit:disabled {
-        cursor: not-allowed;
-        opacity: 0.5;
-    }
-</style>

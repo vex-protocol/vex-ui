@@ -15,20 +15,30 @@ import {
     MemoryStorage,
 } from "@vex-chat/store";
 
-import { getServerIdentity } from "./config.js";
+import { getDesktopAppEnvironment, getServerIdentity } from "./config.js";
+import {
+    deleteKeyringPassword,
+    getKeyringPassword,
+    setKeyringPassword,
+} from "./nativeKeyring.js";
 
-const DB_KEY_SERVICE_PREFIX = "com.vex-chat.desktop.db-key";
+const DB_KEY_SERVICE_PREFIX =
+    getDesktopAppEnvironment() === "development"
+        ? "com.vex-chat.desktop.dev.db-key"
+        : "com.vex-chat.desktop.db-key";
+const STABLE_KEYRING_SCHEMA = "signed-v1";
 const ephemeralDbKeys = new Map<string, Uint8Array>();
 
 export async function clearDesktopDatabaseKey(username: string): Promise<void> {
     const key = databaseKeyID(username);
     ephemeralDbKeys.delete(key);
     if (!isTauriRuntime()) return;
-    const keyring = await import("tauri-plugin-keyring-api");
-    try {
-        await keyring.deletePassword(databaseKeyServiceName(), username);
-    } catch {
-        // The key may already be absent.
+    for (const service of databaseKeyServiceNames()) {
+        try {
+            await deleteKeyringPassword(service, username);
+        } catch {
+            // The key may already be absent or inaccessible.
+        }
     }
 }
 
@@ -83,11 +93,19 @@ function databaseKeyID(username: string): string {
 }
 
 function databaseKeyServiceName(): string {
-    return `${DB_KEY_SERVICE_PREFIX}.${sanitize(getServerIdentity())}`;
+    return `${DB_KEY_SERVICE_PREFIX}.${STABLE_KEYRING_SCHEMA}.${sanitize(getServerIdentity())}`;
+}
+
+function databaseKeyServiceNames(): string[] {
+    return [databaseKeyServiceName(), legacyDatabaseKeyServiceName()];
 }
 
 function isTauriRuntime(): boolean {
     return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function legacyDatabaseKeyServiceName(): string {
+    return `${DB_KEY_SERVICE_PREFIX}.${sanitize(getServerIdentity())}`;
 }
 
 async function resolveDesktopDatabaseKey(
@@ -102,19 +120,31 @@ async function resolveDesktopDatabaseKey(
         return generated;
     }
 
-    const keyring = await import("tauri-plugin-keyring-api");
     const service = databaseKeyServiceName();
-    const stored = await keyring.getPassword(service, username);
+    let stored = await getKeyringPassword(service, username);
+    let migrated = false;
+    if (!stored) {
+        stored = await getKeyringPassword(
+            legacyDatabaseKeyServiceName(),
+            username,
+        );
+        migrated = stored !== null;
+    }
     if (stored) {
+        let decoded: Uint8Array;
         try {
-            return decodeVexDbAtRestKey(stored);
+            decoded = decodeVexDbAtRestKey(stored);
         } catch {
             throw new Error("Stored local database key is invalid.");
         }
+        if (migrated) {
+            await setKeyringPassword(service, username, stored);
+        }
+        return decoded;
     }
 
     const generated = generateVexDbAtRestKey();
-    await keyring.setPassword(
+    await setKeyringPassword(
         service,
         username,
         encodeVexDbAtRestKey(generated),

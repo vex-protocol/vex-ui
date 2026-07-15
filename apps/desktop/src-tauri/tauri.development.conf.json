@@ -1,0 +1,38 @@
+{
+    "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+    "productName": "Vex Development",
+    "identifier": "com.vex-chat.app.dev",
+    "app": {
+        "windows": [
+            {
+                "create": false,
+                "title": "Vex Development",
+                "width": 1100,
+                "height": 700,
+                "minWidth": 800,
+                "minHeight": 500,
+                "resizable": true,
+                "fullscreen": false,
+                "decorations": true,
+                "devtools": true,
+                "dataDirectory": "development"
+            }
+        ]
+    },
+    "bundle": {
+        "icon": [
+            "icons-development/32x32.png",
+            "icons-development/128x128.png",
+            "icons-development/128x128@2x.png",
+            "icons-development/icon.icns",
+            "icons-development/icon.ico"
+        ]
+    },
+    "plugins": {
+        "deep-link": {
+            "desktop": {
+                "schemes": ["vex-dev"]
+            }
+        }
+    }
+}

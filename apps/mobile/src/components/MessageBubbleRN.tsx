@@ -603,7 +603,7 @@ export function MessageBubbleRN({
                         {showIdentity ? (
                             <Avatar
                                 displayName={authorName}
-                                size={40}
+                                size={36}
                                 userID={message.authorID}
                             />
                         ) : (
@@ -1977,15 +1977,15 @@ const styles = StyleSheet.create({
         ...typography.body,
         color: colors.textSecondary,
         fontFamily: fontFamilies.heading,
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: "600",
-        lineHeight: 20,
+        lineHeight: 18,
     },
     authorSelf: {
         color: colors.accentMuted,
     },
     avatarSpacer: {
-        width: 40,
+        width: 36,
     },
     codeBlock: {
         backgroundColor: "#0d1117",
@@ -2044,10 +2044,10 @@ const styles = StyleSheet.create({
     },
     container: {
         paddingHorizontal: 16,
-        paddingVertical: 5,
+        paddingVertical: 4,
     },
     containerGrouped: {
-        paddingVertical: 1,
+        paddingVertical: 0,
     },
     content: {
         flex: 1,
@@ -2408,7 +2408,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         flexDirection: "row",
         gap: 8,
-        marginBottom: 1,
+        marginBottom: 0,
     },
     reactionCount: {
         ...typography.body,
@@ -2594,14 +2594,14 @@ const styles = StyleSheet.create({
         color: colors.textSecondary,
     },
     textGrouped: {
-        marginTop: 1,
+        marginTop: 0,
     },
     timestamp: {
         ...typography.body,
         color: colors.muted,
         fontFamily: fontFamilies.mono,
-        fontSize: 11,
-        lineHeight: 16,
+        fontSize: 10,
+        lineHeight: 14,
     },
     videoAttachment: {
         backgroundColor: colors.input,

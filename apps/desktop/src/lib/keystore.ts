@@ -1,10 +1,19 @@
 import type { KeyStore, StoredCredentials } from "@vex-chat/libvex";
 
-import { getServerIdentity } from "./config.js";
+import { getDesktopAppEnvironment, getServerIdentity } from "./config.js";
+import {
+    deleteKeyringPassword,
+    getKeyringPassword,
+    setKeyringPassword,
+} from "./nativeKeyring.js";
 import { clearDesktopDatabaseKey } from "./platform.js";
 
-const SERVICE_PREFIX = "com.vex-chat.desktop";
+const SERVICE_PREFIX =
+    getDesktopAppEnvironment() === "development"
+        ? "com.vex-chat.desktop.dev"
+        : "com.vex-chat.desktop";
 const ACTIVE_USER_LS_PREFIX = "vex-active-user";
+const STABLE_KEYRING_SCHEMA = "signed-v1";
 
 /**
  * KeyStore backed by OS native credential stores via tauri-plugin-keyring.
@@ -19,16 +28,15 @@ const ACTIVE_USER_LS_PREFIX = "vex-active-user";
  */
 class KeyringKeyStore implements KeyStore {
     private credsCache = new Map<string, StoredCredentials>();
-    private keyring: null | typeof import("tauri-plugin-keyring-api") = null;
 
     async clear(username: string): Promise<void> {
-        const kr = await this.getKeyring();
-        const service = serviceName();
-        this.credsCache.delete(this.cacheKey(service, username));
-        try {
-            await kr.deletePassword(service, username);
-        } catch {
-            /* may not exist */
+        for (const service of serviceNames()) {
+            this.credsCache.delete(this.cacheKey(service, username));
+            try {
+                await deleteKeyringPassword(service, username);
+            } catch {
+                /* may not exist or may already be inaccessible */
+            }
         }
         if (this.getActiveUser() === username) {
             localStorage.removeItem(activeUserKey());
@@ -50,16 +58,24 @@ class KeyringKeyStore implements KeyStore {
         const cached = this.credsCache.get(key);
         if (cached) return cached;
 
-        const kr = await this.getKeyring();
-        const raw = await kr.getPassword(service, user);
+        let raw = await getKeyringPassword(service, user);
+        let migrated = false;
+        if (!raw) {
+            raw = await getKeyringPassword(legacyServiceName(), user);
+            migrated = raw !== null;
+        }
         if (!raw) return null;
+        let parsed: StoredCredentials;
         try {
-            const parsed = JSON.parse(raw) as StoredCredentials;
-            this.credsCache.set(key, parsed);
-            return parsed;
+            parsed = JSON.parse(raw) as StoredCredentials;
         } catch {
             return null;
         }
+        if (migrated) {
+            await setKeyringPassword(service, user, raw);
+        }
+        this.credsCache.set(key, parsed);
+        return parsed;
     }
 
     async loadActive(): Promise<null | StoredCredentials> {
@@ -82,8 +98,7 @@ class KeyringKeyStore implements KeyStore {
         this.credsCache.set(key, creds);
         localStorage.setItem(activeUserKey(), creds.username);
 
-        const kr = await this.getKeyring();
-        await kr.setPassword(service, creds.username, serialized);
+        await setKeyringPassword(service, creds.username, serialized);
     }
 
     private cacheKey(service: string, username: string): string {
@@ -93,17 +108,14 @@ class KeyringKeyStore implements KeyStore {
     private getActiveUser(): null | string {
         return localStorage.getItem(activeUserKey());
     }
-
-    private async getKeyring() {
-        if (!this.keyring) {
-            this.keyring = await import("tauri-plugin-keyring-api");
-        }
-        return this.keyring;
-    }
 }
 
 function activeUserKey(): string {
     return `${ACTIVE_USER_LS_PREFIX}.${scopeFromHost(getServerIdentity())}`;
+}
+
+function legacyServiceName(): string {
+    return `${SERVICE_PREFIX}.${scopeFromHost(getServerIdentity())}`;
 }
 
 /**
@@ -122,7 +134,11 @@ function scopeFromHost(host: string): string {
 }
 
 function serviceName(): string {
-    return `${SERVICE_PREFIX}.${scopeFromHost(getServerIdentity())}`;
+    return `${SERVICE_PREFIX}.${STABLE_KEYRING_SCHEMA}.${scopeFromHost(getServerIdentity())}`;
+}
+
+function serviceNames(): string[] {
+    return [serviceName(), legacyServiceName()];
 }
 
 // ── Browser-only stores ─────────────────────────────────────────────────────

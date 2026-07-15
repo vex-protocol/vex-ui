@@ -1,3 +1,8 @@
+import {
+    authenticateWithBrowserPasskeyHandoff,
+    getBrowserPasskeyHandoff,
+} from "./browserPasskey.js";
+
 interface PublicKeyCredentialCreationOptionsJSON {
     attestation?: string | undefined;
     authenticatorSelection?:
@@ -42,6 +47,15 @@ export class PasskeyUnsupportedError extends Error {
 export async function authenticatePasskey(
     options: PublicKeyCredentialRequestOptionsJSON,
 ): Promise<Record<string, unknown>> {
+    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+        const handoff = getBrowserPasskeyHandoff(options);
+        if (!handoff) {
+            throw new Error(
+                "This server needs the desktop passkey bridge update.",
+            );
+        }
+        return authenticateWithBrowserPasskeyHandoff(handoff);
+    }
     ensureWebAuthnSupport();
     const credential = await navigator.credentials.get({
         publicKey: toRequestOptions(options),

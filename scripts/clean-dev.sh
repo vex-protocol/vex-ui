@@ -12,9 +12,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SPIRE_DIR="$(cd "$REPO_ROOT/.." 2>/dev/null && pwd)/spire"
 SPIRE_DB="$SPIRE_DIR/spire.sqlite"
-TAURI_DATA="$HOME/Library/Application Support/com.vex-chat.app"
-TAURI_WEBVIEW="$HOME/Library/WebKit/app/WebsiteData"
-TAURI_LOGS="$HOME/Library/Logs/com.vex-chat.app"
+TAURI_DATA="$HOME/Library/Application Support/com.vex-chat.app.dev"
+TAURI_WEBVIEW="$HOME/Library/WebKit/com.vex-chat.app.dev/WebsiteData"
+TAURI_LOGS="$HOME/Library/Logs/com.vex-chat.app.dev"
 
 echo ""
 echo -e "${YELLOW}=== Vex Dev Clean ===${NC}"
@@ -42,11 +42,11 @@ else
   echo "  Skipped — no database file at $SPIRE_DB"
 fi
 
-# 3. Desktop keystore + app data + WebView storage (localStorage, IndexedDB)
+# 3. Development desktop app data + WebView storage (localStorage, IndexedDB)
 echo -e "${YELLOW}[3/5] Clearing desktop app data...${NC}"
 if [ -d "$TAURI_DATA" ]; then
   rm -rf "$TAURI_DATA"
-  echo -e "${GREEN}  ✓ Deleted keystore ($TAURI_DATA)${NC}"
+  echo -e "${GREEN}  ✓ Deleted development app data ($TAURI_DATA)${NC}"
 else
   echo "  Skipped — keystore not found"
 fi

@@ -29,6 +29,10 @@ describe("account entitlement selectors", () => {
 
 describe("vexService entitlement overrides", () => {
     beforeEach(() => {
+        vexService.configureProductFeatures({
+            premiumTiers: true,
+            voiceCalling: true,
+        });
         serviceInternals.client = null;
         $accountEntitlementsWritable.set(defaultAccountEntitlements());
     });

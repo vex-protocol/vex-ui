@@ -736,7 +736,7 @@ const styles = StyleSheet.create({
     },
     attachmentPreview: {
         alignItems: "center",
-        backgroundColor: "rgba(255,255,255,0.04)",
+        backgroundColor: colors.surfaceLight,
         borderColor: colors.borderSubtle,
         borderWidth: 1,
         flexDirection: "row",
@@ -748,7 +748,7 @@ const styles = StyleSheet.create({
         fontSize: 11,
     },
     container: {
-        backgroundColor: "rgba(9,9,11,0.9)",
+        backgroundColor: colors.bg,
         borderTopColor: colors.borderSubtle,
         borderTopWidth: 1,
         gap: 8,
@@ -756,7 +756,7 @@ const styles = StyleSheet.create({
     },
     editingPreview: {
         alignItems: "center",
-        backgroundColor: "rgba(255,255,255,0.04)",
+        backgroundColor: colors.surfaceLight,
         borderColor: colors.borderSubtle,
         borderWidth: 1,
         flexDirection: "row",
@@ -773,7 +773,7 @@ const styles = StyleSheet.create({
     },
     input: {
         backgroundColor: colors.input,
-        borderColor: "rgba(255,255,255,0.08)",
+        borderColor: colors.borderSubtle,
         borderWidth: 1,
         color: colors.textSecondary,
         flex: 1,
@@ -852,7 +852,7 @@ const styles = StyleSheet.create({
     },
     replyPreview: {
         alignItems: "center",
-        backgroundColor: "rgba(255,255,255,0.04)",
+        backgroundColor: colors.surfaceLight,
         borderColor: colors.borderSubtle,
         borderWidth: 1,
         flexDirection: "row",

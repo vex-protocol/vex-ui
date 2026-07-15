@@ -205,6 +205,7 @@ export type {
     PasskeyCeremonyDriver,
     PasskeyDeviceRestoreResult,
     PasskeySignInBegin,
+    ProductFeatureAvailability,
     ResumeNetworkStatus,
     SendMessageOptions,
     ServerOptions,

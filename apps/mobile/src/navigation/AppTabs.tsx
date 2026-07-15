@@ -711,7 +711,7 @@ const styles = StyleSheet.create({
         ],
     },
     backdrop: {
-        backgroundColor: "rgba(0,0,0,0.64)",
+        backgroundColor: colors.overlay,
         left: 0,
         position: "absolute",
         right: 0,
@@ -747,7 +747,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     content: {
-        backgroundColor: colors.surfaceLight,
+        backgroundColor: colors.bg,
         flex: 1,
     },
     hamburgerButton: {
@@ -765,7 +765,7 @@ const styles = StyleSheet.create({
         width: 14,
     },
     sidebarDrawer: {
-        backgroundColor: "#07080c",
+        backgroundColor: colors.rail,
         left: 0,
         position: "absolute",
         top: 0,
@@ -778,13 +778,13 @@ const styles = StyleSheet.create({
         width: 36,
     },
     toggleButtonFrameClosed: {
-        backgroundColor: "rgba(17,17,19,0.96)",
-        borderColor: "rgba(255,255,255,0.18)",
+        backgroundColor: colors.panel,
+        borderColor: colors.border,
         borderWidth: 1,
     },
     toggleButtonFrameOpen: {
-        backgroundColor: "rgba(9,9,11,0.98)",
-        borderColor: "rgba(255,255,255,0.22)",
+        backgroundColor: colors.rail,
+        borderColor: colors.border,
         borderWidth: 1,
     },
     toggleButtonWrap: {

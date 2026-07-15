@@ -1,47 +1,77 @@
-# Svelte + TS + Vite
+# Vex Desktop
 
-This template should help get you started developing with Svelte and TypeScript in Vite.
+The Tauri desktop client has separate development and production flavors. They
+can be installed side by side without sharing app data, WebView storage,
+credentials, database keys, or deep-link ownership.
 
-## Recommended IDE Setup
+| Flavor      | App name        | Bundle identifier      | Default server |
+| ----------- | --------------- | ---------------------- | -------------- |
+| Development | Vex Development | `com.vex-chat.app.dev` | `dev.vex.wtf`  |
+| Production  | vex-chat        | `com.vex-chat.app`     | `api.vex.wtf`  |
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+## Passkeys on macOS
 
-## Need an official Svelte framework?
+The bundled WebView has a `tauri://localhost` origin, so macOS cannot perform a
+WebAuthn ceremony for the Spire relying-party domain from that page. Desktop
+passkey registration opens Spire's first-party HTTPS bridge in the system
+browser using a short-lived, single-purpose handoff. Vex watches the
+authenticated request and updates the passkey list when the browser finishes.
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+## Commands
 
-## Technical considerations
+Run the development flavor with Tauri and Vite hot reload:
 
-**Why use this over SvelteKit?**
-
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
-
-This template contains as little as possible to get started with Vite + TypeScript + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
-
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
-
-**Why `global.d.ts` instead of `compilerOptions.types` inside `jsconfig.json` or `tsconfig.json`?**
-
-Setting `compilerOptions.types` shuts out all other types not explicitly listed in the configuration. Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding `svelte` and `vite/client` type information.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `allowJs` in the TS template?**
-
-While `allowJs: false` would indeed prevent the use of `.js` files in the project, it does not prevent the use of JavaScript syntax in `.svelte` files. In addition, it would force `checkJs: false`, bringing the worst of both worlds: not being able to guarantee the entire codebase is TypeScript, and also having worse typechecking for the existing JavaScript. In addition, there are valid use cases in which a mixed codebase may be relevant.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/rixo/svelte-hmr#svelte-hmr).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```ts
-// store.ts
-// An extremely simple external store
-import { writable } from "svelte/store";
-export default writable(0);
+```sh
+pnpm desktop
 ```
+
+Build, install, and launch the macOS development flavor:
+
+```sh
+pnpm desktop:dev
+```
+
+Build without installing:
+
+```sh
+pnpm desktop:dev:build
+pnpm desktop:prod:build
+```
+
+Install and launch an existing flavor explicitly:
+
+```sh
+pnpm desktop:dev:install
+pnpm desktop:prod:install
+```
+
+Packaged development and production builds use Cargo's release profile. This
+gives each installed app its real macOS bundle identity for notifications,
+Keychain, and other native services. `pnpm desktop` still uses Cargo's debug
+profile with Vite hot reload. The build wrapper pins each flavor to its expected
+server and clears proxy overrides before packaging, so a production artifact
+cannot accidentally target development.
+
+Desktop and mobile launcher icons are generated together from
+`assets/vex_icon.svg` with platform-specific safe-area padding. Run
+`pnpm icons:regen` from the repository root after changing the mark. Development
+builds use the ice-blue mark; production builds use the red mark.
+
+macOS installs default to `/Applications`. Set `VEX_DESKTOP_INSTALL_DIR` to use
+another directory. The installer verifies bundle identifiers before replacing
+an existing app and restores the previous bundle if installation fails.
+
+On macOS, development builds automatically use an installed Apple Development
+certificate for team `UBG5MM55LT`. Stable signing lets Keychain recognize new
+builds as the same app, so reading the saved device and database keys does not
+repeatedly request the Mac login password. Set
+`VEX_DESKTOP_SIGNING_IDENTITY` (or Tauri's `APPLE_SIGNING_IDENTITY`) to override
+the selected certificate. If no Apple identity is available, the installer
+falls back to ad-hoc signing and warns that Keychain may prompt after rebuilds.
+
+The first launch after replacing an ad-hoc build may ask once for access to the
+legacy Keychain entries. After that read, Vex copies them into versioned slots
+owned by the stable signed app, so subsequent launches do not depend on a
+repeated password allowance. Cancelling access is treated as an error and never
+as a missing database key. Public production distribution still requires the
+normal Apple Developer ID signing and notarization pipeline.

@@ -21,6 +21,7 @@ tauri-build = { version = "2.5.6", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
+keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 objc2 = "0.6.4"
 objc2-foundation = "0.3.2"
 objc2-web-kit = "0.3.2"
@@ -34,4 +35,4 @@ tauri-plugin-deep-link = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
-tauri-plugin-keyring = "0.1"
+tauri-plugin-http = "2"

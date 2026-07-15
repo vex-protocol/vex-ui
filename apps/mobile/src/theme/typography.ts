@@ -48,7 +48,7 @@ export const typography = {
         fontFamily: fontFamilies.body,
         fontSize: 12,
         fontWeight: "600",
-        letterSpacing: 1.2,
+        letterSpacing: 0,
         lineHeight: 16,
         textTransform: "uppercase",
     } satisfies TextStyle,

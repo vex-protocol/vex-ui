@@ -41,6 +41,7 @@ import {
     $cameraCaptureResult,
     clearCameraCaptureResult,
 } from "../lib/cameraCaptureResult";
+import { productFeatures } from "../lib/features";
 import { voiceCallEngine } from "../lib/voiceCallEngine";
 import { colors, typography } from "../theme";
 
@@ -493,10 +494,12 @@ export function ConversationScreen({
         >
             <VexField style={styles.field}>
                 <ChatHeader
+                    {...(productFeatures.voiceCalling
+                        ? { onVoiceCall: startVoiceCall }
+                        : {})}
                     onTitlePress={() => {
                         navigation.navigate("DMList");
                     }}
-                    onVoiceCall={startVoiceCall}
                     subtitle={`@${username}`}
                     title="Direct Messages"
                 />

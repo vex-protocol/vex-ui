@@ -39,6 +39,7 @@ import {
 } from "./lib/backgroundTaskDefinitions";
 import { getServerOptions, isLocalDevServer } from "./lib/config";
 import { hydrateDevOptionsUnlocked } from "./lib/devMode";
+import { productFeatures } from "./lib/features";
 import {
     $alwaysOnEnabled,
     ensureAlwaysOnRunning,
@@ -93,6 +94,7 @@ vexService.setPasskeyCeremonyDriver({
     authenticate: authenticatePasskey,
     register: registerPasskey,
 });
+vexService.configureProductFeatures(productFeatures);
 
 interface AppUpdateNotice {
     message: string;
@@ -1074,7 +1076,7 @@ function MainApp() {
             >
                 <RootNavigator />
             </NavigationContainer>
-            <VoiceCallOverlay />
+            {productFeatures.voiceCalling ? <VoiceCallOverlay /> : null}
             {showHydrationGate && (
                 <View style={styles.hydrationGate}>
                     <View

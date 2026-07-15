@@ -11,6 +11,7 @@ import { MenuRow, MenuSection } from "../components/MenuRow";
 import { VexField } from "../components/VexField";
 import { $appUpdateState } from "../lib/appUpdates";
 import { $devOptionsUnlocked } from "../lib/devMode";
+import { productFeatures } from "../lib/features";
 import { isAlwaysOnSupported } from "../lib/foregroundService";
 import { colors } from "../theme";
 
@@ -43,14 +44,20 @@ export function SettingsScreen({ navigation }: AppScreenProps<"Settings">) {
                 navigation.navigate("SettingsSection", { section: "account" });
             },
         },
-        {
-            description: "Free, Plus, Pro",
-            icon: "sparkles-outline",
-            label: "Plan",
-            onPress: () => {
-                navigation.navigate("SettingsSection", { section: "billing" });
-            },
-        },
+        ...(productFeatures.premiumTiers
+            ? [
+                  {
+                      description: "Free, Plus, Pro",
+                      icon: "sparkles-outline" as const,
+                      label: "Plan",
+                      onPress: () => {
+                          navigation.navigate("SettingsSection", {
+                              section: "billing",
+                          });
+                      },
+                  },
+              ]
+            : []),
         {
             description: "Manage your devices",
             icon: "phone-portrait-outline",
