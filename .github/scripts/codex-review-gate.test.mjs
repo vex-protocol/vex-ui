@@ -234,6 +234,44 @@ test("ignores a PR thumbs-up while the acknowledged request is active", () => {
     assert.equal(state.kind, "pending");
 });
 
+test("ignores a PR thumbs-up while another scoped request is active", () => {
+    const state = evaluateReviewState(
+        pullRequest({
+            comments: {
+                nodes: [
+                    reviewRequest({
+                        acknowledgedAt: "2026-07-15T12:01:00Z",
+                    }),
+                    reviewRequest({
+                        acknowledgedAt: "2026-07-15T12:01:30Z",
+                        createdAt: "2026-07-15T12:01:00Z",
+                        databaseId: 2,
+                        reactions: [
+                            {
+                                content: "EYES",
+                                createdAt: "2026-07-15T12:01:15Z",
+                                user: { login: "chatgpt-codex-connector" },
+                            },
+                        ],
+                    }),
+                ],
+            },
+            reactions: {
+                nodes: [
+                    {
+                        content: "+1",
+                        createdAt: "2026-07-15T12:03:00Z",
+                        user: { login: "chatgpt-codex-connector" },
+                    },
+                ],
+            },
+        }),
+        headSha,
+        baseRef,
+    );
+    assert.equal(state.kind, "pending");
+});
+
 test("ignores a PR thumbs-up from before the request acknowledgement", () => {
     const state = evaluateReviewState(
         pullRequest({

@@ -244,16 +244,20 @@ export function evaluateReviewState(
         }
     }
 
-    const acknowledgedRequest = requests
-        .filter(
-            (request) =>
-                isAcknowledgedRequest(
-                    request,
-                    expectedHeadSha,
-                    expectedBaseRef,
-                ) && !hasCodexEyes(request.reactions),
-        )
-        .at(-1);
+    const hasActiveScopedRequest = requests.some((request) =>
+        hasCodexEyes(request.reactions),
+    );
+    const acknowledgedRequest = hasActiveScopedRequest
+        ? undefined
+        : requests
+              .filter((request) =>
+                  isAcknowledgedRequest(
+                      request,
+                      expectedHeadSha,
+                      expectedBaseRef,
+                  ),
+              )
+              .at(-1);
     if (acknowledgedRequest) {
         const acknowledgedAt = Date.parse(
             acknowledgedRequest.updatedAt ?? acknowledgedRequest.createdAt,
@@ -520,10 +524,34 @@ async function publishLgtm(repository, number, pullRequest, headSha, baseRef) {
     );
 }
 
-async function recoverOpenPullRequests(repository, owner, name, retryMs) {
-    const summaries = await githubRequest(
-        `/repos/${repository}/pulls?state=open&per_page=100`,
-    );
+async function openPullRequestSummaries(repository, number) {
+    if (number) {
+        const pullRequest = await githubRequest(
+            `/repos/${repository}/pulls/${number}`,
+        );
+        return pullRequest.state === "open" ? [pullRequest] : [];
+    }
+    return githubRequest(`/repos/${repository}/pulls?state=open&per_page=100`);
+}
+
+async function listReviewablePullRequestNumbers(repository) {
+    const summaries = await openPullRequestSummaries(repository);
+    return summaries
+        .filter(
+            (summary) =>
+                !summary.draft && TARGET_BRANCHES.has(summary.base?.ref),
+        )
+        .map((summary) => summary.number);
+}
+
+async function recoverOpenPullRequests(
+    repository,
+    owner,
+    name,
+    retryMs,
+    number,
+) {
+    const summaries = await openPullRequestSummaries(repository, number);
     const failures = [];
 
     for (const summary of summaries) {
@@ -609,12 +637,33 @@ export async function main() {
     if (!owner || !name) {
         throw new Error("REPOSITORY must use the owner/name format.");
     }
+    if (process.env.CODEX_REVIEW_LIST === "1") {
+        console.log(
+            JSON.stringify(await listReviewablePullRequestNumbers(repository)),
+        );
+        return;
+    }
     const retryMs = positiveIntegerEnv(
         "CODEX_REVIEW_RETRY_MS",
         DEFAULT_RETRY_MS,
     );
     if (process.env.CODEX_REVIEW_RECOVERY === "1") {
-        await recoverOpenPullRequests(repository, owner, name, retryMs);
+        const recoveryNumber = process.env.PR_NUMBER
+            ? Number(process.env.PR_NUMBER)
+            : undefined;
+        if (
+            recoveryNumber !== undefined &&
+            (!Number.isSafeInteger(recoveryNumber) || recoveryNumber <= 0)
+        ) {
+            throw new Error("PR_NUMBER must be a positive integer.");
+        }
+        await recoverOpenPullRequests(
+            repository,
+            owner,
+            name,
+            retryMs,
+            recoveryNumber,
+        );
         return;
     }
     const number = Number(requiredEnv("PR_NUMBER"));
