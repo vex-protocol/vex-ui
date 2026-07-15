@@ -201,6 +201,7 @@ async fn send_link_preview_request(url: &reqwest::Url) -> Result<reqwest::Respon
 }
 
 fn show_window(app: &tauri::AppHandle) {
+    #[cfg(target_os = "macos")]
     let _ = app.show();
     if let Some(w) = app.get_webview_window("main") {
         if w.is_minimized().unwrap_or(false) {
@@ -224,14 +225,16 @@ fn build_main_window(app: &tauri::App) -> tauri::Result<()> {
         .or_else(|| app.config().app.windows.first())
         .ok_or(tauri::Error::WindowNotFound)?;
 
-    let mut builder = WebviewWindowBuilder::from_config(app.handle(), window_config)?;
+    let builder = WebviewWindowBuilder::from_config(app.handle(), window_config)?;
     #[cfg(target_os = "macos")]
-    {
+    let builder = {
+        let mut builder = builder;
         if app.config().identifier == DEVELOPMENT_BUNDLE_IDENTIFIER {
             builder = builder.data_store_identifier(DEVELOPMENT_WEBVIEW_DATA_STORE_IDENTIFIER);
         }
         builder = builder.with_webview_configuration(macos_voice_call_webview_configuration());
-    }
+        builder
+    };
     builder.build()?;
     Ok(())
 }

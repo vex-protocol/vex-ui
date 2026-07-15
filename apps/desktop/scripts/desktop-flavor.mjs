@@ -2,10 +2,13 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const APP_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const require = createRequire(import.meta.url);
+const TAURI_CLI = require.resolve("@tauri-apps/cli/tauri.js");
 const INSTALL_DIR = process.env.VEX_DESKTOP_INSTALL_DIR || "/Applications";
 const APP_QUIT_TIMEOUT_MS = 2_000;
 const APP_TERMINATE_TIMEOUT_MS = 3_000;
@@ -42,10 +45,6 @@ function usage() {
         "Usage: desktop-flavor.mjs <dev|build|install> <development|production> [options]",
     );
     console.error("Install options: --skip-build, --no-launch");
-}
-
-function commandName(name) {
-    return process.platform === "win32" ? `${name}.cmd` : name;
 }
 
 function runChecked(command, args, options = {}) {
@@ -144,7 +143,7 @@ function runTauri(action, flavorName, flavor, extraArgs = []) {
             "Signing: no Apple identity found; Keychain may prompt again after each rebuild.",
         );
     }
-    runChecked(commandName("tauri"), args, { env });
+    runChecked(process.execPath, [TAURI_CLI, ...args], { env });
 }
 
 function readBundleID(appPath) {

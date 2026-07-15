@@ -12,6 +12,9 @@ AGENTS.md
 apps/mobile/ios/
 apps/mobile/android/
 
+# Collected native installers from desktop packaging
+apps/desktop/artifacts/
+
 # EAS-managed signing material — NEVER commit. `eas credentials`
 # downloads keystores and a credentials.json with cleartext passwords.
 apps/mobile/credentials.json
