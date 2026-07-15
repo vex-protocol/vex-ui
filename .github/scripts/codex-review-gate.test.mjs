@@ -299,6 +299,8 @@ test("ignores a PR thumbs-up from before the request acknowledgement", () => {
 });
 
 test("detects active Codex work on the PR or a comment", () => {
+    const now = Date.parse("2026-07-15T12:10:00Z");
+    const activeWindowMs = 20 * 60_000;
     assert.equal(
         hasActiveCodexReview(
             pullRequest({
@@ -306,11 +308,16 @@ test("detects active Codex work on the PR or a comment", () => {
                     nodes: [
                         {
                             content: "EYES",
+                            createdAt: "2026-07-15T12:05:00Z",
                             user: { login: "chatgpt-codex-connector" },
                         },
                     ],
                 },
             }),
+            headSha,
+            baseRef,
+            now,
+            activeWindowMs,
         ),
         true,
     );
@@ -323,6 +330,7 @@ test("detects active Codex work on the PR or a comment", () => {
                             reactions: [
                                 {
                                     content: "EYES",
+                                    createdAt: "2026-07-15T12:05:00Z",
                                     user: {
                                         login: "chatgpt-codex-connector",
                                     },
@@ -332,8 +340,61 @@ test("detects active Codex work on the PR or a comment", () => {
                     ],
                 },
             }),
+            headSha,
+            baseRef,
+            now,
+            activeWindowMs,
         ),
         true,
+    );
+});
+
+test("ignores stale or differently scoped active reactions", () => {
+    const now = Date.parse("2026-07-15T12:10:00Z");
+    const activeWindowMs = 20 * 60_000;
+    const eyes = {
+        content: "EYES",
+        createdAt: "2026-07-15T12:05:00Z",
+        user: { login: "chatgpt-codex-connector" },
+    };
+
+    assert.equal(
+        hasActiveCodexReview(
+            pullRequest({
+                comments: {
+                    nodes: [
+                        reviewRequest({
+                            head: oldHeadSha,
+                            reactions: [eyes],
+                        }),
+                    ],
+                },
+            }),
+            headSha,
+            baseRef,
+            now,
+            activeWindowMs,
+        ),
+        false,
+    );
+    assert.equal(
+        hasActiveCodexReview(
+            pullRequest({
+                reactions: {
+                    nodes: [
+                        {
+                            ...eyes,
+                            createdAt: "2026-07-15T11:40:00Z",
+                        },
+                    ],
+                },
+            }),
+            headSha,
+            baseRef,
+            now,
+            activeWindowMs,
+        ),
+        false,
     );
 });
 
