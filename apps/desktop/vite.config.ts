@@ -5,6 +5,8 @@ const DEV_SPIRE_URL = "https://dev.vex.wtf";
 const PROD_SPIRE_URL = "https://api.vex.wtf";
 const LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|10\.0\.2\.2|192\.168\.|100\.)/i;
 
+type DesktopAppEnvironment = "development" | "production";
+
 function desktopManualChunk(id: string): string | undefined {
     const normalized = id.replaceAll("\\", "/");
     if (normalized.includes("/vex-protocol/packages/crypto/")) {
@@ -53,11 +55,65 @@ function readEnvValue(value: string | undefined): string {
     return value?.trim() ?? "";
 }
 
+function resolveAppEnvironment(
+    mode: string,
+    configured: string,
+): DesktopAppEnvironment {
+    if (configured === "development" || configured === "production") {
+        return configured;
+    }
+    if (configured.length > 0) {
+        throw new Error(
+            `[vex] Unsupported VITE_APP_ENV "${configured}". Expected "development" or "production".`,
+        );
+    }
+    return mode === "production" ? "production" : "development";
+}
+
+function validateFlavorServer(
+    appEnvironment: DesktopAppEnvironment,
+    mode: string,
+    serverUrl: string,
+    proxyTarget: string,
+): void {
+    if (mode !== "production") return;
+
+    const defaultServer =
+        serverUrl ||
+        (appEnvironment === "development" ? DEV_SPIRE_URL : PROD_SPIRE_URL);
+    const serverHost = hostOnly(defaultServer);
+    const proxyHost = hostOnly(proxyTarget);
+    const hasProxyTarget = proxyTarget.length > 0;
+    if (
+        appEnvironment === "production" &&
+        (serverHost !== hostOnly(PROD_SPIRE_URL) ||
+            (hasProxyTarget && proxyHost !== hostOnly(PROD_SPIRE_URL)))
+    ) {
+        throw new Error(
+            `[vex] Refusing to build production for ${defaultServer}. Production must target ${PROD_SPIRE_URL}.`,
+        );
+    }
+    if (
+        appEnvironment === "development" &&
+        (serverHost !== hostOnly(DEV_SPIRE_URL) ||
+            (hasProxyTarget && proxyHost !== hostOnly(DEV_SPIRE_URL)))
+    ) {
+        throw new Error(
+            `[vex] Refusing to build development for ${defaultServer}. Development must target ${DEV_SPIRE_URL}.`,
+        );
+    }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), "");
+    const appEnvironment = resolveAppEnvironment(
+        mode,
+        readEnvValue(env.VITE_APP_ENV),
+    );
     const envProxyTarget = readEnvValue(env.VITE_PROXY_TARGET);
     const envServerUrl = readEnvValue(env.VITE_SERVER_URL);
+    validateFlavorServer(appEnvironment, mode, envServerUrl, envProxyTarget);
     const envServerHost = hostOnly(envServerUrl);
     const envServerIsViteProxy =
         envServerHost === "localhost:5180" ||

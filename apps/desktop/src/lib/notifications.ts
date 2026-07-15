@@ -5,7 +5,7 @@ import { $groupMessages, $messages, shouldNotify } from "@vex-chat/store";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
     isPermissionGranted,
-    requestPermission,
+    requestPermission as requestNativePermission,
     sendNotification,
 } from "@tauri-apps/plugin-notification";
 
@@ -17,6 +17,25 @@ const NOTIF_KEY = "vex-notifications-enabled";
 
 export function getNotificationsEnabled(): boolean {
     return localStorage.getItem(NOTIF_KEY) !== "false";
+}
+
+export async function requestNotificationAccess(): Promise<boolean> {
+    try {
+        if (await isPermissionGranted()) return true;
+        return (await requestNativePermission()) === "granted";
+    } catch (error) {
+        console.error("Could not request desktop notification access", error);
+        return false;
+    }
+}
+
+export async function sendTestNotification(): Promise<boolean> {
+    if (!(await requestNotificationAccess())) return false;
+    sendNotification({
+        body: "Desktop notifications are working.",
+        title: "Vex",
+    });
+    return true;
 }
 
 export function setNotificationsEnabled(enabled: boolean): void {
@@ -54,12 +73,12 @@ export function setupNotifications(
 
         playNotify();
 
-        if (!focused) {
-            const granted = await ensurePermission();
+        if (!focused || !isConversationVisible(msg)) {
+            const granted = await requestNotificationAccess();
             if (granted) {
                 sendNotification({
-                    body: `${payload.title}: ${payload.body}`,
-                    title: payload.subtitle,
+                    body: `${payload.subtitle}\n${payload.body}`,
+                    title: payload.title,
                 });
             }
         }
@@ -93,17 +112,11 @@ export function setupNotifications(
     };
 }
 
-// ── Permission ──────────────────────────────────────────────────────────────
-
-async function ensurePermission(): Promise<boolean> {
-    try {
-        let granted = await isPermissionGranted();
-        if (!granted) {
-            const result = await requestPermission();
-            granted = result === "granted";
-        }
-        return granted;
-    } catch {
-        return false;
+function isConversationVisible(msg: Message): boolean {
+    const route = window.location.hash.slice(1).split("?")[0] ?? "";
+    if (msg.group) {
+        const parts = route.split("/");
+        return parts[1] === "server" && parts[3] === msg.group;
     }
+    return route === `/messaging/${msg.authorID}`;
 }

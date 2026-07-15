@@ -286,6 +286,11 @@ export interface PasskeySignInBegin {
     requestID: string;
 }
 
+export interface ProductFeatureAvailability {
+    premiumTiers: boolean;
+    voiceCalling: boolean;
+}
+
 export interface PushNotificationSubscriptionInput {
     channel: "expo";
     events?: string[];
@@ -582,6 +587,10 @@ const INVALID_CREDENTIALS_ERROR = "Incorrect username or password.";
 const WS_WATCHDOG_CHECK_INTERVAL_MS = 30_000;
 const WS_WATCHDOG_STALE_THRESHOLD_MS = 45_000;
 const VOICE_CALL_REFRESH_TIMEOUT_MS = 8000;
+const DEFAULT_PRODUCT_FEATURES: ProductFeatureAvailability = {
+    premiumTiers: true,
+    voiceCalling: true,
+};
 // Tighter threshold for "is the socket *currently* delivering frames?"
 // used by `refreshSessionAfterForeground` to decide whether the
 // foreground-service kept the connection healthy across the resume.
@@ -691,6 +700,10 @@ class VexService {
     private populateStateInFlight: null | Promise<void> = null;
     private readonly processedMessageEventMailIDs = new Set<string>();
     private readonly processedReactionMailIDs = new Set<string>();
+    private productFeatures: ProductFeatureAvailability = {
+        ...DEFAULT_PRODUCT_FEATURES,
+    };
+    private readonly serverRefreshes = new Map<string, Promise<void>>();
     private wsDebugEnabled = shouldDebugAuth();
     private wsDebugFrameLogsEnabled = shouldDebugAuth();
     private wsDebugInboundListener: ((data: Uint8Array) => void) | null = null;
@@ -1204,6 +1217,21 @@ class VexService {
         );
     }
 
+    configureProductFeatures(features: ProductFeatureAvailability): void {
+        this.productFeatures = { ...features };
+        if (!features.premiumTiers) {
+            $billingAccountWritable.set(null);
+            $billingProductsWritable.set([]);
+            $billingOperationWritable.set(defaultBillingOperationState());
+        }
+        if (!features.voiceCalling) {
+            $activeCallsWritable.set({});
+            $incomingCallsWritable.set({});
+            $currentCallIDWritable.set(null);
+            $latestCallEventWritable.set(null);
+        }
+    }
+
     consumeRateLimitNotice(): boolean {
         if (!this.pendingRateLimitNotice) {
             return false;
@@ -1271,6 +1299,21 @@ class VexService {
         }
         this.client = null;
         this.resetAll();
+    }
+
+    async deleteChannel(
+        channelID: string,
+        serverID: string,
+    ): Promise<OperationResult> {
+        try {
+            const client = this.requireClient();
+            await client.channels.delete(channelID);
+            const channels = await client.channels.retrieve(serverID);
+            this.replaceServerChannels(serverID, channels);
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
     }
 
     async deleteLocalMessage(
@@ -1627,12 +1670,12 @@ class VexService {
         return null;
     }
 
-    // ── Channel operations ──────────────────────────────────────────────
-
     async getInvites(serverID: string): Promise<Invite[]> {
         const client = this.requireClient();
         return client.invites.retrieve(serverID);
     }
+
+    // ── Channel operations ──────────────────────────────────────────────
 
     /** Effective local retention cap (defaults to 30 when signed out). */
     getLocalMessageRetentionDays(): number {
@@ -1644,6 +1687,10 @@ class VexService {
             return fromClient;
         }
         return $localMessageRetentionDaysWritable.get();
+    }
+
+    getServerIconURL(iconID: string): string {
+        return this.requireClient().servers.iconURL(iconID);
     }
 
     async getServerPermissions(serverID: string): Promise<Permission[]> {
@@ -1878,8 +1925,6 @@ class VexService {
         $channelUnreadCountsWritable.setKey(conversationKey, 0);
     }
 
-    // ── User operations ─────────────────────────────────────────────────
-
     onDeviceRequestQueueChanged(listener: () => void): () => void {
         this.deviceRequestQueueListeners.add(listener);
         return () => {
@@ -1936,6 +1981,8 @@ class VexService {
             this.passkeyRestorePendingDeviceInternal(requestID),
         );
     }
+
+    // ── User operations ─────────────────────────────────────────────────
 
     async previewInvite(inviteID: string): Promise<InvitePreview | null> {
         const cached = this.invitePreviewCache.get(inviteID);
@@ -2037,6 +2084,10 @@ class VexService {
     }
 
     async refreshBillingAccount(): Promise<BillingAccountState | null> {
+        if (!this.productFeatures.premiumTiers) {
+            $billingAccountWritable.set(null);
+            return null;
+        }
         const client = this.requireClient();
         const retrieve = (client as unknown as ClientWithBillingLike).billing
             ?.retrieve;
@@ -2058,6 +2109,10 @@ class VexService {
     }
 
     async refreshBillingProducts(): Promise<BillingProduct[]> {
+        if (!this.productFeatures.premiumTiers) {
+            $billingProductsWritable.set([]);
+            return [];
+        }
         const client = this.requireClient();
         const products = (client as unknown as ClientWithBillingLike).billing
             ?.products;
@@ -2205,6 +2260,13 @@ class VexService {
     async refreshVoiceCalls(): Promise<
         OperationResult & { calls?: CallSession[] }
     > {
+        if (!this.productFeatures.voiceCalling) {
+            $activeCallsWritable.set({});
+            $incomingCallsWritable.set({});
+            $currentCallIDWritable.set(null);
+            $latestCallEventWritable.set(null);
+            return { calls: [], ok: true };
+        }
         const client = this.client;
         if (!client || !hasCallsApi(client)) {
             return { calls: [], ok: true };
@@ -2272,6 +2334,17 @@ class VexService {
             const client = this.requireClient();
             await client.devices.delete(deviceID);
             await this.listMyDevices();
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+    }
+
+    async removeServerIcon(serverID: string): Promise<OperationResult> {
+        try {
+            const server =
+                await this.requireClient().servers.removeIcon(serverID);
+            $serversWritable.setKey(serverID, server);
             return { ok: true };
         } catch (err: unknown) {
             return { error: errorMessage(err), ok: false };
@@ -2374,7 +2447,9 @@ class VexService {
             } else {
                 await this.populateState();
             }
-            await this.refreshVoiceCalls();
+            if (this.productFeatures.voiceCalling) {
+                await this.refreshVoiceCalls();
+            }
             return "new_data";
         } catch {
             return "failed";
@@ -2523,6 +2598,12 @@ class VexService {
         tier: AccountTier,
         options?: { expiresAt?: null | string },
     ): Promise<SetAccountTierResult> {
+        if (!this.productFeatures.premiumTiers) {
+            return {
+                error: "Premium tiers are disabled in this build.",
+                ok: false,
+            };
+        }
         try {
             const client = this.requireClient();
             const withEntitlements =
@@ -2557,6 +2638,22 @@ class VexService {
 
     setPasskeyCeremonyDriver(driver: null | PasskeyCeremonyDriver): void {
         this.passkeyCeremonyDriver = driver;
+    }
+
+    async setServerIcon(
+        serverID: string,
+        icon: Uint8Array,
+    ): Promise<OperationResult> {
+        try {
+            const server = await this.requireClient().servers.setIcon(
+                serverID,
+                icon,
+            );
+            $serversWritable.setKey(serverID, server);
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
     }
 
     setWebsocketDebug(enabled: boolean): void {
@@ -2595,8 +2692,6 @@ class VexService {
     ): Promise<BillingOperationResult> {
         return this.submitBillingProof("apple", request);
     }
-
-    // ── Unread management ───────────────────────────────────────────────
 
     async submitGooglePlayPurchase(
         request: GooglePlayPurchaseInput,
@@ -2659,7 +2754,7 @@ class VexService {
         );
     }
 
-    // ── Notifications ───────────────────────────────────────────────────
+    // ── Unread management ───────────────────────────────────────────────
 
     async unsubscribePushNotifications(subscriptionID: string): Promise<void> {
         const client = this.requireClient();
@@ -2688,6 +2783,75 @@ class VexService {
                 "/notifications/subscriptions/" +
                 subscriptionID,
         );
+    }
+
+    async updateChannel(
+        channelID: string,
+        name: string,
+    ): Promise<OperationResult> {
+        try {
+            const channel = await this.requireClient().channels.update(
+                channelID,
+                name,
+            );
+            const channels = $channelsWritable.get()[channel.serverID] ?? [];
+            const present = channels.some(
+                (candidate) => candidate.channelID === channel.channelID,
+            );
+            this.replaceServerChannels(
+                channel.serverID,
+                present
+                    ? channels.map((candidate) =>
+                          candidate.channelID === channel.channelID
+                              ? channel
+                              : candidate,
+                      )
+                    : [...channels, channel],
+            );
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+    }
+
+    async updateServer(
+        serverID: string,
+        name: string,
+    ): Promise<OperationResult> {
+        try {
+            const server = await this.requireClient().servers.update(
+                serverID,
+                name,
+            );
+            $serversWritable.setKey(serverID, server);
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
+    }
+
+    // ── Notifications ───────────────────────────────────────────────────
+
+    async updateServerMemberRole(
+        permissionID: string,
+        powerLevel: 0 | 50 | 100,
+    ): Promise<OperationResult> {
+        try {
+            const client = this.requireClient();
+            const permission = await client.moderation.setRole(
+                permissionID,
+                powerLevel,
+            );
+            if (permission.userID === client.me.user().userID) {
+                $permissionsWritable.setKey(
+                    permission.permissionID,
+                    permission,
+                );
+            }
+            return { ok: true };
+        } catch (err: unknown) {
+            return { error: errorMessage(err), ok: false };
+        }
     }
 
     async uploadFileAttachment(input: {
@@ -4330,6 +4494,10 @@ class VexService {
     private async refreshBillingAccountForClient(
         owner: Client,
     ): Promise<BillingAccountState | null> {
+        if (!this.productFeatures.premiumTiers) {
+            $billingAccountWritable.set(null);
+            return null;
+        }
         const retrieve = (owner as unknown as ClientWithBillingLike).billing
             ?.retrieve;
         if (typeof retrieve !== "function") {
@@ -4376,6 +4544,54 @@ class VexService {
             $accountEntitlementsWritable.set(fallback);
             return fallback;
         }
+    }
+
+    private refreshServerState(serverID: string): Promise<void> {
+        const previous = this.serverRefreshes.get(serverID);
+        const refresh = (previous ?? Promise.resolve())
+            .catch(() => undefined)
+            .then(async () => {
+                const client = this.client;
+                if (!client) return;
+
+                const servers = await client.servers.retrieve();
+                if (this.client !== client) return;
+                const server = servers.find(
+                    (candidate) => candidate.serverID === serverID,
+                );
+                if (!server) {
+                    this.removeServerFromLocalState(serverID);
+                    return;
+                }
+
+                const [channels, permissions] = await Promise.all([
+                    client.channels.retrieve(serverID),
+                    client.permissions.retrieve(),
+                ]);
+                if (this.client !== client) return;
+
+                $serversWritable.setKey(serverID, server);
+                this.replaceServerChannels(serverID, channels);
+                const otherPermissions = Object.fromEntries(
+                    Object.entries($permissionsWritable.get()).filter(
+                        ([, permission]) => permission.resourceID !== serverID,
+                    ),
+                );
+                for (const permission of permissions) {
+                    if (permission.resourceID === serverID) {
+                        otherPermissions[permission.permissionID] = permission;
+                    }
+                }
+                $permissionsWritable.set(otherPermissions);
+            });
+        this.serverRefreshes.set(serverID, refresh);
+        const cleanup = (): void => {
+            if (this.serverRefreshes.get(serverID) === refresh) {
+                this.serverRefreshes.delete(serverID);
+            }
+        };
+        void refresh.then(cleanup, cleanup);
+        return refresh;
     }
 
     private async registerInternal(
@@ -4622,12 +4838,53 @@ class VexService {
         }
         $groupMessagesWritable.set(Object.fromEntries(groupMessages));
 
+        const removedChannelIDs = new Set(
+            removedChannels.map((channel) => channel.channelID),
+        );
+        $channelUnreadCountsWritable.set(
+            Object.fromEntries(
+                Object.entries($channelUnreadCountsWritable.get()).filter(
+                    ([channelID]) => !removedChannelIDs.has(channelID),
+                ),
+            ),
+        );
+
         const permissions = Object.fromEntries(
             Object.entries($permissionsWritable.get()).filter(
                 ([, permission]) => permission.resourceID !== serverID,
             ),
         );
         $permissionsWritable.set(permissions);
+    }
+
+    private replaceServerChannels(serverID: string, channels: Channel[]): void {
+        const previous = $channelsWritable.get()[serverID] ?? [];
+        $channelsWritable.setKey(serverID, channels);
+
+        const currentIDs = new Set(
+            channels.map((channel) => channel.channelID),
+        );
+        const removedIDs = new Set(
+            previous
+                .filter((channel) => !currentIDs.has(channel.channelID))
+                .map((channel) => channel.channelID),
+        );
+        if (removedIDs.size === 0) return;
+
+        $groupMessagesWritable.set(
+            Object.fromEntries(
+                Object.entries($groupMessagesWritable.get()).filter(
+                    ([channelID]) => !removedIDs.has(channelID),
+                ),
+            ),
+        );
+        $channelUnreadCountsWritable.set(
+            Object.fromEntries(
+                Object.entries($channelUnreadCountsWritable.get()).filter(
+                    ([channelID]) => !removedIDs.has(channelID),
+                ),
+            ),
+        );
     }
 
     private async requestDeviceApprovalForPasskeyAuthenticatedAccountInternal(
@@ -4798,6 +5055,9 @@ class VexService {
     }
 
     private requireCallsClient(): ClientWithCallsLike {
+        if (!this.productFeatures.voiceCalling) {
+            throw new Error("Voice calling is disabled in this build.");
+        }
         const client = this.requireClient();
         if (!hasCallsApi(client)) {
             throw new Error("Voice calls are not supported by this libvex.");
@@ -4823,6 +5083,7 @@ class VexService {
         this.client = null;
         this.failedUserLookups.clear();
         this.invitePreviewCache.clear();
+        this.serverRefreshes.clear();
         $authStatusWritable.set("signed_out");
         $accountEntitlementsWritable.set(defaultAccountEntitlements());
         $billingAccountWritable.set(null);
@@ -4867,7 +5128,7 @@ class VexService {
 
         const shouldStop = (): boolean =>
             this.populateStateAbort || this.client !== owner;
-        if (hasCallsApi(owner)) {
+        if (this.productFeatures.voiceCalling && hasCallsApi(owner)) {
             try {
                 const calls = await withTimeout(
                     owner.calls.active(),
@@ -5013,7 +5274,9 @@ class VexService {
         let bootstrapChannelsByServer: null | Record<string, Channel[]> = null;
 
         await this.refreshEntitlementsForClient(owner);
-        await this.refreshBillingAccountForClient(owner);
+        if (this.productFeatures.premiumTiers) {
+            await this.refreshBillingAccountForClient(owner);
+        }
         if (shouldStop()) {
             return;
         }
@@ -5761,6 +6024,12 @@ class VexService {
         platform: "apple" | "google",
         request: AppleStoreTransactionInput | GooglePlayPurchaseInput,
     ): Promise<BillingOperationResult> {
+        if (!this.productFeatures.premiumTiers) {
+            return {
+                error: "Premium tiers are disabled in this build.",
+                ok: false,
+            };
+        }
         const client = this.requireClient();
         const billing = (client as unknown as ClientWithBillingLike).billing;
         let submit: (
@@ -5936,8 +6205,29 @@ class VexService {
                 this.handleDirectMessage(msg);
             }
         });
-        this.subscribe("call", (event) => {
-            this.handleCallEvent(event);
+        if (this.productFeatures.voiceCalling) {
+            this.subscribe("call", (event) => {
+                this.handleCallEvent(event);
+            });
+        }
+        this.subscribe("permission", (permission) => {
+            $permissionsWritable.setKey(permission.permissionID, permission);
+            void this.refreshServerState(permission.resourceID).catch(
+                (err: unknown) => {
+                    debugAuth("server:permission-refresh:failed", {
+                        message: errorMessage(err),
+                        serverID: permission.resourceID,
+                    });
+                },
+            );
+        });
+        this.subscribe("serverChange", (serverID) => {
+            void this.refreshServerState(serverID).catch((err: unknown) => {
+                debugAuth("server:change-refresh:failed", {
+                    message: errorMessage(err),
+                    serverID,
+                });
+            });
         });
         this.subscribeToDeviceRequestQueueChanges();
         // Initial bind for the socket the freshly-connected client

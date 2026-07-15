@@ -9,9 +9,11 @@ export type AppScreenProps<T extends keyof AppStackParamList> =
 export type AppStackParamList = {
     AddServer: undefined;
     AvatarCrop: {
+        requestId: number;
         sourceHeight: number;
         sourceUri: string;
         sourceWidth: number;
+        title?: string;
     };
     CameraCapture: { source: CameraCaptureSource };
     Channel: { channelID: string; channelName: string; serverID: string };

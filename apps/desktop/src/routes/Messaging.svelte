@@ -1,13 +1,18 @@
 <script lang="ts">
     import type { Message } from "@vex-chat/libvex";
 
+    import { Ellipsis, Phone, Trash2 } from "@lucide/svelte";
+
     import { buildMessageBodyWithAttachment } from "../lib/attachments.js";
+    import Avatar from "../lib/Avatar.svelte";
     import ChatInput from "../lib/ChatInput.svelte";
     import {
         clearComposerDraft,
         readComposerDraft,
         writeComposerDraft,
     } from "../lib/composerDrafts.js";
+    import { getServerUrl } from "../lib/config.js";
+    import { productFeatures } from "../lib/features.js";
     // Route: /messaging/:userID
     import MessageBox from "../lib/MessageBox.svelte";
     import { familiars, messages, vexService } from "../lib/store/index.js";
@@ -36,6 +41,7 @@
     let activeDraftKey = $state("");
     let editingMessage: Message | null = $state(null);
     let calling = $state(false);
+    let menuOpen = $state(false);
 
     $effect(() => {
         const nextKey = `dm:${targetUserID}`;
@@ -168,7 +174,12 @@
     }
 
     function handleStartVoiceCall(): void {
-        if (calling || !targetUserID || $voiceCallState.phase !== "idle") {
+        if (
+            !productFeatures.voiceCalling ||
+            calling ||
+            !targetUserID ||
+            $voiceCallState.phase !== "idle"
+        ) {
             return;
         }
         calling = true;
@@ -189,30 +200,75 @@
 
 <div class="dm-pane">
     <header class="dm-pane__header">
-        <span class="dm-pane__title">@{targetUsername}</span>
+        <div class="dm-pane__identity">
+            <Avatar
+                userID={targetUserID}
+                name={targetUsername}
+                serverUrl={getServerUrl()}
+                size={34}
+            />
+            <span>
+                <strong>{targetUsername}</strong>
+                <small>Direct message</small>
+            </span>
+        </div>
         <div class="dm-pane__actions">
+            {#if productFeatures.voiceCalling}
+                <button
+                    class="dm-pane__action"
+                    title="Start voice call"
+                    aria-label="Start voice call"
+                    disabled={calling || $voiceCallState.phase !== "idle"}
+                    onclick={handleStartVoiceCall}
+                >
+                    <Phone size={18} />
+                </button>
+            {/if}
             <button
-                class="dm-pane__action dm-pane__action--text"
-                title="Start voice call"
-                aria-label="Start voice call"
-                disabled={calling || $voiceCallState.phase !== "idle"}
-                onclick={handleStartVoiceCall}>Call</button
+                class="dm-pane__action"
+                title="Conversation options"
+                aria-label="Conversation options"
+                aria-expanded={menuOpen}
+                onclick={() => (menuOpen = !menuOpen)}
             >
-            <button
-                class="dm-pane__action dm-pane__action--danger dm-pane__action--text"
-                title="Delete local conversation"
-                aria-label="Delete local conversation"
-                onclick={handleDeleteThreadForMe}>Delete for me</button
-            >
-            <button
-                class="dm-pane__action dm-pane__action--danger dm-pane__action--text"
-                title="Delete your messages for everyone"
-                aria-label="Delete your messages for everyone"
-                onclick={handleDeleteThreadForEveryone}
-                >Delete for everyone</button
-            >
+                <Ellipsis size={20} />
+            </button>
+            {#if menuOpen}
+                <div class="dm-pane__menu" role="menu">
+                    <button
+                        role="menuitem"
+                        onclick={() => {
+                            menuOpen = false;
+                            handleDeleteThreadForMe();
+                        }}
+                    >
+                        <Trash2 size={15} />
+                        Delete from this device
+                    </button>
+                    <button
+                        class="dm-pane__menu-danger"
+                        role="menuitem"
+                        onclick={() => {
+                            menuOpen = false;
+                            handleDeleteThreadForEveryone();
+                        }}
+                    >
+                        <Trash2 size={15} />
+                        Delete my messages for everyone
+                    </button>
+                </div>
+            {/if}
         </div>
     </header>
+
+    {#if menuOpen}
+        <button
+            class="dm-pane__backdrop"
+            type="button"
+            aria-label="Close conversation options"
+            onclick={() => (menuOpen = false)}
+        ></button>
+    {/if}
 
     <MessageBox
         contextKey={activeDraftKey}
@@ -253,46 +309,72 @@
     }
 
     .dm-pane__header {
+        position: relative;
+        z-index: 2;
+        height: var(--topbar-height);
+        flex: 0 0 var(--topbar-height);
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 12px 16px;
+        padding: 0 14px 0 16px;
         border-bottom: 1px solid var(--border);
-        background: var(--bg-secondary);
-        flex-shrink: 0;
+        background: color-mix(
+            in srgb,
+            var(--bg-primary) 92%,
+            var(--bg-secondary)
+        );
     }
 
-    .dm-pane__title {
-        font-size: 15px;
-        font-weight: 600;
-        color: var(--text-primary);
+    .dm-pane__identity {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+    }
+
+    .dm-pane__identity > span {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+
+    .dm-pane__identity strong,
+    .dm-pane__identity small {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .dm-pane__identity strong {
+        font-family: var(--font-heading);
+        font-size: 14px;
+    }
+
+    .dm-pane__identity small {
+        color: var(--text-faint);
+        font-size: 10px;
     }
 
     .dm-pane__actions {
         display: flex;
         align-items: center;
-        gap: 2px;
+        gap: 3px;
     }
 
     .dm-pane__action {
         width: 32px;
         height: 32px;
-        border-radius: 4px;
+        border-radius: 6px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 14px;
-        color: var(--text-secondary);
-        transition:
-            background 0.1s,
-            color 0.1s;
-        filter: grayscale(1);
-        opacity: 0.6;
+        color: var(--text-muted);
     }
 
     .dm-pane__action:hover {
         background: var(--bg-hover);
-        opacity: 1;
+        color: var(--text-primary);
     }
 
     .dm-pane__action:disabled {
@@ -300,23 +382,57 @@
         opacity: 0.35;
     }
 
-    .dm-pane__action--danger:hover {
-        color: #ff7a7a;
+    .dm-pane__menu {
+        position: absolute;
+        z-index: 102;
+        top: calc(100% + 6px);
+        right: 12px;
+        width: 250px;
+        padding: 5px;
+        border: 1px solid var(--border-strong);
+        border-radius: 7px;
+        background: var(--bg-elevated);
+        box-shadow: var(--shadow-menu);
     }
 
-    .dm-pane__action--text {
-        width: auto;
-        padding: 0 8px;
+    .dm-pane__menu button {
+        width: 100%;
+        min-height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 9px;
+        border-radius: 5px;
+        color: var(--text-secondary);
         font-size: 12px;
-        filter: none;
-        white-space: nowrap;
+        font-weight: 600;
+        text-align: left;
+    }
+
+    .dm-pane__menu button:hover {
+        background: var(--bg-hover);
+    }
+
+    .dm-pane__menu .dm-pane__menu-danger {
+        color: var(--danger);
+    }
+
+    .dm-pane__backdrop {
+        position: fixed;
+        z-index: 1;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        cursor: default;
     }
 
     .dm-pane__error {
-        padding: 6px 16px;
-        background: color-mix(in srgb, var(--danger) 15%, transparent);
-        color: var(--danger);
-        font-size: 12px;
         flex-shrink: 0;
+        padding: 7px 16px;
+        border-bottom: 1px solid
+            color-mix(in srgb, var(--danger) 30%, transparent);
+        background: color-mix(in srgb, var(--danger) 10%, transparent);
+        color: #ffb4b2;
+        font-size: 11px;
     }
 </style>

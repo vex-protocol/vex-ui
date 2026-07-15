@@ -3,6 +3,7 @@ import type { User } from "@vex-chat/libvex";
 import { $user, type AuthResult, vexService } from "@vex-chat/store";
 
 import { getServerOptions, getServerUrl } from "./config";
+import { productFeatures } from "./features";
 import {
     clearActiveUsername,
     keychainKeyStore,
@@ -29,6 +30,10 @@ export async function handleLocalDevAutomationLink(url: string): Promise<void> {
     }
 
     if (action === "start-call") {
+        if (!productFeatures.voiceCalling) {
+            console.warn("[vex-dev] voice calling feature is disabled");
+            return;
+        }
         await startLocalDevCall(parsed);
         return;
     }

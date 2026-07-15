@@ -9,12 +9,61 @@ use tauri::{
 const TRAY_ID: &str = "main";
 const LINK_PREVIEW_HTML_LIMIT: usize = 512 * 1024;
 const LINK_PREVIEW_REDIRECT_LIMIT: usize = 4;
+#[cfg(target_os = "macos")]
+const DEVELOPMENT_BUNDLE_IDENTIFIER: &str = "com.vex-chat.app.dev";
+#[cfg(target_os = "macos")]
+const DEVELOPMENT_WEBVIEW_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    180, 224, 203, 29, 107, 71, 72, 93, 157, 151, 114, 109, 205, 216, 119, 115,
+];
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LinkPreviewHtml {
     final_url: String,
     html: String,
+}
+
+#[tauri::command]
+async fn keyring_get_password(service: String, user: String) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let entry = keyring::Entry::new(&service, &user).map_err(|err| err.to_string())?;
+        match entry.get_password() {
+            Ok(password) => Ok(Some(password)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(err) => Err(err.to_string()),
+        }
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+async fn keyring_set_password(
+    service: String,
+    user: String,
+    password: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        keyring::Entry::new(&service, &user)
+            .map_err(|err| err.to_string())?
+            .set_password(&password)
+            .map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+async fn keyring_delete_password(service: String, user: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let entry = keyring::Entry::new(&service, &user).map_err(|err| err.to_string())?;
+        match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(err) => Err(err.to_string()),
+        }
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 fn ipv4_mapped_address(ip: Ipv6Addr) -> Option<Ipv4Addr> {
@@ -178,6 +227,9 @@ fn build_main_window(app: &tauri::App) -> tauri::Result<()> {
     let mut builder = WebviewWindowBuilder::from_config(app.handle(), window_config)?;
     #[cfg(target_os = "macos")]
     {
+        if app.config().identifier == DEVELOPMENT_BUNDLE_IDENTIFIER {
+            builder = builder.data_store_identifier(DEVELOPMENT_WEBVIEW_DATA_STORE_IDENTIFIER);
+        }
         builder = builder.with_webview_configuration(macos_voice_call_webview_configuration());
     }
     builder.build()?;
@@ -288,7 +340,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
-        .plugin(tauri_plugin_keyring::init())
+        .plugin(tauri_plugin_http::init())
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(log::LevelFilter::Info)
@@ -296,6 +348,9 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             fetch_link_preview_html,
+            keyring_delete_password,
+            keyring_get_password,
+            keyring_set_password,
             set_tray_unread
         ])
         .setup(|app| {

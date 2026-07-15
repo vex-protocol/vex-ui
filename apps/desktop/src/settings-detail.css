@@ -1,0 +1,308 @@
+.settings-detail {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-primary);
+}
+
+.settings-detail__header {
+    height: var(--topbar-height);
+    flex: 0 0 var(--topbar-height);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.settings-detail__back,
+.settings-detail__icon-button {
+    display: grid;
+    place-items: center;
+    border-radius: 6px;
+    color: var(--text-muted);
+}
+
+.settings-detail__back {
+    width: 34px;
+    height: 34px;
+}
+
+.settings-detail__back:hover,
+.settings-detail__icon-button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.settings-detail__heading {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.settings-detail__heading span {
+    color: var(--text-faint);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.settings-detail__heading h1 {
+    font-family: var(--font-heading);
+    font-size: 14px;
+    line-height: 18px;
+}
+
+.settings-detail__scroll {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.settings-detail__body {
+    width: min(660px, calc(100% - 48px));
+    margin: 0 auto;
+    padding: 30px 0 56px;
+}
+
+.settings-detail__intro {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 12px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+}
+
+.settings-detail__intro-icon {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+    border-radius: 8px;
+    background: var(--accent-soft);
+    color: var(--accent-hover);
+}
+
+.settings-detail__intro h2 {
+    margin: 1px 0 5px;
+    font-family: var(--font-heading);
+    font-size: 18px;
+}
+
+.settings-detail__intro p,
+.settings-detail__hint,
+.settings-detail__empty {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.settings-detail__section {
+    margin-top: 25px;
+}
+
+.settings-detail__section-header {
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
+.settings-detail__section h3 {
+    color: var(--text-secondary);
+    font-family: var(--font-heading);
+    font-size: 13px;
+}
+
+.settings-detail__icon-button {
+    width: 30px;
+    height: 30px;
+}
+
+.settings-detail__form,
+.settings-detail__fields {
+    display: flex;
+    flex-direction: column;
+}
+
+.settings-detail__form {
+    gap: 18px;
+}
+
+.settings-detail__fields {
+    gap: 14px;
+}
+
+.settings-detail__field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.settings-detail__field label {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.settings-detail__field input {
+    min-height: 42px;
+    padding: 9px 11px;
+    border-color: var(--border-strong);
+    background: var(--bg-surface);
+    font-size: 13px;
+}
+
+.settings-detail__check {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.settings-detail__check input {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--accent);
+}
+
+.settings-detail__actions,
+.settings-detail__inline-form {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.settings-detail__actions {
+    justify-content: flex-end;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.settings-detail__inline-form input {
+    flex: 1;
+}
+
+.settings-detail__button {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 13px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.settings-detail__button:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.settings-detail__button--primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+}
+
+.settings-detail__button--primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+}
+
+.settings-detail__button--danger {
+    border-color: color-mix(in srgb, var(--danger) 48%, transparent);
+    background: transparent;
+    color: var(--danger);
+}
+
+.settings-detail__button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.settings-detail__status {
+    min-height: 18px;
+    font-size: 12px;
+}
+
+.settings-detail__status--error {
+    color: var(--danger);
+}
+
+.settings-detail__status--success {
+    color: var(--success);
+}
+
+.settings-detail__list {
+    border-top: 1px solid var(--border);
+}
+
+.settings-detail__row {
+    min-height: 62px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 2px;
+    border-bottom: 1px solid var(--border);
+}
+
+.settings-detail__row-info {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.settings-detail__row-info strong {
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-detail__row-info span {
+    color: var(--text-faint);
+    font-size: 11px;
+}
+
+.settings-detail__confirm {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.settings-detail__empty {
+    padding: 18px 2px;
+    border-bottom: 1px solid var(--border);
+}
+
+@media (max-width: 760px) {
+    .settings-detail__body {
+        width: calc(100% - 28px);
+        padding-top: 22px;
+    }
+
+    .settings-detail__inline-form,
+    .settings-detail__actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .settings-detail__button {
+        width: 100%;
+    }
+}

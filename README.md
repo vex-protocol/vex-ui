@@ -54,3 +54,16 @@ pnpm install
 # From the repo root — starts client apps in parallel
 pnpm dev
 ```
+
+## Product feature flags
+
+Premium tiers and voice calling are disabled by default in desktop and mobile
+builds. Enable them only in an intentional test build:
+
+| Feature       | Desktop                       | Mobile                               |
+| ------------- | ----------------------------- | ------------------------------------ |
+| Premium tiers | `VITE_ENABLE_PREMIUM_TIERS=1` | `EXPO_PUBLIC_ENABLE_PREMIUM_TIERS=1` |
+| Voice calling | `VITE_ENABLE_VOICE_CALLING=1` | `EXPO_PUBLIC_ENABLE_VOICE_CALLING=1` |
+
+Disabled features are removed from navigation and controls. Their billing and
+calling background synchronization is also disabled.

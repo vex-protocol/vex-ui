@@ -1008,7 +1008,7 @@ const styles = StyleSheet.create({
         lineHeight: 16,
     },
     memberPresenceDot: {
-        borderColor: "rgba(12,14,20,0.98)",
+        borderColor: colors.panel,
         borderRadius: 999,
         borderWidth: 2,
         bottom: -1,
@@ -1025,8 +1025,9 @@ const styles = StyleSheet.create({
     },
     memberRow: {
         alignItems: "center",
-        backgroundColor: "rgba(255,255,255,0.04)",
-        borderColor: "rgba(255,255,255,0.08)",
+        backgroundColor: colors.surfaceLight,
+        borderColor: colors.borderSubtle,
+        borderRadius: 6,
         borderWidth: 1,
         flexDirection: "row",
         gap: 8,
@@ -1036,14 +1037,14 @@ const styles = StyleSheet.create({
     },
     membersBackdrop: {
         ...StyleSheet.absoluteFill,
-        backgroundColor: "rgba(0,0,0,0.36)",
+        backgroundColor: colors.overlay,
     },
     membersBackdropPressable: {
         ...StyleSheet.absoluteFill,
     },
     membersDrawer: {
-        backgroundColor: "rgba(12,14,20,0.98)",
-        borderLeftColor: "rgba(255,255,255,0.1)",
+        backgroundColor: colors.panel,
+        borderLeftColor: colors.borderSubtle,
         borderLeftWidth: 1,
         bottom: 0,
         paddingTop: 56,
@@ -1061,22 +1062,22 @@ const styles = StyleSheet.create({
     },
     membersDrawerMeta: {
         ...typography.body,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.mutedDark,
         fontSize: 11,
     },
     membersDrawerTitle: {
         ...typography.label,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.mutedDark,
     },
     membersEmptyText: {
         ...typography.body,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.mutedDark,
         marginTop: 6,
         paddingHorizontal: 14,
     },
     memberSubtext: {
         ...typography.body,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.mutedDark,
         fontSize: 10,
     },
     messagePane: {

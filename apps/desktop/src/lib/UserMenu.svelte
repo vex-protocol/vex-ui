@@ -1,6 +1,8 @@
 <script lang="ts">
     import { push } from "svelte-spa-router";
 
+    import { ChevronUp, LogOut, Settings } from "@lucide/svelte";
+
     import Avatar from "./Avatar.svelte";
     import { clearSession, getServerUrl } from "./config.js";
     import { keyStore } from "./keystore.js";
@@ -17,14 +19,13 @@
         try {
             await vexService.logout();
         } catch {
-            /* ignore */
+            // Local session cleanup still needs to run if the server is offline.
         }
-        // Clear JWT so auto-login won't fire, but keep device keys
-        const creds = await keyStore.loadActive();
-        if (creds) await keyStore.save({ ...creds, token: undefined });
+        const credentials = await keyStore.loadActive();
+        if (credentials) {
+            await keyStore.save({ ...credentials, token: undefined });
+        }
         await keyStore.deactivate();
-        // VexService.logout() resets all state internally.
-        // SQLite storage is per-device-key; no manual clear needed on logout
         clearSession();
         void push("/login");
     }
@@ -35,217 +36,249 @@
     }
 </script>
 
-<div class="user-menu">
-    <div class="user-menu__trigger-row">
-        <button
-            class="user-menu__trigger"
-            onclick={() => (menuOpen = !menuOpen)}
-            aria-label="User menu"
-            aria-expanded={menuOpen}
-        >
-            <div class="user-menu__avatar-wrap">
-                {#if userID}
-                    <Avatar
-                        {userID}
-                        serverUrl={getServerUrl()}
-                        version={$avatarHash}
-                        size={32}
-                        name={username}
-                    />
-                {:else}
-                    <div class="user-menu__avatar" title={username}>?</div>
-                {/if}
-                <span class="user-menu__status-dot"></span>
-            </div>
-            <div class="user-menu__info">
-                <span class="user-menu__name"
-                    >{username || "Not logged in"}</span
-                >
-                <span class="user-menu__status-text">online</span>
-            </div>
-        </button>
-        <button
-            class="user-menu__gear"
-            onclick={openSettings}
-            title="Settings"
-            aria-label="Settings">⚙</button
-        >
-    </div>
+<footer class="account-menu">
+    <button
+        class="account-menu__identity"
+        type="button"
+        onclick={() => (menuOpen = !menuOpen)}
+        aria-label="Open account menu"
+        aria-expanded={menuOpen}
+    >
+        <span class="account-menu__avatar">
+            {#if userID}
+                <Avatar
+                    {userID}
+                    serverUrl={getServerUrl()}
+                    version={$avatarHash}
+                    size={34}
+                    name={username}
+                />
+            {:else}
+                <span class="account-menu__placeholder">?</span>
+            {/if}
+            <span class="account-menu__status"></span>
+        </span>
+        <span class="account-menu__meta">
+            <strong>{username || "Signed out"}</strong>
+            <span>Online</span>
+        </span>
+        <ChevronUp
+            class={menuOpen ? "account-menu__chevron--open" : ""}
+            size={16}
+        />
+    </button>
+
+    <button
+        class="account-menu__settings"
+        type="button"
+        onclick={openSettings}
+        title="Settings"
+        aria-label="Settings"
+    >
+        <Settings size={18} />
+    </button>
 
     {#if menuOpen}
-        <div class="user-menu__dropdown" role="menu">
-            <button
-                class="user-menu__item"
-                role="menuitem"
-                onclick={openSettings}
-            >
+        <div class="account-menu__popover" role="menu">
+            <div class="account-menu__popover-name">
+                <strong>{username}</strong>
+                <span>Vex account</span>
+            </div>
+            <button role="menuitem" onclick={openSettings}>
+                <Settings size={16} />
                 Settings
             </button>
-            <div class="user-menu__divider" role="separator"></div>
+            <div class="account-menu__divider"></div>
             <button
-                class="user-menu__item user-menu__item--danger"
+                class="account-menu__danger"
                 role="menuitem"
-                onclick={logout}
+                onclick={() => void logout()}
             >
+                <LogOut size={16} />
                 Sign out
             </button>
         </div>
     {/if}
-</div>
+</footer>
 
 {#if menuOpen}
-    <div
-        class="user-menu__backdrop"
-        role="presentation"
+    <button
+        class="account-menu__backdrop"
+        type="button"
+        aria-label="Close account menu"
         onclick={() => (menuOpen = false)}
-    ></div>
+    ></button>
 {/if}
 
 <style>
-    .user-menu {
+    .account-menu {
         position: relative;
-        padding: 8px;
-        border-top: 1px solid var(--border);
-        background: var(--bg-tertiary);
-        flex-shrink: 0;
-    }
-
-    .user-menu__trigger-row {
+        height: 58px;
+        flex: 0 0 58px;
         display: flex;
         align-items: center;
-        gap: 0;
+        gap: 3px;
+        padding: 7px 8px;
+        border-top: 1px solid var(--border);
+        background: var(--bg-tertiary);
     }
 
-    .user-menu__trigger {
+    .account-menu__identity {
+        min-width: 0;
         flex: 1;
         display: flex;
         align-items: center;
         gap: 8px;
         padding: 4px;
-        border-radius: 4px;
-        transition: background 0.1s;
-        min-width: 0;
+        border-radius: 6px;
+        text-align: left;
     }
 
-    .user-menu__trigger:hover {
+    .account-menu__identity:hover,
+    .account-menu__settings:hover {
         background: var(--bg-hover);
     }
 
-    .user-menu__avatar-wrap {
+    .account-menu__avatar {
         position: relative;
-        flex-shrink: 0;
+        width: 34px;
+        height: 34px;
+        flex: 0 0 34px;
     }
 
-    .user-menu__avatar {
-        width: 32px;
-        height: 32px;
+    .account-menu__placeholder {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
         border-radius: 50%;
         background: var(--accent);
         color: #fff;
-        font-size: 13px;
         font-weight: 700;
-        display: flex;
-        align-items: center;
-        justify-content: center;
     }
 
-    .user-menu__status-dot {
+    .account-menu__status {
         position: absolute;
-        bottom: -1px;
         right: -1px;
+        bottom: -1px;
         width: 10px;
         height: 10px;
+        border: 2px solid var(--bg-tertiary);
         border-radius: 50%;
         background: var(--success);
-        border: 2px solid var(--bg-tertiary);
     }
 
-    .user-menu__info {
+    .account-menu__meta {
+        min-width: 0;
         flex: 1;
         display: flex;
         flex-direction: column;
-        overflow: hidden;
+        gap: 1px;
     }
 
-    .user-menu__name {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--text-primary);
-        text-align: left;
+    .account-menu__meta strong,
+    .account-menu__meta span {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        line-height: 1.2;
     }
 
-    .user-menu__status-text {
-        font-size: 11px;
+    .account-menu__meta strong {
+        color: var(--text-secondary);
+        font-size: 12px;
+    }
+
+    .account-menu__meta span {
+        color: var(--text-faint);
+        font-size: 10px;
+    }
+
+    .account-menu__identity :global(svg) {
+        flex: 0 0 auto;
+        color: var(--text-faint);
+        transition: transform 140ms ease;
+    }
+
+    .account-menu__identity :global(.account-menu__chevron--open) {
+        transform: rotate(180deg);
+    }
+
+    .account-menu__settings {
+        width: 34px;
+        height: 34px;
+        flex: 0 0 34px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
         color: var(--text-muted);
-        text-align: left;
-        line-height: 1.2;
     }
 
-    .user-menu__gear {
-        width: 28px;
-        height: 28px;
-        border-radius: 4px;
+    .account-menu__popover {
+        position: absolute;
+        z-index: 110;
+        right: 8px;
+        bottom: calc(100% + 7px);
+        left: 8px;
+        padding: 5px;
+        border: 1px solid var(--border-strong);
+        border-radius: 7px;
+        background: var(--bg-elevated);
+        box-shadow: var(--shadow-menu);
+    }
+
+    .account-menu__popover-name {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 8px 9px 9px;
+    }
+
+    .account-menu__popover-name strong {
+        overflow: hidden;
+        font-size: 12px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .account-menu__popover-name span {
+        color: var(--text-faint);
+        font-size: 10px;
+    }
+
+    .account-menu__popover button {
+        width: 100%;
+        height: 34px;
         display: flex;
         align-items: center;
-        justify-content: center;
-        font-size: 14px;
-        color: var(--text-muted);
-        flex-shrink: 0;
-        transition:
-            background 0.1s,
-            color 0.1s;
-    }
-
-    .user-menu__gear:hover {
-        background: var(--bg-hover);
-        color: var(--text-primary);
-    }
-
-    .user-menu__dropdown {
-        position: absolute;
-        bottom: calc(100% + 4px);
-        left: 8px;
-        right: 8px;
-        background: var(--bg-surface);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        overflow: hidden;
-        z-index: 100;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    }
-
-    .user-menu__item {
-        width: 100%;
-        padding: 8px 12px;
+        gap: 8px;
+        padding: 0 8px;
+        border-radius: 5px;
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 600;
         text-align: left;
-        font-size: 13px;
-        color: var(--text-primary);
-        transition: background 0.1s;
     }
 
-    .user-menu__item:hover {
+    .account-menu__popover button:hover {
         background: var(--bg-hover);
     }
-    .user-menu__item--danger {
+
+    .account-menu__popover .account-menu__danger {
         color: var(--danger);
     }
-    .user-menu__item--danger:hover {
-        background: var(--danger);
-        color: #fff;
-    }
 
-    .user-menu__divider {
+    .account-menu__divider {
         height: 1px;
+        margin: 4px;
         background: var(--border);
     }
 
-    .user-menu__backdrop {
+    .account-menu__backdrop {
         position: fixed;
+        z-index: 109;
         inset: 0;
-        z-index: 99;
+        width: 100%;
+        height: 100%;
+        cursor: default;
     }
 </style>

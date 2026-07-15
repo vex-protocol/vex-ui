@@ -55,11 +55,15 @@ import {
     openUnknownAppSourcesSettings,
     restartForOtaUpdate,
 } from "../lib/appUpdates";
-import { $avatarCropResult } from "../lib/avatarCropResult";
+import {
+    $avatarCropResult,
+    nextAvatarCropRequestId,
+} from "../lib/avatarCropResult";
 import { useBillingPurchases } from "../lib/billingPurchases";
 import { buildInfo } from "../lib/buildInfo";
 import { getServerUrl } from "../lib/config";
 import { $devOptionsUnlocked, setDevOptionsUnlocked } from "../lib/devMode";
+import { productFeatures } from "../lib/features";
 import {
     $alwaysOnEnabled,
     openBatteryOptimizationSettings,
@@ -186,7 +190,7 @@ export function SettingsSectionScreen({
             case "account":
                 return "Account";
             case "billing":
-                return "Plan";
+                return productFeatures.premiumTiers ? "Plan" : "Settings";
             case "connection":
                 return "Connection";
             case "data":
@@ -826,22 +830,18 @@ export function SettingsSectionScreen({
         // Non-square asset (the OS cropper was skipped or freeform-cropped).
         // Send the user through our in-app cropper to pick a square region.
         if (!isSquare(width, height) && width != null && height != null) {
-            const requestId = Math.floor(Math.random() * 1_000_000_000);
+            const requestId = nextAvatarCropRequestId();
             expectedCropRequestRef.current = requestId;
             // Pre-clear any stale cropper result (different request id, but
             // safer to start clean).
             $avatarCropResult.set(null);
             navigation.navigate("AvatarCrop", {
+                requestId,
                 sourceHeight: height,
                 sourceUri: asset.uri,
                 sourceWidth: width,
+                title: "Crop avatar",
             });
-            // The useEffect above will pick the result up and finish the
-            // upload when the cropper screen returns.
-            // We can't compare `requestId` directly to the cropper's id
-            // since the cropper makes its own; we just gate on "is this
-            // the most recent crop request we issued?".
-            expectedCropRequestRef.current = null;
             return;
         }
 
@@ -1047,7 +1047,7 @@ export function SettingsSectionScreen({
                     </>
                 ) : null}
 
-                {section === "billing" ? (
+                {section === "billing" && productFeatures.premiumTiers ? (
                     <BillingSettingsContent
                         accountEntitlements={accountEntitlements}
                     />
@@ -1184,50 +1184,56 @@ export function SettingsSectionScreen({
                                 label="State transition logs"
                             />
                         </MenuSection>
-                        <MenuSection
-                            footer="Requires a local Spire started with dev entitlement overrides enabled."
-                            title="Entitlements"
-                        >
-                            <MenuRow
-                                description={accountEntitlements.source}
-                                icon="layers-outline"
-                                label="Current tier"
-                                value={formatTierLabel(
-                                    accountEntitlements.tier,
-                                )}
-                            />
-                            {ACCOUNT_TIERS.map((tier) => {
-                                const selected =
-                                    tier === accountEntitlements.tier;
-                                return (
-                                    <MenuRow
-                                        accessory={
-                                            selected ? (
-                                                <Ionicons
-                                                    color="rgba(255,255,255,0.85)"
-                                                    name="checkmark"
-                                                    size={22}
-                                                />
-                                            ) : undefined
-                                        }
-                                        description={
-                                            tierBusy === tier
-                                                ? "Applying override..."
-                                                : selected
-                                                  ? "Selected"
-                                                  : "Apply local override"
-                                        }
-                                        disabled={selected || tierBusy != null}
-                                        icon="flask-outline"
-                                        key={tier}
-                                        label={formatTierLabel(tier)}
-                                        onPress={() => {
-                                            void handleSelectAccountTier(tier);
-                                        }}
-                                    />
-                                );
-                            })}
-                        </MenuSection>
+                        {productFeatures.premiumTiers ? (
+                            <MenuSection
+                                footer="Requires a local Spire started with dev entitlement overrides enabled."
+                                title="Entitlements"
+                            >
+                                <MenuRow
+                                    description={accountEntitlements.source}
+                                    icon="layers-outline"
+                                    label="Current tier"
+                                    value={formatTierLabel(
+                                        accountEntitlements.tier,
+                                    )}
+                                />
+                                {ACCOUNT_TIERS.map((tier) => {
+                                    const selected =
+                                        tier === accountEntitlements.tier;
+                                    return (
+                                        <MenuRow
+                                            accessory={
+                                                selected ? (
+                                                    <Ionicons
+                                                        color="rgba(255,255,255,0.85)"
+                                                        name="checkmark"
+                                                        size={22}
+                                                    />
+                                                ) : undefined
+                                            }
+                                            description={
+                                                tierBusy === tier
+                                                    ? "Applying override..."
+                                                    : selected
+                                                      ? "Selected"
+                                                      : "Apply local override"
+                                            }
+                                            disabled={
+                                                selected || tierBusy != null
+                                            }
+                                            icon="flask-outline"
+                                            key={tier}
+                                            label={formatTierLabel(tier)}
+                                            onPress={() => {
+                                                void handleSelectAccountTier(
+                                                    tier,
+                                                );
+                                            }}
+                                        />
+                                    );
+                                })}
+                            </MenuSection>
+                        ) : null}
                         <MenuSection
                             footer="Hides this menu again until you re-enter the easter egg in About."
                             title="Visibility"

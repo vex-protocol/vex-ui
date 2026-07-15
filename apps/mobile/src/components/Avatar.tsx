@@ -6,6 +6,7 @@ import { $avatarVersions, $user, avatarHue } from "@vex-chat/store";
 import { useStore } from "@nanostores/react";
 
 import { buildAvatarUrl } from "../lib/avatarUrl";
+import { colors } from "../theme";
 
 export interface AvatarProps {
     /**
@@ -123,7 +124,7 @@ export function Avatar({
 
 const styles = StyleSheet.create({
     base: {
-        backgroundColor: "rgba(255,255,255,0.04)",
+        backgroundColor: colors.surfaceLight,
         overflow: "hidden",
     },
     fallback: {
@@ -135,6 +136,6 @@ const styles = StyleSheet.create({
         fontWeight: "700",
     },
     image: {
-        backgroundColor: "rgba(255,255,255,0.04)",
+        backgroundColor: colors.surfaceLight,
     },
 });

@@ -18,11 +18,48 @@ const serviceInternals = vexService as unknown as {
 
 describe("vexService billing", () => {
     beforeEach(() => {
+        vexService.configureProductFeatures({
+            premiumTiers: true,
+            voiceCalling: true,
+        });
         serviceInternals.client = null;
         $accountEntitlementsWritable.set(defaultAccountEntitlements());
         $billingAccountWritable.set(null);
         $billingOperationWritable.set(defaultBillingOperationState());
         $billingProductsWritable.set([]);
+    });
+
+    test("keeps billing APIs and state dormant when premium tiers are disabled", async () => {
+        const products = vi.fn(async () => [
+            {
+                environment: "sandbox" as const,
+                platform: "apple_app_store" as const,
+                productID: "apple_plus_monthly",
+                storeProductID: "chat.vex.plus.monthly",
+                tier: "plus" as const,
+            },
+        ]);
+        serviceInternals.client = { billing: { products } };
+        $billingProductsWritable.set(await products());
+
+        vexService.configureProductFeatures({
+            premiumTiers: false,
+            voiceCalling: true,
+        });
+        products.mockClear();
+
+        await expect(vexService.refreshBillingProducts()).resolves.toEqual([]);
+        await expect(
+            vexService.submitAppleStoreTransaction({
+                signedTransactionInfo: "jws",
+            }),
+        ).resolves.toEqual({
+            error: "Premium tiers are disabled in this build.",
+            ok: false,
+        });
+        expect(products).not.toHaveBeenCalled();
+        expect($billingProductsWritable.get()).toEqual([]);
+        expect($billingAccountWritable.get()).toBeNull();
     });
 
     test("loads billing products from a supported client", async () => {

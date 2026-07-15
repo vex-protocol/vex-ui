@@ -5,12 +5,15 @@ import type { ServerOptions } from "@vex-chat/store";
 
 const SERVER_URL_KEY = "vex-server-url";
 
-// Production server URL lives in code as a typed constant — never read from
-// .env at runtime. A missing or empty VITE_SERVER_URL can only resolve to
-// prod, making it impossible to ship a dev URL by forgetting to set something.
+export type DesktopAppEnvironment = "development" | "production";
+
+// Flavor server URLs live in code as typed constants. Build scripts select the
+// flavor explicitly instead of relying on a potentially stale shell env.
 const PROD_SERVER_URL = "api.vex.wtf";
 const DEV_SERVER_URL = "dev.vex.wtf";
 const VITE_DEV_SERVER_URL = "localhost:5180";
+
+const APP_ENVIRONMENT = resolveAppEnvironment();
 
 // Any host that looks like a local/LAN dev target. Used for the release-build
 // fail-safe and for deciding when http:// is acceptable.
@@ -27,14 +30,16 @@ const envProxyTarget =
 const DEFAULT_SERVER_URL: string =
     envServerUrl.length > 0
         ? normalizeHost(envServerUrl)
-        : import.meta.env.DEV
-          ? VITE_DEV_SERVER_URL
+        : APP_ENVIRONMENT === "development"
+          ? import.meta.env.DEV
+              ? VITE_DEV_SERVER_URL
+              : DEV_SERVER_URL
           : PROD_SERVER_URL;
 
-// Fail-safe: a release build must never ship with a dev host compiled in as
-// the default. Users can still override via the Settings UI (localStorage).
+// Flavor builds are pinned to their environment. Users can still override the
+// server later through Settings, but a mislabeled artifact must fail to build.
 if (
-    !import.meta.env.DEV &&
+    APP_ENVIRONMENT === "production" &&
     (isNonProductionHost(DEFAULT_SERVER_URL) ||
         (envProxyTarget.length > 0 && isNonProductionHost(envProxyTarget)))
 ) {
@@ -44,8 +49,23 @@ if (
     );
 }
 
+if (
+    APP_ENVIRONMENT === "development" &&
+    !import.meta.env.DEV &&
+    hostOnly(DEFAULT_SERVER_URL) !== DEV_SERVER_URL
+) {
+    throw new Error(
+        `[vex] Refusing to start: development build resolved default server URL to "${DEFAULT_SERVER_URL}". ` +
+            `VITE_SERVER_URL must point at ${DEV_SERVER_URL}.`,
+    );
+}
+
 export function clearSession(): void {
     localStorage.removeItem(SERVER_URL_KEY);
+}
+
+export function getDesktopAppEnvironment(): DesktopAppEnvironment {
+    return APP_ENVIRONMENT;
 }
 
 /**
@@ -136,4 +156,20 @@ function isViteProxyHost(value: string): boolean {
 
 function normalizeHost(raw: string): string {
     return hostOnly(raw.replace(/\/+$/, ""));
+}
+
+function resolveAppEnvironment(): DesktopAppEnvironment {
+    const configured =
+        typeof import.meta.env.VITE_APP_ENV === "string"
+            ? import.meta.env.VITE_APP_ENV.trim()
+            : "";
+    if (configured === "development" || configured === "production") {
+        return configured;
+    }
+    if (configured.length > 0) {
+        throw new Error(
+            `[vex] Unsupported VITE_APP_ENV "${configured}". Expected "development" or "production".`,
+        );
+    }
+    return import.meta.env.DEV ? "development" : "production";
 }

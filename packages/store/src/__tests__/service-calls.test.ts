@@ -104,6 +104,10 @@ function resetClient(): void {
 
 describe("vexService voice calls", () => {
     beforeEach(() => {
+        vexService.configureProductFeatures({
+            premiumTiers: true,
+            voiceCalling: true,
+        });
         $activeCallsWritable.set({});
         $incomingCallsWritable.set({});
         $currentCallIDWritable.set(null);
@@ -116,7 +120,41 @@ describe("vexService voice calls", () => {
     });
 
     afterEach(() => {
+        vexService.configureProductFeatures({
+            premiumTiers: true,
+            voiceCalling: true,
+        });
         resetClient();
+    });
+
+    test("keeps call APIs and state dormant when voice calling is disabled", async () => {
+        const calls = installClient();
+        $activeCallsWritable.set({ "call-1": makeCall() });
+        $incomingCallsWritable.set({ "call-1": makeEvent() });
+        $currentCallIDWritable.set("call-1");
+        $latestCallEventWritable.set(makeEvent());
+
+        vexService.configureProductFeatures({
+            premiumTiers: true,
+            voiceCalling: false,
+        });
+
+        await expect(
+            vexService.startVoiceCall("user-b", offer),
+        ).resolves.toEqual({
+            error: "Voice calling is disabled in this build.",
+            ok: false,
+        });
+        await expect(vexService.refreshVoiceCalls()).resolves.toEqual({
+            calls: [],
+            ok: true,
+        });
+        expect(calls.startDM).not.toHaveBeenCalled();
+        expect(calls.active).not.toHaveBeenCalled();
+        expect($activeCallsWritable.get()).toEqual({});
+        expect($incomingCallsWritable.get()).toEqual({});
+        expect($currentCallIDWritable.get()).toBeNull();
+        expect($latestCallEventWritable.get()).toBeNull();
     });
 
     test("starts a DM voice call and stores the returned session", async () => {

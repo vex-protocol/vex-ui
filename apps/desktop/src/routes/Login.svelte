@@ -1,6 +1,14 @@
 <script lang="ts">
     import { push } from "svelte-spa-router";
 
+    import {
+        ArrowRight,
+        KeyRound,
+        LoaderCircle,
+        ShieldCheck,
+        X,
+    } from "@lucide/svelte";
+
     import { getServerOptions } from "../lib/config.js";
     import { keyStore } from "../lib/keystore.js";
     import { desktopConfig } from "../lib/platform.js";
@@ -11,6 +19,7 @@
         user as userAtom,
         vexService,
     } from "../lib/store/index.js";
+    import VexLogo from "../lib/VexLogo.svelte";
 
     let username = $state("");
     let password = $state("");
@@ -57,7 +66,6 @@
         }
 
         const savedCredentials = await keyStore.load(normalizedUsername);
-
         const result = savedCredentials
             ? await vexService.login(
                   normalizedUsername,
@@ -127,6 +135,9 @@
 
         loading = true;
         authMethod = "passkey";
+        if ("__TAURI_INTERNALS__" in window) {
+            notice = "Continue with your passkey in the browser window.";
+        }
         const passkey = await vexService.authenticateAccountWithPasskey(
             normalizedUsername,
             desktopConfig(),
@@ -134,6 +145,7 @@
             keyStore,
         );
         if (!passkey.ok) {
+            notice = "";
             error = passkey.error ?? "Could not verify this passkey.";
             playError();
             loading = false;
@@ -210,98 +222,134 @@
 </script>
 
 <div class="auth-page">
-    <div class="auth-card">
-        <h1 class="auth-card__title">Welcome back</h1>
-        <p class="auth-card__subtitle">Sign in with your password</p>
+    <main class="auth-card">
+        <VexLogo size={39} />
 
-        {#if error}
-            <p class="auth-card__error">{error}</p>
-        {/if}
-        {#if notice}
-            <p class="auth-card__notice" role="status">{notice}</p>
-        {/if}
-
-        <form class="auth-form" onsubmit={handleLogin}>
-            <div class="auth-form__field">
-                <label for="username">Username</label>
-                <input
-                    id="username"
-                    type="text"
-                    autocomplete="username"
-                    autocapitalize="none"
-                    placeholder="your username"
-                    spellcheck="false"
-                    bind:value={username}
-                    disabled={loading || awaitingApproval}
-                    required
-                />
-            </div>
-
-            <div class="auth-form__field">
-                <label for="password">Password</label>
-                <input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    autocomplete="current-password"
-                    placeholder="your password"
-                    minlength={1}
-                    maxlength={1024}
-                    bind:value={password}
-                    disabled={loading || awaitingApproval}
-                    required
-                />
-            </div>
-
-            <label class="auth-form__check">
-                <input
-                    type="checkbox"
-                    bind:checked={showPassword}
-                    disabled={loading || awaitingApproval}
-                />
-                <span>Show password</span>
-            </label>
-
-            <button
-                class="auth-form__submit"
-                type="submit"
-                disabled={loading || awaitingApproval}
-            >
-                {loading && authMethod === "password"
-                    ? "Signing in..."
-                    : "Sign in"}
-            </button>
-            <button
-                class="auth-form__secondary"
-                type="button"
-                onclick={handlePasskeyLogin}
-                disabled={loading || awaitingApproval || !username.trim()}
-            >
-                {loading && authMethod === "passkey"
-                    ? "Verifying passkey..."
-                    : "Use a passkey"}
-            </button>
-            {#if awaitingApproval}
+        {#if awaitingApproval}
+            <section class="approval" aria-live="polite">
+                <span class="approval__icon"><ShieldCheck size={26} /></span>
+                <div>
+                    <span class="auth-card__eyebrow">Device verification</span>
+                    <h1 class="auth-card__title">Approve this Mac</h1>
+                    <p class="auth-card__subtitle">
+                        Open Vex on a signed-in device and approve this request.
+                    </p>
+                </div>
+                {#if notice}
+                    <p class="auth-card__notice" role="status">{notice}</p>
+                {/if}
                 <button
-                    class="auth-form__secondary"
+                    class="auth-button auth-button--secondary"
                     type="button"
                     onclick={cancelApproval}
                 >
+                    <X size={17} />
                     Cancel request
                 </button>
+            </section>
+        {:else}
+            <header class="auth-card__header">
+                <span class="auth-card__eyebrow">Secure messaging</span>
+                <h1 class="auth-card__title">Welcome back</h1>
+                <p class="auth-card__subtitle">
+                    Sign in with your username and password.
+                </p>
+            </header>
+
+            {#if error}
+                <p class="auth-card__error" role="alert">{error}</p>
             {/if}
-        </form>
+            {#if notice}
+                <p class="auth-card__notice" role="status">{notice}</p>
+            {/if}
 
-        <button class="auth-card__link" onclick={() => push("/recover")}
-            >Forgot password?</button
-        >
+            <form class="auth-form" onsubmit={handleLogin}>
+                <label class="auth-form__field" for="username">
+                    <span>Username</span>
+                    <input
+                        id="username"
+                        type="text"
+                        autocomplete="username"
+                        autocapitalize="none"
+                        placeholder="your username"
+                        spellcheck="false"
+                        bind:value={username}
+                        disabled={loading}
+                        required
+                    />
+                </label>
 
-        <p class="auth-card__footer">
-            Don't have an account?
-            <button class="auth-card__link" onclick={() => push("/register")}
-                >Register</button
-            >
-        </p>
-    </div>
+                <label class="auth-form__field" for="password">
+                    <span>Password</span>
+                    <input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        autocomplete="current-password"
+                        placeholder="your password"
+                        minlength={1}
+                        maxlength={1024}
+                        bind:value={password}
+                        disabled={loading}
+                        required
+                    />
+                </label>
+
+                <div class="auth-form__options">
+                    <label class="auth-form__check">
+                        <input
+                            type="checkbox"
+                            bind:checked={showPassword}
+                            disabled={loading}
+                        />
+                        <span>Show password</span>
+                    </label>
+                    <button
+                        class="auth-card__link"
+                        type="button"
+                        onclick={() => push("/recover")}
+                        >Forgot password?</button
+                    >
+                </div>
+
+                <button
+                    class="auth-button auth-button--primary"
+                    type="submit"
+                    disabled={loading}
+                >
+                    {#if loading && authMethod === "password"}
+                        <LoaderCircle class="spin" size={17} />
+                        Signing in...
+                    {:else}
+                        Sign in
+                        <ArrowRight size={17} />
+                    {/if}
+                </button>
+                <button
+                    class="auth-button auth-button--secondary"
+                    type="button"
+                    onclick={handlePasskeyLogin}
+                    disabled={loading || !username.trim()}
+                >
+                    {#if loading && authMethod === "passkey"}
+                        <LoaderCircle class="spin" size={17} />
+                        Verifying passkey...
+                    {:else}
+                        <KeyRound size={17} />
+                        Use a passkey
+                    {/if}
+                </button>
+            </form>
+
+            <p class="auth-card__footer">
+                New to Vex?
+                <button
+                    class="auth-card__link"
+                    type="button"
+                    onclick={() => push("/register")}>Create account</button
+                >
+            </p>
+        {/if}
+    </main>
 </div>
 
 <style>
@@ -310,115 +358,200 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        overflow-y: auto;
+        padding: 48px 24px;
         background: var(--bg-primary);
     }
+
     .auth-card {
-        background: var(--bg-secondary);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 32px;
-        width: min(360px, calc(100vw - 32px));
+        width: min(400px, 100%);
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: 22px;
     }
-    .auth-card__title {
-        font-size: 22px;
+
+    .auth-card__header,
+    .approval > div {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .auth-card__header {
+        padding-top: 8px;
+    }
+
+    .auth-card__eyebrow {
+        color: var(--accent-hover);
+        font-size: 11px;
         font-weight: 700;
-        color: var(--text-primary);
+        text-transform: uppercase;
     }
+
+    .auth-card__title {
+        color: var(--text-primary);
+        font-family: var(--font-heading);
+        font-size: 30px;
+        font-weight: 700;
+    }
+
     .auth-card__subtitle {
+        color: var(--text-muted);
         font-size: 13px;
-        color: var(--text-secondary);
-        margin-top: -10px;
+        line-height: 1.55;
     }
-    .auth-card__error {
-        background: color-mix(in srgb, var(--danger) 15%, transparent);
-        color: var(--danger);
-        border: 1px solid var(--danger);
-        border-radius: 4px;
-        padding: 8px 12px;
-        font-size: 13px;
-    }
+
+    .auth-card__error,
     .auth-card__notice {
-        background: color-mix(in srgb, var(--accent) 12%, transparent);
-        border: 1px solid var(--accent);
-        border-radius: 4px;
-        color: var(--text-primary);
+        padding: 10px 12px;
+        border: 1px solid;
+        border-radius: 6px;
         font-size: 13px;
         line-height: 1.4;
-        padding: 10px 12px;
     }
-    .auth-form {
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
+
+    .auth-card__error {
+        border-color: color-mix(in srgb, var(--danger) 46%, transparent);
+        background: color-mix(in srgb, var(--danger) 11%, transparent);
+        color: #ffb4b2;
     }
+
+    .auth-card__notice {
+        border-color: color-mix(in srgb, var(--success) 42%, transparent);
+        background: color-mix(in srgb, var(--success) 10%, transparent);
+        color: #6ee7c5;
+    }
+
+    .auth-form,
     .auth-form__field {
         display: flex;
         flex-direction: column;
-        gap: 5px;
     }
-    .auth-form__field label {
+
+    .auth-form {
+        gap: 14px;
+    }
+
+    .auth-form__field {
+        gap: 7px;
+    }
+
+    .auth-form__field > span {
+        color: var(--text-muted);
         font-size: 12px;
-        font-weight: 600;
-        color: var(--text-secondary);
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0;
     }
-    .auth-form__check {
-        align-items: center;
-        color: var(--text-secondary);
+
+    .auth-form__field input {
+        height: 44px;
+        border-radius: 8px;
+        background: var(--bg-surface);
+    }
+
+    .auth-form__options {
         display: flex;
-        font-size: 13px;
-        gap: 8px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin: -2px 0 3px;
+    }
+
+    .auth-form__check {
         width: fit-content;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-muted);
+        font-size: 12px;
     }
+
     .auth-form__check input {
-        accent-color: var(--accent);
-        flex: 0 0 auto;
-        height: 16px;
-        margin: 0;
         width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        margin: 0;
+        accent-color: var(--accent);
     }
-    .auth-form__submit {
+
+    .auth-button {
+        min-height: 42px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    .auth-button--primary {
         background: var(--accent);
         color: #fff;
-        padding: 10px;
-        border-radius: 4px;
-        font-size: 14px;
-        font-weight: 600;
-        transition: opacity 0.15s;
-        margin-top: 4px;
     }
-    .auth-form__submit:hover:not(:disabled) {
-        opacity: 0.9;
+
+    .auth-button--primary:hover:not(:disabled) {
+        background: var(--accent-hover);
     }
-    .auth-form__submit:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-    .auth-form__secondary {
+
+    .auth-button--secondary {
+        border-color: var(--border-strong);
         background: var(--bg-surface);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        color: var(--text-primary);
-        font-size: 14px;
-        font-weight: 600;
-        padding: 10px;
-    }
-    .auth-form__secondary:hover {
-        background: var(--bg-hover);
-    }
-    .auth-card__footer {
-        font-size: 13px;
         color: var(--text-secondary);
+    }
+
+    .auth-button--secondary:hover:not(:disabled) {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+
+    .auth-button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+
+    .auth-card__footer {
+        color: var(--text-muted);
+        font-size: 13px;
         text-align: center;
     }
+
     .auth-card__link {
-        align-self: center;
-        color: var(--accent);
+        color: var(--accent-hover);
+        font-size: inherit;
+        font-weight: 600;
+    }
+
+    .auth-card__link:hover {
         text-decoration: underline;
-        font-size: 13px;
+    }
+
+    .approval {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        padding-top: 8px;
+    }
+
+    .approval__icon {
+        width: 48px;
+        height: 48px;
+        display: grid;
+        place-items: center;
+        border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--success) 12%, transparent);
+        color: var(--success);
+    }
+
+    :global(.spin) {
+        animation: spin 900ms linear infinite;
+    }
+
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
     }
 </style>
