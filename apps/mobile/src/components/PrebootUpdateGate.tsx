@@ -6,7 +6,6 @@ import React, {
     useState,
 } from "react";
 import {
-    Alert,
     Animated,
     AppState,
     Easing,
@@ -176,7 +175,6 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
     const [offlineContinueAllowed, setOfflineContinueAllowed] = useState(false);
     const [phase, setPhase] = useState<PrebootPhase>("checking");
     const completeRef = useRef(false);
-    const promptedIosInstallRef = useRef<string | undefined>(undefined);
     const visibleSinceRef = useRef(Date.now());
 
     const handlePendingOtaRestarting = useCallback(() => {
@@ -333,35 +331,6 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
         };
     }, [phase]);
 
-    useEffect(() => {
-        if (Platform.OS !== "ios" || phase !== "ios_installing") {
-            return;
-        }
-        const release = appUpdateState.nativeRelease;
-        const installKey =
-            release?.iosDirectInstallUrl ??
-            release?.iosInstallUrl ??
-            release?.fingerprint ??
-            release?.targetCommit ??
-            release?.htmlUrl ??
-            release?.tagName;
-        if (!installKey || promptedIosInstallRef.current === installKey) {
-            return;
-        }
-        promptedIosInstallRef.current = installKey;
-        Alert.alert(
-            "Install Required Update",
-            "iOS will ask you to install the latest Vex build. Confirm the install, leave Vex, then reopen it after the app icon finishes updating.",
-            [
-                { style: "cancel", text: "Not Now" },
-                {
-                    onPress: handleOpenIosInstaller,
-                    text: "Install Update",
-                },
-            ],
-        );
-    }, [appUpdateState.nativeRelease, handleOpenIosInstaller, phase]);
-
     const progress = progressForPhase(phase, appUpdateState);
     const copy = copyForPhase(phase, appUpdateState, error);
     const nativeInstallUrl = getNativeBuildInstallUrl(
@@ -408,7 +377,7 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
             {phase === "ios_installing" ? (
                 <View style={styles.actions}>
                     <PrimaryAction
-                        label="Install Update"
+                        label="Open Safari to Update"
                         onPress={handleOpenIosInstaller}
                     />
                     <SecondaryAction
@@ -432,7 +401,7 @@ export function PrebootUpdateGate({ onComplete }: { onComplete: () => void }) {
                         <SecondaryAction
                             label={
                                 Platform.OS === "ios"
-                                    ? "Install Update"
+                                    ? "Open Safari to Update"
                                     : "Open release"
                             }
                             onPress={() => {
@@ -509,8 +478,8 @@ function copyForPhase(
             };
         case "ios_installing":
             return {
-                detail: "Confirm the iOS install prompt, leave Vex, then reopen it after the app icon finishes updating.",
-                message: "A newer Vex build is required before startup.",
+                detail: "We’ll open the installation page in Safari. Tap Install there, then reopen Vex after the app icon finishes updating.",
+                message: "A new version of Vex is required before startup.",
                 title: "Update Required",
             };
         case "ota_downloading":

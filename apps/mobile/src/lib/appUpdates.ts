@@ -273,34 +273,17 @@ export function getNativeBuildInstallUrl(
 ): string | undefined {
     if (!release) return undefined;
     if (Platform.OS === "ios") {
-        return (
-            release.iosDirectInstallUrl ??
-            release.iosInstallUrl ??
-            release.htmlUrl
-        );
+        return release.iosInstallUrl ?? release.htmlUrl;
     }
     return release.htmlUrl;
 }
 
 export async function openNativeBuildInstallPage(): Promise<void> {
-    const release = $appUpdateState.get().nativeRelease;
     const url = getNativeBuildInstallUrl();
     if (!url) {
         throw new Error("No native build install page is available.");
     }
-    try {
-        await Linking.openURL(url);
-    } catch (err) {
-        const fallbackUrl =
-            Platform.OS === "ios" && release
-                ? (release.iosInstallUrl ?? release.htmlUrl)
-                : undefined;
-        if (fallbackUrl && fallbackUrl !== url) {
-            await Linking.openURL(fallbackUrl);
-            return;
-        }
-        throw err;
-    }
+    await Linking.openURL(url);
 }
 
 export async function openUnknownAppSourcesSettings(): Promise<void> {
