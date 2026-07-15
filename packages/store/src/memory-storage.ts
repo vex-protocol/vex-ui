@@ -11,12 +11,8 @@ import type {
 import type { PreKeysSQL } from "@vex-chat/types";
 
 import {
-    getCryptoProfile,
     xBoxKeyPairFromSecret,
-    xBoxKeyPairFromSecretAsync,
-    xSecretbox,
     xSecretboxAsync,
-    xSecretboxOpen,
     xSecretboxOpenAsync,
     XUtils,
 } from "@vex-chat/crypto";
@@ -313,10 +309,11 @@ export class MemoryStorage extends EventEmitter implements Storage {
         }
         const encrypted = XUtils.decodeHex(copy.message);
         const nonce = XUtils.decodeHex(copy.nonce);
-        const decrypted =
-            getCryptoProfile() === "fips"
-                ? await xSecretboxOpenAsync(encrypted, nonce, this.atRestAesKey)
-                : xSecretboxOpen(encrypted, nonce, this.atRestAesKey);
+        const decrypted = await xSecretboxOpenAsync(
+            encrypted,
+            nonce,
+            this.atRestAesKey,
+        );
         if (decrypted) {
             copy.message = XUtils.encodeUTF8(decrypted);
         }
@@ -328,10 +325,7 @@ export class MemoryStorage extends EventEmitter implements Storage {
         nonce: Uint8Array,
     ): Promise<Uint8Array> {
         const bytes = XUtils.decodeUTF8(plaintext);
-        if (getCryptoProfile() === "fips") {
-            return xSecretboxAsync(bytes, nonce, this.atRestAesKey);
-        }
-        return Promise.resolve(xSecretbox(bytes, nonce, this.atRestAesKey));
+        return xSecretboxAsync(bytes, nonce, this.atRestAesKey);
     }
 
     private sqlToCrypto(session: Session): SessionCrypto {
@@ -366,17 +360,12 @@ export class MemoryStorage extends EventEmitter implements Storage {
         };
     }
 
-    private async storedPreKeyToCrypto(
-        preKey: StoredPreKey,
-    ): Promise<PreKeysCrypto> {
+    private storedPreKeyToCrypto(preKey: StoredPreKey): Promise<PreKeysCrypto> {
         const secret = XUtils.decodeHex(preKey.privateKey);
-        return {
+        return Promise.resolve({
             index: preKey.index,
-            keyPair:
-                getCryptoProfile() === "fips"
-                    ? await xBoxKeyPairFromSecretAsync(secret)
-                    : xBoxKeyPairFromSecret(secret),
+            keyPair: xBoxKeyPairFromSecret(secret),
             signature: XUtils.decodeHex(preKey.signature),
-        };
+        });
     }
 }

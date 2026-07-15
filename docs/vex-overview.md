@@ -60,12 +60,10 @@ a short comparison code derived from the requesting key before approval.
 See [Spire authentication model](explanation/auth-comparison.md) for the full
 session, recovery, and failure behavior.
 
-## Cryptographic Profiles
+## Cryptography
 
-The default `tweetnacl` profile uses Ed25519 device signatures, X25519 key
-agreement, and XSalsa20-Poly1305 authenticated encryption. The optional `fips`
-profile uses P-256 ECDSA/ECDH and AES-GCM through Web Crypto. A client and server
-must use the same profile.
+Vex uses TweetNaCl-compatible Ed25519 device signatures, X25519 key agreement,
+and XSalsa20-Poly1305 authenticated encryption.
 
 For a new pairwise session, the sender retrieves the recipient device's signed
 prekey and, when available, one one-time prekey. Signatures are verified before
