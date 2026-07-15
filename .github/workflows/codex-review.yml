@@ -1,0 +1,106 @@
+name: Codex Review Gate
+
+on:
+    # This event executes the trusted base-branch workflow instead of code from
+    # the pull request, which keeps the write-scoped status token isolated.
+    pull_request_target:
+        branches:
+            - development
+            - master
+        types:
+            - opened
+            - reopened
+            - synchronize
+            - ready_for_review
+            - converted_to_draft
+            - edited
+    schedule:
+        - cron: "7,22,37,52 * * * *"
+
+permissions:
+    contents: read
+    issues: write
+    pull-requests: read
+    statuses: write
+
+jobs:
+    codex-review:
+        name: Monitor Codex Review
+        if: github.event_name == 'pull_request_target'
+        concurrency:
+            group: codex-review-${{ github.event.pull_request.number }}
+            cancel-in-progress: true
+        runs-on: ubuntu-latest
+        timeout-minutes: 47
+        steps:
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+              with:
+                  persist-credentials: false
+                  ref: ${{ github.event.pull_request.base.sha }}
+
+            - name: Test review gate
+              run: node --test .github/scripts/codex-review-gate.test.mjs
+
+            - name: Wait for a clean Codex review
+              env:
+                  CODEX_REVIEW_INTERVAL_MS: "15000"
+                  CODEX_REVIEW_RETRY_MS: "1200000"
+                  CODEX_REVIEW_TIMEOUT_MS: "2400000"
+                  GH_TOKEN: ${{ github.token }}
+                  PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+                  PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+                  PR_NUMBER: ${{ github.event.pull_request.number }}
+                  REPOSITORY: ${{ github.repository }}
+              run: node .github/scripts/codex-review-gate.mjs
+
+    discover_reviews:
+        name: Find Codex Reviews To Recover
+        if: github.event_name == 'schedule'
+        concurrency:
+            group: codex-review-discovery
+            cancel-in-progress: true
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        outputs:
+            pull_requests: ${{ steps.pull_requests.outputs.pull_requests }}
+        steps:
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+              with:
+                  persist-credentials: false
+
+            - name: Test review gate
+              run: node --test .github/scripts/codex-review-gate.test.mjs
+
+            - name: Find open pull requests
+              id: pull_requests
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  REPOSITORY: ${{ github.repository }}
+              run: echo "pull_requests=$(CODEX_REVIEW_LIST=1 node .github/scripts/codex-review-gate.mjs)" >> "$GITHUB_OUTPUT"
+
+    recover_reviews:
+        name: "Recover Codex Review #${{ matrix.pr_number }}"
+        needs: discover_reviews
+        if: github.event_name == 'schedule' && needs.discover_reviews.outputs.pull_requests != '[]'
+        strategy:
+            fail-fast: false
+            max-parallel: 5
+            matrix:
+                pr_number: ${{ fromJSON(needs.discover_reviews.outputs.pull_requests) }}
+        concurrency:
+            group: codex-review-${{ matrix.pr_number }}
+            cancel-in-progress: false
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+              with:
+                  persist-credentials: false
+
+            - name: Recover late Codex reviews
+              env:
+                  CODEX_REVIEW_RECOVERY: "1"
+                  GH_TOKEN: ${{ github.token }}
+                  PR_NUMBER: ${{ matrix.pr_number }}
+                  REPOSITORY: ${{ github.repository }}
+              run: node .github/scripts/codex-review-gate.mjs
