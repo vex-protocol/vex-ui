@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import { getServerIdentity } from "./config.js";
@@ -64,6 +65,22 @@ async function openBrowserPasskeyPage(
         request: handoff.requestID,
         token: handoff.browserToken,
     }).toString();
+
+    const sessionUrl = new URL(bridgeUrl);
+    sessionUrl.hash = new URLSearchParams({
+        callback: "vex://passkey/complete",
+        mode,
+        request: handoff.requestID,
+        token: handoff.browserToken,
+    }).toString();
+    try {
+        const opened = await invoke<boolean>("open_passkey_browser_session", {
+            url: sessionUrl.toString(),
+        });
+        if (opened) return;
+    } catch {
+        // The default browser remains the portable fallback.
+    }
     await openUrl(bridgeUrl.toString());
 }
 

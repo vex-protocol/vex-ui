@@ -27,6 +27,7 @@ export function ServerIcon({ iconID, name, serverID, size }: ServerIconProps) {
                 onError={() => {
                     setErroredUrl(url);
                 }}
+                resizeMode="cover"
                 source={{ uri: url }}
                 style={{ borderRadius, height: size, width: size }}
             />

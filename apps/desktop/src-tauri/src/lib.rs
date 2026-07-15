@@ -1,5 +1,24 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 
+#[cfg(target_os = "macos")]
+use std::cell::RefCell;
+
+#[cfg(target_os = "macos")]
+use block2::{DynBlock, RcBlock};
+#[cfg(target_os = "macos")]
+use objc2::{
+    define_class, msg_send,
+    rc::Retained,
+    runtime::{AnyClass, ProtocolObject},
+    AnyThread, DefinedClass, MainThreadOnly,
+};
+#[cfg(target_os = "macos")]
+use objc2_authentication_services::{
+    ASWebAuthenticationPresentationContextProviding, ASWebAuthenticationSession,
+};
+#[cfg(target_os = "macos")]
+use objc2_foundation::{MainThreadMarker, NSError, NSObject, NSObjectProtocol, NSString, NSURL};
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -9,6 +28,7 @@ use tauri::{
 const TRAY_ID: &str = "main";
 const LINK_PREVIEW_HTML_LIMIT: usize = 512 * 1024;
 const LINK_PREVIEW_REDIRECT_LIMIT: usize = 4;
+const PASSKEY_BROWSER_CALLBACK: &str = "vex://passkey/complete";
 #[cfg(target_os = "macos")]
 const DEVELOPMENT_BUNDLE_IDENTIFIER: &str = "com.vex-chat.app.dev";
 #[cfg(target_os = "macos")]
@@ -16,11 +36,184 @@ const DEVELOPMENT_WEBVIEW_DATA_STORE_IDENTIFIER: [u8; 16] = [
     180, 224, 203, 29, 107, 71, 72, 93, 157, 151, 114, 109, 205, 216, 119, 115,
 ];
 
+#[cfg(target_os = "macos")]
+#[derive(Debug)]
+struct PasskeyPresentationContextIvars {
+    anchor: Retained<NSObject>,
+}
+
+#[cfg(target_os = "macos")]
+define_class!(
+    #[unsafe(super = NSObject)]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = PasskeyPresentationContextIvars]
+    struct PasskeyPresentationContext;
+
+    unsafe impl NSObjectProtocol for PasskeyPresentationContext {}
+
+    unsafe impl ASWebAuthenticationPresentationContextProviding for PasskeyPresentationContext {
+        #[unsafe(method_id(presentationAnchorForWebAuthenticationSession:))]
+        fn presentation_anchor(&self, _session: &ASWebAuthenticationSession) -> Retained<NSObject> {
+            self.ivars().anchor.clone()
+        }
+    }
+);
+
+#[cfg(target_os = "macos")]
+impl PasskeyPresentationContext {
+    fn new(mtm: MainThreadMarker, anchor: Retained<NSObject>) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(PasskeyPresentationContextIvars { anchor });
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
+#[cfg(target_os = "macos")]
+struct ActivePasskeyBrowserSession {
+    _presentation_context: Retained<PasskeyPresentationContext>,
+    session: Retained<ASWebAuthenticationSession>,
+}
+
+#[cfg(target_os = "macos")]
+thread_local! {
+    static ACTIVE_PASSKEY_BROWSER_SESSION: RefCell<Option<ActivePasskeyBrowserSession>> =
+        const { RefCell::new(None) };
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LinkPreviewHtml {
     final_url: String,
     html: String,
+}
+
+fn validate_passkey_browser_url(raw_url: &str) -> Result<(), String> {
+    let url =
+        reqwest::Url::parse(raw_url).map_err(|_| "Passkey browser URL is invalid".to_string())?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| "Passkey browser URL has no host".to_string())?;
+    let is_loopback = matches!(host, "localhost" | "127.0.0.1" | "::1" | "[::1]");
+    if url.scheme() != "https" && !(url.scheme() == "http" && is_loopback) {
+        return Err("Passkey browser URL must use HTTPS".to_string());
+    }
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/cli/passkey"
+        || url.query().is_some()
+    {
+        return Err("Passkey browser URL is not allowed".to_string());
+    }
+
+    let fragment = url
+        .fragment()
+        .ok_or_else(|| "Passkey browser URL has no handoff".to_string())?;
+    let fragment_url = reqwest::Url::parse(&format!("https://vex.invalid/?{fragment}"))
+        .map_err(|_| "Passkey browser handoff is invalid".to_string())?;
+    let mut params = std::collections::HashMap::new();
+    for (key, value) in fragment_url.query_pairs() {
+        if !matches!(key.as_ref(), "callback" | "mode" | "request" | "token")
+            || params
+                .insert(key.into_owned(), value.into_owned())
+                .is_some()
+        {
+            return Err("Passkey browser handoff is invalid".to_string());
+        }
+    }
+
+    let mode = params.get("mode").map(String::as_str);
+    let request = params.get("request").map(String::as_str).unwrap_or("");
+    let token = params.get("token").map(String::as_str).unwrap_or("");
+    let callback = params.get("callback").map(String::as_str);
+    if !matches!(mode, Some("authenticate-handoff" | "register-handoff"))
+        || request.is_empty()
+        || token.len() < 32
+        || callback != Some(PASSKEY_BROWSER_CALLBACK)
+    {
+        return Err("Passkey browser handoff is invalid".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn start_macos_passkey_browser_session(app: &tauri::AppHandle, url: &str) -> Result<bool, String> {
+    if AnyClass::get(c"ASWebAuthenticationSession").is_none() {
+        return Ok(false);
+    }
+    let mtm = MainThreadMarker::new()
+        .ok_or_else(|| "Passkey browser session must start on the main thread".to_string())?;
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Vex window is not available".to_string())?;
+    let ns_window = window.ns_window().map_err(|err| err.to_string())?;
+    let anchor = unsafe { Retained::retain(ns_window.cast::<NSObject>()) }
+        .ok_or_else(|| "Vex window is not available".to_string())?;
+    let presentation_context = PasskeyPresentationContext::new(mtm, anchor);
+    let ns_url = NSURL::URLWithString(&NSString::from_str(url))
+        .ok_or_else(|| "Passkey browser URL is invalid".to_string())?;
+    let callback_scheme = NSString::from_str("vex");
+    let completion = RcBlock::new(|_callback_url: *mut NSURL, _error: *mut NSError| {});
+    let completion: &DynBlock<dyn Fn(*mut NSURL, *mut NSError)> = &completion;
+
+    ACTIVE_PASSKEY_BROWSER_SESSION.with(|active| {
+        if let Some(previous) = active.borrow_mut().take() {
+            unsafe { previous.session.cancel() };
+        }
+    });
+
+    #[allow(deprecated)]
+    let session = unsafe {
+        ASWebAuthenticationSession::initWithURL_callbackURLScheme_completionHandler(
+            ASWebAuthenticationSession::alloc(),
+            &ns_url,
+            Some(&callback_scheme),
+            completion as *const _ as *mut _,
+        )
+    };
+    let provider: &ProtocolObject<dyn ASWebAuthenticationPresentationContextProviding> =
+        ProtocolObject::from_ref(&*presentation_context);
+    unsafe {
+        session.setPresentationContextProvider(Some(provider));
+        session.setPrefersEphemeralWebBrowserSession(false);
+    }
+    if !unsafe { session.start() } {
+        return Err("The system browser could not start a passkey session".to_string());
+    }
+
+    ACTIVE_PASSKEY_BROWSER_SESSION.with(|active| {
+        active.replace(Some(ActivePasskeyBrowserSession {
+            _presentation_context: presentation_context,
+            session,
+        }));
+    });
+    Ok(true)
+}
+
+#[tauri::command]
+async fn open_passkey_browser_session(app: tauri::AppHandle, url: String) -> Result<bool, String> {
+    validate_passkey_browser_url(&url)?;
+
+    #[cfg(target_os = "macos")]
+    {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        let main_thread_app = app.clone();
+        app.run_on_main_thread(move || {
+            let _ = sender.send(start_macos_passkey_browser_session(&main_thread_app, &url));
+        })
+        .map_err(|err| err.to_string())?;
+
+        return tauri::async_runtime::spawn_blocking(move || {
+            receiver.recv_timeout(std::time::Duration::from_secs(3))
+        })
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(|_| "Timed out starting the system browser".to_string())?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Ok(false)
+    }
 }
 
 #[tauri::command]
@@ -354,6 +547,7 @@ pub fn run() {
             keyring_delete_password,
             keyring_get_password,
             keyring_set_password,
+            open_passkey_browser_session,
             set_tray_unread
         ])
         .setup(|app| {
@@ -395,4 +589,72 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_passkey_browser_url, PASSKEY_BROWSER_CALLBACK};
+
+    const TOKEN: &str = "0123456789abcdef0123456789abcdef";
+
+    fn passkey_url(origin: &str, mode: &str, callback: &str) -> String {
+        let mut url = reqwest::Url::parse(origin).unwrap();
+        url.set_path("/cli/passkey");
+        url.set_fragment(Some(
+            &[
+                ("callback", callback),
+                ("mode", mode),
+                ("request", "request-id"),
+                ("token", TOKEN),
+            ]
+            .into_iter()
+            .fold(
+                reqwest::Url::parse("https://vex.invalid/").unwrap(),
+                |mut params, (key, value)| {
+                    params.query_pairs_mut().append_pair(key, value);
+                    params
+                },
+            )
+            .query()
+            .unwrap()
+            .to_string(),
+        ));
+        url.to_string()
+    }
+
+    #[test]
+    fn accepts_secure_passkey_handoff_urls() {
+        let production = passkey_url(
+            "https://api.vex.wtf",
+            "register-handoff",
+            PASSKEY_BROWSER_CALLBACK,
+        );
+        let local = passkey_url(
+            "http://127.0.0.1:16777",
+            "authenticate-handoff",
+            PASSKEY_BROWSER_CALLBACK,
+        );
+
+        assert_eq!(validate_passkey_browser_url(&production), Ok(()));
+        assert_eq!(validate_passkey_browser_url(&local), Ok(()));
+    }
+
+    #[test]
+    fn rejects_untrusted_passkey_handoff_urls() {
+        let insecure = passkey_url(
+            "http://api.vex.wtf",
+            "register-handoff",
+            PASSKEY_BROWSER_CALLBACK,
+        );
+        let wrong_mode = passkey_url("https://api.vex.wtf", "recover", PASSKEY_BROWSER_CALLBACK);
+        let wrong_callback = passkey_url(
+            "https://api.vex.wtf",
+            "register-handoff",
+            "https://example.com/complete",
+        );
+
+        assert!(validate_passkey_browser_url(&insecure).is_err());
+        assert!(validate_passkey_browser_url(&wrong_mode).is_err());
+        assert!(validate_passkey_browser_url(&wrong_callback).is_err());
+    }
 }
