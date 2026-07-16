@@ -13,7 +13,8 @@ BACKGROUND_COLOR="#0a0a0a"
 PRODUCTION_COLOR="#e70000"
 DEVELOPMENT_COLOR="#a8c8df"
 MOBILE_MARK_SIZE="640x640"
-ANDROID_MARK_SIZE="560x560"
+IOS_MARK_SIZE="700x700"
+ANDROID_MARK_SIZE="460x460"
 DESKTOP_MARK_SIZE="570x570"
 
 if ! command -v magick >/dev/null 2>&1; then
@@ -103,6 +104,8 @@ normalize_macos_icon() {
 
 PROD_MOBILE_MARK="$TMP_DIR/production-mobile-mark.png"
 DEV_MOBILE_MARK="$TMP_DIR/development-mobile-mark.png"
+PROD_IOS_MARK="$TMP_DIR/production-ios-mark.png"
+DEV_IOS_MARK="$TMP_DIR/development-ios-mark.png"
 PROD_ANDROID_MARK="$TMP_DIR/production-android-mark.png"
 DEV_ANDROID_MARK="$TMP_DIR/development-android-mark.png"
 PROD_DESKTOP_MARK="$TMP_DIR/production-desktop-mark.png"
@@ -112,6 +115,8 @@ DEV_DESKTOP_SOURCE="$TMP_DIR/development-desktop-icon.png"
 
 render_mark "$SOURCE_SVG" "$MOBILE_MARK_SIZE" "$PROD_MOBILE_MARK"
 render_mark "$DEV_SVG" "$MOBILE_MARK_SIZE" "$DEV_MOBILE_MARK"
+render_mark "$SOURCE_SVG" "$IOS_MARK_SIZE" "$PROD_IOS_MARK"
+render_mark "$DEV_SVG" "$IOS_MARK_SIZE" "$DEV_IOS_MARK"
 render_mark "$SOURCE_SVG" "$ANDROID_MARK_SIZE" "$PROD_ANDROID_MARK"
 render_mark "$DEV_SVG" "$ANDROID_MARK_SIZE" "$DEV_ANDROID_MARK"
 render_mark "$SOURCE_SVG" "$DESKTOP_MARK_SIZE" "$PROD_DESKTOP_MARK"
@@ -119,6 +124,8 @@ render_mark "$DEV_SVG" "$DESKTOP_MARK_SIZE" "$DEV_DESKTOP_MARK"
 
 render_mobile_icon "$PROD_MOBILE_MARK" "$MOBILE_ASSETS_DIR/icon-prod.png"
 render_mobile_icon "$DEV_MOBILE_MARK" "$MOBILE_ASSETS_DIR/icon-dev.png"
+render_mobile_icon "$PROD_IOS_MARK" "$MOBILE_ASSETS_DIR/icon-prod-ios.png"
+render_mobile_icon "$DEV_IOS_MARK" "$MOBILE_ASSETS_DIR/icon-dev-ios.png"
 render_android_foreground \
     "$PROD_ANDROID_MARK" \
     "$MOBILE_ASSETS_DIR/icon-prod-android.png"

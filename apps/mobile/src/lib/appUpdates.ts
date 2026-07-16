@@ -273,34 +273,17 @@ export function getNativeBuildInstallUrl(
 ): string | undefined {
     if (!release) return undefined;
     if (Platform.OS === "ios") {
-        return (
-            release.iosDirectInstallUrl ??
-            release.iosInstallUrl ??
-            release.htmlUrl
-        );
+        return release.iosInstallUrl ?? release.htmlUrl;
     }
     return release.htmlUrl;
 }
 
 export async function openNativeBuildInstallPage(): Promise<void> {
-    const release = $appUpdateState.get().nativeRelease;
     const url = getNativeBuildInstallUrl();
     if (!url) {
         throw new Error("No native build install page is available.");
     }
-    try {
-        await Linking.openURL(url);
-    } catch (err) {
-        const fallbackUrl =
-            Platform.OS === "ios" && release
-                ? (release.iosInstallUrl ?? release.htmlUrl)
-                : undefined;
-        if (fallbackUrl && fallbackUrl !== url) {
-            await Linking.openURL(fallbackUrl);
-            return;
-        }
-        throw err;
-    }
+    await Linking.openURL(url);
 }
 
 export async function openUnknownAppSourcesSettings(): Promise<void> {
@@ -597,9 +580,10 @@ function isNativeReleaseNewer(
     releaseCompareStatus: GitHubCompareStatus | undefined,
 ): boolean {
     if (!release) return false;
-    if (sameCommit(buildInfo.commit, release.targetCommit)) {
-        return false;
-    }
+    const matchesReleaseCommit = sameCommit(
+        buildInfo.commit,
+        release.targetCommit,
+    );
     // APK releases are native baselines and may lag branch HEAD after OTA-only
     // commits. Only suppress one when the running app already contains it.
     if (releaseCompareStatus === "ahead") {
@@ -608,7 +592,19 @@ function isNativeReleaseNewer(
     if (
         release.targetCommit != null &&
         normalizeSha(buildInfo.commit) != null &&
-        releaseCompareStatus == null
+        releaseCompareStatus == null &&
+        !matchesReleaseCommit
+    ) {
+        return false;
+    }
+
+    // Local iOS installs may use a developer associated-domain entitlement or
+    // omit unsupported capabilities, giving the same commit a local fingerprint.
+    if (
+        matchesReleaseCommit &&
+        Platform.OS === "ios" &&
+        (buildInfo.iosAssociatedDomainMode === "developer" ||
+            buildInfo.iosAssociatedDomainMode === "disabled")
     ) {
         return false;
     }
@@ -621,6 +617,10 @@ function isNativeReleaseNewer(
         releaseFingerprint !== buildFingerprint
     ) {
         return true;
+    }
+
+    if (matchesReleaseCommit) {
+        return false;
     }
 
     if (__DEV__) {

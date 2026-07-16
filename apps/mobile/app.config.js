@@ -27,6 +27,10 @@ const EAS_PROJECT_ID = "e0d4cba7-1f2a-4c26-9e66-1fd60178ad20";
 const PROD_PASSKEY_RP_HOST = "api.vex.wtf";
 const DEV_PASSKEY_RP_HOST = "dev.vex.wtf";
 const ANDROID_ASSET_STATEMENTS_PLUGIN = "./plugins/withAndroidAssetStatements";
+const IOS_APP_ICON_NAME_PLUGIN = "./plugins/withIosAppIconName";
+// Bump this name when icon geometry changes so SpringBoard cannot reuse an
+// older compiled icon rendition after an in-place ad hoc install.
+const IOS_APP_ICON_NAME = "VexAppIconV3";
 
 const withoutPersonalTeamUnsupportedIosCapabilities = (config) =>
     withEntitlementsPlist(config, (modConfig) => {
@@ -77,6 +81,9 @@ module.exports = ({ config }) => {
     const iconPath = devMode
         ? "./assets/icon-dev.png"
         : "./assets/icon-prod.png";
+    const iosIconPath = devMode
+        ? "./assets/icon-dev-ios.png"
+        : "./assets/icon-prod-ios.png";
     const androidAdaptiveForegroundPath = devMode
         ? "./assets/icon-dev-android.png"
         : "./assets/icon-prod-android.png";
@@ -96,7 +103,13 @@ module.exports = ({ config }) => {
         ) || (devMode ? DEV_PASSKEY_RP_HOST : PROD_PASSKEY_RP_HOST);
     const associatedDomainMode =
         process.env.VEX_IOS_ASSOCIATED_DOMAIN_MODE?.trim().toLowerCase();
-    const useDeveloperAssociatedDomain = associatedDomainMode === "developer";
+    const iosAssociatedDomainMode = !iosCapabilitiesEnabled
+        ? "disabled"
+        : associatedDomainMode === "developer"
+          ? "developer"
+          : "normal";
+    const useDeveloperAssociatedDomain =
+        iosAssociatedDomainMode === "developer";
     const passkeyAssociatedDomain = `webcredentials:${passkeyRpHost}${
         useDeveloperAssociatedDomain ? "?mode=developer" : ""
     }`;
@@ -132,6 +145,7 @@ module.exports = ({ config }) => {
         ...config,
         version: appVersion,
         name: appDisplayName,
+        userInterfaceStyle: "automatic",
         icon: iconPath,
         splash: {
             backgroundColor: "#0a0a0a",
@@ -140,6 +154,7 @@ module.exports = ({ config }) => {
         },
         ios: {
             ...config.ios,
+            icon: iosIconPath,
             bundleIdentifier: iosBundleIdentifier,
             ...(iosRuntimeVersionOverride
                 ? { runtimeVersion: iosRuntimeVersionOverride }
@@ -190,19 +205,23 @@ module.exports = ({ config }) => {
         runtimeVersion: { policy: "fingerprint" },
         extra: {
             ...config.extra,
-            vex: { environment, updateChannel },
+            vex: { environment, iosAssociatedDomainMode, updateChannel },
             eas: { projectId: EAS_PROJECT_ID },
         },
         plugins: [
             ...(config.plugins ?? []).filter((plugin) => {
                 const pluginName = getPluginName(plugin);
-                if (pluginName === ANDROID_ASSET_STATEMENTS_PLUGIN) {
+                if (
+                    pluginName === ANDROID_ASSET_STATEMENTS_PLUGIN ||
+                    pluginName === IOS_APP_ICON_NAME_PLUGIN
+                ) {
                     return false;
                 }
                 if (iosCapabilitiesEnabled) return true;
                 return pluginName !== "expo-notifications";
             }),
             [ANDROID_ASSET_STATEMENTS_PLUGIN, { hosts: [passkeyRpHost] }],
+            [IOS_APP_ICON_NAME_PLUGIN, { name: IOS_APP_ICON_NAME }],
             [
                 "expo-audio",
                 {

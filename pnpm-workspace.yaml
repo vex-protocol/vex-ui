@@ -18,6 +18,7 @@ catalog:
     "@vex-chat/spire": 5.0.0
     "@vex-chat/types": 4.3.3
     dompurify: ^3.4.11
+    expo-application: 55.0.14
     expo-audio: ~55.0.14
     expo-background-fetch: ~55.0.15
     expo-background-task: ~55.0.17
