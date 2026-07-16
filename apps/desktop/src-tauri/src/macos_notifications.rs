@@ -11,9 +11,10 @@ use block2::{DynBlock, RcBlock};
 use objc2::{define_class, msg_send, rc::Retained, runtime::ProtocolObject, MainThreadOnly};
 use objc2_foundation::{MainThreadMarker, NSError, NSObject, NSObjectProtocol, NSString};
 use objc2_user_notifications::{
-    UNAuthorizationOptions, UNAuthorizationStatus, UNMutableNotificationContent, UNNotification,
-    UNNotificationPresentationOptions, UNNotificationRequest, UNNotificationSettings,
-    UNUserNotificationCenter, UNUserNotificationCenterDelegate,
+    UNAlertStyle, UNAuthorizationOptions, UNAuthorizationStatus, UNMutableNotificationContent,
+    UNNotification, UNNotificationPresentationOptions, UNNotificationRequest,
+    UNNotificationSetting, UNNotificationSettings, UNUserNotificationCenter,
+    UNUserNotificationCenterDelegate,
 };
 
 const CALLBACK_TIMEOUT: Duration = Duration::from_secs(10);
@@ -68,16 +69,27 @@ pub fn permission_state() -> Result<String, String> {
     let center = UNUserNotificationCenter::currentNotificationCenter();
     let (sender, receiver) = mpsc::sync_channel(1);
     let completion = RcBlock::new(move |settings: NonNull<UNNotificationSettings>| {
-        let status = unsafe { settings.as_ref() }.authorizationStatus().0;
-        let _ = sender.send(status);
+        let settings = unsafe { settings.as_ref() };
+        let _ = sender.send((
+            settings.authorizationStatus().0,
+            settings.alertSetting().0,
+            settings.alertStyle().0,
+            settings.notificationCenterSetting().0,
+        ));
     });
     let completion: &DynBlock<dyn Fn(NonNull<UNNotificationSettings>)> = &completion;
     center.getNotificationSettingsWithCompletionHandler(completion);
 
-    let status = receiver
+    let (authorization, alert, alert_style, notification_center) = receiver
         .recv_timeout(CALLBACK_TIMEOUT)
         .map_err(|_| "Timed out checking macOS notification permission".to_string())?;
-    Ok(permission_label(UNAuthorizationStatus(status)).to_string())
+    Ok(permission_label(
+        UNAuthorizationStatus(authorization),
+        UNNotificationSetting(alert),
+        UNAlertStyle(alert_style),
+        UNNotificationSetting(notification_center),
+    )
+    .to_string())
 }
 
 pub fn request_permission() -> Result<String, String> {
@@ -140,12 +152,99 @@ pub fn send(title: String, body: String) -> Result<(), String> {
         .map_err(|_| "Timed out delivering the macOS notification".to_string())?
 }
 
-fn permission_label(status: UNAuthorizationStatus) -> &'static str {
-    match status {
+fn permission_label(
+    authorization: UNAuthorizationStatus,
+    alert: UNNotificationSetting,
+    alert_style: UNAlertStyle,
+    notification_center: UNNotificationSetting,
+) -> &'static str {
+    if authorization == UNAuthorizationStatus::NotDetermined {
+        return "prompt";
+    }
+
+    let authorized = matches!(
+        authorization,
         UNAuthorizationStatus::Authorized
-        | UNAuthorizationStatus::Provisional
-        | UNAuthorizationStatus::Ephemeral => "granted",
-        UNAuthorizationStatus::NotDetermined => "prompt",
-        _ => "denied",
+            | UNAuthorizationStatus::Provisional
+            | UNAuthorizationStatus::Ephemeral
+    );
+    let desktop_enabled =
+        alert == UNNotificationSetting::Enabled && alert_style != UNAlertStyle::None;
+    let notification_center_enabled = notification_center == UNNotificationSetting::Enabled;
+
+    if authorized && (desktop_enabled || notification_center_enabled) {
+        "granted"
+    } else {
+        "denied"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prompts_when_authorization_is_not_determined() {
+        assert_eq!(
+            permission_label(
+                UNAuthorizationStatus::NotDetermined,
+                UNNotificationSetting::Disabled,
+                UNAlertStyle::None,
+                UNNotificationSetting::Disabled,
+            ),
+            "prompt"
+        );
+    }
+
+    #[test]
+    fn grants_when_desktop_alerts_are_enabled() {
+        assert_eq!(
+            permission_label(
+                UNAuthorizationStatus::Authorized,
+                UNNotificationSetting::Enabled,
+                UNAlertStyle::Banner,
+                UNNotificationSetting::Disabled,
+            ),
+            "granted"
+        );
+    }
+
+    #[test]
+    fn grants_when_notification_center_is_enabled() {
+        assert_eq!(
+            permission_label(
+                UNAuthorizationStatus::Authorized,
+                UNNotificationSetting::Disabled,
+                UNAlertStyle::None,
+                UNNotificationSetting::Enabled,
+            ),
+            "granted"
+        );
+    }
+
+    #[test]
+    fn denies_when_authorized_without_a_visual_destination() {
+        assert_eq!(
+            permission_label(
+                UNAuthorizationStatus::Authorized,
+                UNNotificationSetting::Enabled,
+                UNAlertStyle::None,
+                UNNotificationSetting::Disabled,
+            ),
+            "denied"
+        );
+    }
+
+    #[test]
+    fn denies_when_authorization_is_denied() {
+        assert_eq!(
+            permission_label(
+                UNAuthorizationStatus::Denied,
+                UNNotificationSetting::Enabled,
+                UNAlertStyle::Banner,
+                UNNotificationSetting::Enabled,
+            ),
+            "denied"
+        );
     }
 }
