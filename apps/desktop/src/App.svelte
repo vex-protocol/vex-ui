@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { onMount } from "svelte";
     import Router, { location, push } from "svelte-spa-router";
     import { wrap } from "svelte-spa-router/wrap";
 
@@ -12,7 +13,9 @@
     import {
         channels,
         familiars,
+        groupMessages,
         keyReplaced,
+        messages,
         servers,
         user,
         vexService,
@@ -64,6 +67,21 @@
     const activeChannelID = $derived(
         $location.startsWith("/server/") ? ($location.split("/")[3] ?? "") : "",
     );
+    const activeDmUserID = $derived(
+        $location.startsWith("/messaging/")
+            ? ($location.split("/")[2] ?? "")
+            : "",
+    );
+    const activeConversationKey = $derived(activeChannelID || activeDmUserID);
+    const activeConversationLatestMessageID = $derived.by(() => {
+        const conversation = activeChannelID
+            ? ($groupMessages[activeChannelID] ?? [])
+            : activeDmUserID
+              ? ($messages[activeDmUserID] ?? [])
+              : [];
+        return conversation.at(-1)?.mailID ?? "";
+    });
+    let appWindowFocused = $state(false);
     const serverList = $derived(
         Object.values($servers).sort((a, b) => a.name.localeCompare(b.name)),
     );
@@ -71,12 +89,37 @@
         activeServerID ? ($channels[activeServerID] ?? []) : [],
     );
 
+    onMount(() => {
+        const updateFocus = (): void => {
+            appWindowFocused =
+                document.visibilityState === "visible" && document.hasFocus();
+        };
+        window.addEventListener("blur", updateFocus);
+        window.addEventListener("focus", updateFocus);
+        document.addEventListener("visibilitychange", updateFocus);
+        updateFocus();
+        return () => {
+            window.removeEventListener("blur", updateFocus);
+            window.removeEventListener("focus", updateFocus);
+            document.removeEventListener("visibilitychange", updateFocus);
+        };
+    });
+
     $effect(() => {
         if ($keyReplaced) void push("/login");
     });
 
     $effect(() => {
         if (!$user && !isAuthRoute) void push("/login");
+    });
+
+    $effect(() => {
+        // Rerun when the active thread grows, but only acknowledge messages the
+        // user can actually see. Refocusing the window clears anything received
+        // while Vex was hidden or in the background.
+        void activeConversationLatestMessageID;
+        if (!$user || !appWindowFocused || !activeConversationKey) return;
+        vexService.markRead(activeConversationKey);
     });
 
     $effect(() => {

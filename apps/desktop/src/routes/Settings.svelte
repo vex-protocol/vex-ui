@@ -10,6 +10,7 @@
         BellRing,
         ChevronRight,
         CircleUserRound,
+        ExternalLink,
         HardDrive,
         KeyRound,
         LockKeyhole,
@@ -21,7 +22,9 @@
     import { clearSession, getServerUrl, setServerUrl } from "../lib/config.js";
     import { keyStore } from "../lib/keystore.js";
     import {
+        getNotificationPermissionState,
         getNotificationsEnabled,
+        openNotificationSettings,
         requestNotificationAccess,
         sendTestNotification,
         setNotificationsEnabled,
@@ -169,6 +172,35 @@
     let notificationsBusy = $state(false);
     let notificationsError = $state("");
     let notificationsNotice = $state("");
+    let notificationSettingsRequired = $state(false);
+
+    async function refreshNotificationPermission(): Promise<void> {
+        try {
+            const wasSettingsRequired = notificationSettingsRequired;
+            const state = await getNotificationPermissionState();
+            notificationSettingsRequired = state === "denied";
+            if (state === "denied") {
+                notificationsEnabled = false;
+                setNotificationsEnabled(false);
+            } else if (state === "granted" && wasSettingsRequired) {
+                notificationsEnabled = true;
+                setNotificationsEnabled(true);
+                notificationsError = "";
+                notificationsNotice = "Notifications are allowed.";
+            }
+        } catch (error) {
+            console.error("Could not refresh notification permission", error);
+        }
+    }
+
+    onMount(() => {
+        const handleFocus = (): void => {
+            void refreshNotificationPermission();
+        };
+        window.addEventListener("focus", handleFocus);
+        void refreshNotificationPermission();
+        return () => window.removeEventListener("focus", handleFocus);
+    });
 
     async function toggleNotifications(): Promise<void> {
         notificationsError = "";
@@ -186,6 +218,7 @@
         setNotificationsEnabled(granted);
         if (!granted) {
             notificationsError = "macOS did not allow notifications for Vex.";
+            await refreshNotificationPermission();
         }
     }
 
@@ -193,17 +226,31 @@
         notificationsBusy = true;
         notificationsError = "";
         notificationsNotice = "";
-        const sent = await sendTestNotification();
+        const result = await sendTestNotification();
         notificationsBusy = false;
-        if (!sent) {
+        if (!result.ok) {
             notificationsEnabled = false;
             setNotificationsEnabled(false);
-            notificationsError = "macOS did not allow notifications for Vex.";
+            notificationSettingsRequired = result.settingsRequired ?? false;
+            notificationsError =
+                result.error ?? "macOS could not deliver the notification.";
             return;
         }
         notificationsEnabled = true;
         setNotificationsEnabled(true);
         notificationsNotice = "Test notification sent.";
+    }
+
+    async function showNotificationSettings(): Promise<void> {
+        notificationsError = "";
+        try {
+            await openNotificationSettings();
+        } catch (error) {
+            notificationsError =
+                error instanceof Error
+                    ? error.message
+                    : "Could not open macOS System Settings.";
+        }
     }
 
     // ── Server URL ──────────────────────────────────────────────────────────────
@@ -429,6 +476,16 @@
                             {/if}
                         </div>
                         <div class="settings-row__actions">
+                            {#if notificationSettingsRequired}
+                                <button
+                                    class="settings-btn settings-btn--icon-text"
+                                    type="button"
+                                    onclick={showNotificationSettings}
+                                >
+                                    <ExternalLink size={14} />
+                                    Open Settings
+                                </button>
+                            {/if}
                             <button
                                 class="settings-btn settings-btn--icon-text"
                                 type="button"

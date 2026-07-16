@@ -39,4 +39,5 @@ block2 = "0.6.2"
 objc2 = "0.6.4"
 objc2-authentication-services = { version = "0.3.2", default-features = false, features = ["std", "ASFoundation", "ASWebAuthenticationSession", "block2"] }
 objc2-foundation = "0.3.2"
+objc2-user-notifications = { version = "0.3.2", default-features = false, features = ["std", "block2", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationSettings", "UNNotificationTrigger", "UNUserNotificationCenter"] }
 objc2-web-kit = "0.3.2"
