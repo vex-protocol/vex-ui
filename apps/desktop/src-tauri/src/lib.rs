@@ -25,6 +25,12 @@ use tauri::{
     Manager, WebviewWindowBuilder,
 };
 
+#[cfg(target_os = "macos")]
+mod macos_notifications;
+
+#[cfg(not(target_os = "macos"))]
+use tauri_plugin_notification::NotificationExt;
+
 const TRAY_ID: &str = "main";
 const LINK_PREVIEW_HTML_LIMIT: usize = 512 * 1024;
 const LINK_PREVIEW_REDIRECT_LIMIT: usize = 4;
@@ -257,6 +263,86 @@ async fn keyring_delete_password(service: String, user: String) -> Result<(), St
     })
     .await
     .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+async fn desktop_notification_permission_state(app: tauri::AppHandle) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        tauri::async_runtime::spawn_blocking(macos_notifications::permission_state)
+            .await
+            .map_err(|err| err.to_string())?
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Ok("granted".to_string())
+    }
+}
+
+#[tauri::command]
+async fn request_desktop_notification_permission(app: tauri::AppHandle) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        tauri::async_runtime::spawn_blocking(macos_notifications::request_permission)
+            .await
+            .map_err(|err| err.to_string())?
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Ok("granted".to_string())
+    }
+}
+
+#[tauri::command]
+async fn send_desktop_notification(
+    app: tauri::AppHandle,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        tauri::async_runtime::spawn_blocking(move || macos_notifications::send(title, body))
+            .await
+            .map_err(|err| err.to_string())?
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        app.notification()
+            .builder()
+            .title(title)
+            .body(body)
+            .show()
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[tauri::command]
+fn open_desktop_notification_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        tauri_plugin_opener::open_url(
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
+            None::<&str>,
+        )
+        .map_err(|err| err.to_string())
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        tauri_plugin_opener::open_url("ms-settings:notifications", None::<&str>)
+            .map_err(|err| err.to_string())
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    Err("Open your system notification settings to allow Vex notifications.".to_string())
 }
 
 fn ipv4_mapped_address(ip: Ipv6Addr) -> Option<Ipv4Addr> {
@@ -543,15 +629,24 @@ pub fn run() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
+            desktop_notification_permission_state,
             fetch_link_preview_html,
             keyring_delete_password,
             keyring_get_password,
             keyring_set_password,
+            open_desktop_notification_settings,
             open_passkey_browser_session,
+            request_desktop_notification_permission,
+            send_desktop_notification,
             set_tray_unread
         ])
         .setup(|app| {
             build_main_window(app)?;
+
+            #[cfg(target_os = "macos")]
+            if let Err(error) = macos_notifications::initialize() {
+                log::error!("Could not initialize macOS notifications: {error}");
+            }
 
             let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;

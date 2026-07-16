@@ -25,10 +25,6 @@
 
     const targetUserID = $derived(params.userID ?? "");
 
-    // Clear unread count when viewing this conversation
-    $effect(() => {
-        if (targetUserID) vexService.markRead(targetUserID);
-    });
     const threadMessages = $derived($messages[targetUserID] ?? []);
     const targetUsername = $derived(
         $familiars[targetUserID]?.username ?? targetUserID.slice(0, 8),
