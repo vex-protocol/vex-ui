@@ -580,6 +580,10 @@ function isNativeReleaseNewer(
     releaseCompareStatus: GitHubCompareStatus | undefined,
 ): boolean {
     if (!release) return false;
+    const matchesReleaseCommit = sameCommit(
+        buildInfo.commit,
+        release.targetCommit,
+    );
     // APK releases are native baselines and may lag branch HEAD after OTA-only
     // commits. Only suppress one when the running app already contains it.
     if (releaseCompareStatus === "ahead") {
@@ -588,21 +592,19 @@ function isNativeReleaseNewer(
     if (
         release.targetCommit != null &&
         normalizeSha(buildInfo.commit) != null &&
-        releaseCompareStatus == null
+        releaseCompareStatus == null &&
+        !matchesReleaseCommit
     ) {
         return false;
     }
 
-    const matchesReleaseCommit = sameCommit(
-        buildInfo.commit,
-        release.targetCommit,
-    );
-    // Local iOS installs intentionally use a developer associated-domain
-    // entitlement, which gives the same source commit a distinct fingerprint.
+    // Local iOS installs may use a developer associated-domain entitlement or
+    // omit unsupported capabilities, giving the same commit a local fingerprint.
     if (
         matchesReleaseCommit &&
         Platform.OS === "ios" &&
-        buildInfo.iosAssociatedDomainMode === "developer"
+        (buildInfo.iosAssociatedDomainMode === "developer" ||
+            buildInfo.iosAssociatedDomainMode === "disabled")
     ) {
         return false;
     }

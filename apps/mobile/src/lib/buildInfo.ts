@@ -31,8 +31,9 @@ const environment =
             : undefined,
     ) ?? "production";
 const iosAssociatedDomainMode =
-    vexExtra?.["iosAssociatedDomainMode"] === "developer"
-        ? "developer"
+    vexExtra?.["iosAssociatedDomainMode"] === "developer" ||
+    vexExtra?.["iosAssociatedDomainMode"] === "disabled"
+        ? vexExtra["iosAssociatedDomainMode"]
         : "normal";
 const configuredUpdateChannel = normalize(
     typeof vexExtra?.["updateChannel"] === "string"
