@@ -14,6 +14,9 @@ describe("accent theme", () => {
             expect(
                 contrast(tokens.accent, tokens.onAccent),
             ).toBeGreaterThanOrEqual(4.5);
+            expect(
+                contrast(tokens.accentHover, tokens.onAccent),
+            ).toBeGreaterThanOrEqual(4.5);
         }
     });
 

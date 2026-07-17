@@ -59,7 +59,7 @@ export function accentTokensFor(
         accent: base,
         accentBorder: rgba(base, dark ? 0.5 : 0.38),
         accentDark: mixHex(base, "#000000", 0.2),
-        accentHover: mixHex(base, dark ? "#FFFFFF" : "#000000", 0.1),
+        accentHover: mixHex(base, "#000000", 0.08),
         accentMuted: mixHex(base, dark ? "#FFFFFF" : "#000000", 0.3),
         accentSoft: rgba(base, dark ? 0.18 : 0.11),
         accentText: mixHex(
