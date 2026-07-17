@@ -25,7 +25,7 @@ import {
     type KnownAccount,
     listKnownAccounts,
 } from "../lib/keychain";
-import { colors, fontFamilies, typography } from "../theme";
+import { colors, fontFamilies, typography, useAccentColors } from "../theme";
 
 interface AccountRowProps {
     account: KnownAccount;
@@ -42,6 +42,7 @@ type Props = AuthScreenProps<"AccountSelector">;
  * entry for that account. Long-press removes key material for that slot.
  */
 export function AccountSelectorScreen({ navigation, route }: Props) {
+    const accent = useAccentColors();
     const [accounts, setAccounts] = useState<KnownAccount[]>([]);
     const [hydrated, setHydrated] = useState(false);
     const [errorText, setErrorText] = useState<null | string>(null);
@@ -168,7 +169,9 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
     return (
         <ScreenLayout glows>
             <View style={styles.header}>
-                <Text style={styles.kicker}>SAVED ACCOUNTS</Text>
+                <Text style={[styles.kicker, { color: accent.accentText }]}>
+                    SAVED ACCOUNTS
+                </Text>
                 <Text style={styles.heading}>Choose account</Text>
             </View>
 
@@ -224,10 +227,11 @@ function AccountRow({
     onLongPress,
     onPress,
 }: AccountRowProps) {
+    const accent = useAccentColors();
     const userID = account.userID;
     return (
         <Pressable
-            android_ripple={{ color: "rgba(231, 0, 0, 0.12)" }}
+            android_ripple={{ color: accent.accentSoft }}
             delayLongPress={400}
             disabled={disabled}
             onLongPress={onLongPress}
@@ -251,14 +255,19 @@ function AccountRow({
                             ring={{
                                 color: busy
                                     ? colors.success
-                                    : colors.accentDark,
+                                    : accent.accentDark,
                                 width: busy ? 2 : 1,
                             }}
                             size={42}
                             userID={userID}
                         />
                     ) : (
-                        <View style={styles.fallbackAvatar}>
+                        <View
+                            style={[
+                                styles.fallbackAvatar,
+                                { backgroundColor: accent.accentSoft },
+                            ]}
+                        >
                             <Text style={styles.fallbackInitial}>
                                 {account.username.charAt(0).toUpperCase()}
                             </Text>
@@ -365,7 +374,6 @@ const styles = StyleSheet.create({
     },
     fallbackAvatar: {
         alignItems: "center",
-        backgroundColor: "rgba(231, 0, 0, 0.22)",
         borderColor: "rgba(255,255,255,0.2)",
         borderRadius: 21,
         borderWidth: StyleSheet.hairlineWidth,
@@ -395,7 +403,6 @@ const styles = StyleSheet.create({
     },
     kicker: {
         ...typography.label,
-        color: colors.accent,
     },
     list: {
         flex: 1,

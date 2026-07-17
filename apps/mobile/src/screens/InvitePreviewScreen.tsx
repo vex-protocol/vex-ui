@@ -18,7 +18,7 @@ import { CornerBracketBox } from "../components/CornerBracketBox";
 import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
 import { navigateToJoinedServer } from "../navigation/navigationRef";
-import { colors, fontFamilies, typography } from "../theme";
+import { colors, fontFamilies, typography, useAccentColors } from "../theme";
 
 interface InviteJoinState {
     inviteID: string;
@@ -37,6 +37,7 @@ export function InvitePreviewScreen({
     navigation,
     route,
 }: AppScreenProps<"InvitePreview">) {
+    const accent = useAccentColors();
     const { inviteID } = route.params;
     const [joinState, setJoinState] = useState<InviteJoinState>({
         inviteID,
@@ -136,14 +137,26 @@ export function InvitePreviewScreen({
                 showsVerticalScrollIndicator={false}
             >
                 <View style={styles.header}>
-                    <View style={styles.iconBadge}>
+                    <View
+                        style={[
+                            styles.iconBadge,
+                            {
+                                backgroundColor: accent.accentSoft,
+                                borderColor: accent.accentBorder,
+                            },
+                        ]}
+                    >
                         <Ionicons
-                            color={colors.accentMuted}
+                            color={accent.accentText}
                             name="link-outline"
                             size={26}
                         />
                     </View>
-                    <Text style={styles.eyebrow}>Invite preview</Text>
+                    <Text
+                        style={[styles.eyebrow, { color: accent.accentText }]}
+                    >
+                        Invite preview
+                    </Text>
                     <Text numberOfLines={2} style={styles.heading}>
                         {serverName}
                     </Text>
@@ -157,7 +170,7 @@ export function InvitePreviewScreen({
                         {loading ? (
                             <View style={styles.loading}>
                                 <ActivityIndicator
-                                    color={colors.accentMuted}
+                                    color={accent.accentText}
                                     size="large"
                                 />
                                 <Text style={styles.muted}>
@@ -327,7 +340,6 @@ const styles = StyleSheet.create({
     },
     eyebrow: {
         ...typography.label,
-        color: colors.accentMuted,
     },
     header: {
         alignItems: "center",
@@ -340,8 +352,6 @@ const styles = StyleSheet.create({
     },
     iconBadge: {
         alignItems: "center",
-        backgroundColor: "rgba(231,0,0,0.12)",
-        borderColor: "rgba(255,107,107,0.34)",
         borderRadius: 12,
         borderWidth: 1,
         height: 52,

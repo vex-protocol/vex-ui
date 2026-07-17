@@ -24,7 +24,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useStore } from "@nanostores/react";
 
 import { haptic } from "../lib/haptics";
-import { colors } from "../theme";
+import { colors, useAccentColors } from "../theme";
 
 import { Avatar } from "./Avatar";
 import { ServerIcon } from "./ServerIcon";
@@ -67,6 +67,7 @@ export function ServerSidebar({
     safeAreaBottom = 0,
     safeAreaTop = 0,
 }: ServerSidebarProps) {
+    const accent = useAccentColors();
     const servers = useStore($servers);
     const allChannels = useStore($channels);
     const familiars = useStore($familiars);
@@ -135,6 +136,7 @@ export function ServerSidebar({
                         <View
                             style={[
                                 styles.activePill,
+                                { backgroundColor: accent.accent },
                                 homeActive && styles.activePillVisible,
                             ]}
                         />
@@ -149,6 +151,9 @@ export function ServerSidebar({
                             style={[
                                 styles.homeBtn,
                                 homeActive && styles.homeBtnActive,
+                                homeActive && {
+                                    borderColor: accent.accentBorder,
+                                },
                             ]}
                         >
                             <Ionicons
@@ -157,8 +162,18 @@ export function ServerSidebar({
                                 size={24}
                             />
                             {totalDmUnread > 0 && (
-                                <View style={styles.homeBadge}>
-                                    <Text style={styles.homeBadgeText}>
+                                <View
+                                    style={[
+                                        styles.homeBadge,
+                                        { backgroundColor: accent.accent },
+                                    ]}
+                                >
+                                    <Text
+                                        style={[
+                                            styles.homeBadgeText,
+                                            { color: accent.onAccent },
+                                        ]}
+                                    >
                                         {formatUnreadCount(totalDmUnread)}
                                     </Text>
                                 </View>
@@ -184,6 +199,7 @@ export function ServerSidebar({
                                     <View
                                         style={[
                                             styles.activePill,
+                                            { backgroundColor: accent.accent },
                                             active && styles.activePillVisible,
                                         ]}
                                     />
@@ -195,6 +211,10 @@ export function ServerSidebar({
                                         style={[
                                             styles.serverBtn,
                                             active && styles.serverBtnActive,
+                                            active && {
+                                                borderColor:
+                                                    accent.accentBorder,
+                                            },
                                         ]}
                                     >
                                         <ServerIcon
@@ -204,9 +224,22 @@ export function ServerSidebar({
                                             size={52}
                                         />
                                         {unread > 0 ? (
-                                            <View style={styles.serverBadge}>
+                                            <View
+                                                style={[
+                                                    styles.serverBadge,
+                                                    {
+                                                        backgroundColor:
+                                                            accent.accent,
+                                                    },
+                                                ]}
+                                            >
                                                 <Text
-                                                    style={styles.dmBadgeText}
+                                                    style={[
+                                                        styles.dmBadgeText,
+                                                        {
+                                                            color: accent.onAccent,
+                                                        },
+                                                    ]}
                                                 >
                                                     {formatUnreadCount(unread)}
                                                 </Text>
@@ -218,7 +251,12 @@ export function ServerSidebar({
                         })}
 
                         <View style={styles.serverRow}>
-                            <View style={styles.activePill} />
+                            <View
+                                style={[
+                                    styles.activePill,
+                                    { backgroundColor: accent.accent },
+                                ]}
+                            />
                             <TouchableOpacity
                                 accessibilityLabel="Create or join a group"
                                 accessibilityRole="button"
@@ -300,21 +338,34 @@ export function ServerSidebar({
                                                         </Text>
                                                         {unread > 0 ? (
                                                             <View
-                                                                style={
-                                                                    styles.dmNewDot
-                                                                }
+                                                                style={[
+                                                                    styles.dmNewDot,
+                                                                    {
+                                                                        backgroundColor:
+                                                                            accent.accent,
+                                                                    },
+                                                                ]}
                                                             />
                                                         ) : null}
                                                     </View>
                                                 </View>
                                                 {unread > 0 ? (
                                                     <View
-                                                        style={styles.dmBadge}
+                                                        style={[
+                                                            styles.dmBadge,
+                                                            {
+                                                                backgroundColor:
+                                                                    accent.accent,
+                                                            },
+                                                        ]}
                                                     >
                                                         <Text
-                                                            style={
-                                                                styles.dmBadgeText
-                                                            }
+                                                            style={[
+                                                                styles.dmBadgeText,
+                                                                {
+                                                                    color: accent.onAccent,
+                                                                },
+                                                            ]}
                                                         >
                                                             {formatUnreadCount(
                                                                 unread,
@@ -368,12 +419,21 @@ export function ServerSidebar({
                                             </Text>
                                             {unread > 0 ? (
                                                 <View
-                                                    style={styles.channelBadge}
+                                                    style={[
+                                                        styles.channelBadge,
+                                                        {
+                                                            backgroundColor:
+                                                                accent.accent,
+                                                        },
+                                                    ]}
                                                 >
                                                     <Text
-                                                        style={
-                                                            styles.dmBadgeText
-                                                        }
+                                                        style={[
+                                                            styles.dmBadgeText,
+                                                            {
+                                                                color: accent.onAccent,
+                                                            },
+                                                        ]}
                                                     >
                                                         {formatUnreadCount(
                                                             unread,
@@ -406,7 +466,7 @@ export function ServerSidebar({
                         <Avatar
                             displayName={me.username}
                             ring={{
-                                color: "rgba(231,0,0,0.45)",
+                                color: accent.accentBorder,
                                 width: 1.5,
                             }}
                             size={42}
@@ -451,7 +511,6 @@ function formatUnreadCount(count: number): string {
 
 const styles = StyleSheet.create({
     activePill: {
-        backgroundColor: colors.accent,
         borderRadius: 2,
         height: 28,
         opacity: 0,
@@ -488,7 +547,6 @@ const styles = StyleSheet.create({
     },
     channelBadge: {
         alignItems: "center",
-        backgroundColor: colors.error,
         borderRadius: 10,
         justifyContent: "center",
         minWidth: 20,
@@ -548,7 +606,6 @@ const styles = StyleSheet.create({
     },
     dmBadge: {
         alignItems: "center",
-        backgroundColor: colors.error,
         borderRadius: 10,
         justifyContent: "center",
         minWidth: 20,
@@ -556,7 +613,6 @@ const styles = StyleSheet.create({
         paddingVertical: 2,
     },
     dmBadgeText: {
-        color: "#fff",
         fontSize: 10,
         fontWeight: "700",
     },
@@ -575,7 +631,6 @@ const styles = StyleSheet.create({
         gap: 6,
     },
     dmNewDot: {
-        backgroundColor: colors.accent,
         borderRadius: 999,
         height: 6,
         marginTop: 1,
@@ -596,7 +651,6 @@ const styles = StyleSheet.create({
     },
     homeBadge: {
         alignItems: "center",
-        backgroundColor: colors.error,
         borderColor: colors.rail,
         borderRadius: 10,
         borderWidth: 2,
@@ -609,7 +663,6 @@ const styles = StyleSheet.create({
         right: -3,
     },
     homeBadgeText: {
-        color: "#fff",
         fontSize: 10,
         fontWeight: "700",
     },
@@ -625,7 +678,6 @@ const styles = StyleSheet.create({
     },
     homeBtnActive: {
         backgroundColor: colors.selected,
-        borderColor: colors.accentBorder,
     },
     profileAuthDot: {
         backgroundColor: colors.mutedDark,
@@ -686,7 +738,6 @@ const styles = StyleSheet.create({
     },
     serverBadge: {
         alignItems: "center",
-        backgroundColor: colors.error,
         borderColor: colors.rail,
         borderRadius: 10,
         borderWidth: 2,
@@ -711,7 +762,6 @@ const styles = StyleSheet.create({
     },
     serverBtnActive: {
         backgroundColor: colors.selected,
-        borderColor: colors.accentBorder,
     },
     serverList: {
         flex: 1,

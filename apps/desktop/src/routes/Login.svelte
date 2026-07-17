@@ -382,7 +382,7 @@
     }
 
     .auth-card__eyebrow {
-        color: var(--accent-hover);
+        color: var(--accent-text);
         font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;
@@ -488,7 +488,7 @@
 
     .auth-button--primary {
         background: var(--accent);
-        color: #fff;
+        color: var(--on-accent);
     }
 
     .auth-button--primary:hover:not(:disabled) {
@@ -518,7 +518,7 @@
     }
 
     .auth-card__link {
-        color: var(--accent-hover);
+        color: var(--accent-text);
         font-size: inherit;
         font-weight: 600;
     }

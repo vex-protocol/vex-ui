@@ -88,7 +88,12 @@ import {
     navigationRef,
 } from "./navigation/navigationRef";
 import { RootNavigator } from "./navigation/RootNavigator";
-import { colors, fontFamilies } from "./theme";
+import {
+    colors,
+    fontFamilies,
+    hydrateAccentPreference,
+    useAccentColors,
+} from "./theme";
 
 vexService.setPasskeyCeremonyDriver({
     authenticate: authenticatePasskey,
@@ -102,6 +107,7 @@ interface AppUpdateNotice {
 }
 
 function MainApp() {
+    const accent = useAccentColors();
     const keyReplaced = useStore($keyReplaced);
     const hydrationStatus = useStore($hydrationStatus);
     const user = useStore($user);
@@ -279,6 +285,7 @@ function MainApp() {
         // SecureStore. Fire-and-forget — the atom defaults to false
         // until the persisted value lands.
         void hydrateDevOptionsUnlocked();
+        void hydrateAccentPreference();
         // Hydrate the always-on connection preference. Service start
         // is gated on the sign-in transition below, so we don't spin
         // up a foreground service before there's anything to connect.
@@ -1047,8 +1054,8 @@ function MainApp() {
                         background: colors.bg,
                         border: colors.borderSubtle,
                         card: colors.card,
-                        notification: colors.error,
-                        primary: colors.accentMuted,
+                        notification: accent.accent,
+                        primary: accent.accentMuted,
                         text: colors.textSecondary,
                     },
                     dark: true,
@@ -1077,14 +1084,6 @@ function MainApp() {
             {productFeatures.voiceCalling ? <VoiceCallOverlay /> : null}
             {showHydrationGate && (
                 <View style={styles.hydrationGate}>
-                    <View
-                        pointerEvents="none"
-                        style={styles.hydrationGlowTop}
-                    />
-                    <View
-                        pointerEvents="none"
-                        style={styles.hydrationGlowBottom}
-                    />
                     <View style={styles.hydrationCard}>
                         <Text style={styles.hydrationTitle}>
                             Setting up your account
@@ -1093,15 +1092,22 @@ function MainApp() {
                             {hydrationStageLabel}
                         </Text>
                         <View style={styles.hydrationTrack}>
-                            <View style={styles.hydrationTrackGlow} />
                             <View
                                 style={[
                                     styles.hydrationFill,
-                                    { width: `${hydrationPercent}%` },
+                                    {
+                                        backgroundColor: accent.accent,
+                                        width: `${hydrationPercent}%`,
+                                    },
                                 ]}
                             />
                         </View>
-                        <Text style={styles.hydrationPercent}>
+                        <Text
+                            style={[
+                                styles.hydrationPercent,
+                                { color: accent.accentText },
+                            ]}
+                        >
                             {hydrationPercent}% complete
                         </Text>
                     </View>
@@ -1140,32 +1146,23 @@ const styles = StyleSheet.create({
         zIndex: 998,
     },
     hydrationCard: {
-        backgroundColor: "rgba(24, 30, 44, 0.46)",
-        borderColor: "rgba(198, 221, 255, 0.26)",
-        borderRadius: 16,
+        backgroundColor: colors.elevated,
+        borderColor: colors.border,
+        borderRadius: 8,
         borderWidth: 1,
         gap: 8,
         maxWidth: 420,
         paddingHorizontal: 18,
         paddingVertical: 16,
-        shadowColor: "#6AB5FF",
-        shadowOffset: { height: 0, width: 0 },
-        shadowOpacity: 0.22,
-        shadowRadius: 20,
         width: "88%",
     },
     hydrationFill: {
-        backgroundColor: "rgba(138, 214, 255, 0.88)",
         borderRadius: 999,
         height: "100%",
-        shadowColor: "#7AD4FF",
-        shadowOffset: { height: 0, width: 0 },
-        shadowOpacity: 0.85,
-        shadowRadius: 14,
     },
     hydrationGate: {
         alignItems: "center",
-        backgroundColor: "rgba(8, 10, 14, 0.92)",
+        backgroundColor: "rgba(17,18,20,0.96)",
         bottom: 0,
         justifyContent: "center",
         left: 0,
@@ -1174,58 +1171,29 @@ const styles = StyleSheet.create({
         top: 0,
         zIndex: 1200,
     },
-    hydrationGlowBottom: {
-        backgroundColor: colors.accent,
-        borderRadius: 140,
-        bottom: -42,
-        height: 160,
-        left: "18%",
-        opacity: 0.1,
-        position: "absolute",
-        width: 160,
-    },
-    hydrationGlowTop: {
-        backgroundColor: colors.accent,
-        borderRadius: 170,
-        height: 180,
-        opacity: 0.12,
-        position: "absolute",
-        right: -64,
-        top: -70,
-        width: 180,
-    },
     hydrationPercent: {
-        color: "#C6E8FF",
         fontSize: 12,
         fontWeight: "600",
     },
     hydrationSubtitle: {
-        color: "#DCF1FF",
+        color: colors.textSecondary,
         fontSize: 14,
         fontWeight: "500",
     },
     hydrationTitle: {
-        color: "#F2F8FF",
+        color: colors.text,
         fontSize: 17,
         fontWeight: "700",
     },
     hydrationTrack: {
-        backgroundColor: "rgba(223, 243, 255, 0.2)",
-        borderColor: "rgba(255,255,255,0.25)",
+        backgroundColor: colors.input,
+        borderColor: colors.border,
         borderRadius: 999,
         borderWidth: 1,
         height: 8,
         marginTop: 6,
         overflow: "hidden",
         width: "100%",
-    },
-    hydrationTrackGlow: {
-        backgroundColor: "rgba(138, 214, 255, 0.22)",
-        bottom: -1,
-        left: 0,
-        position: "absolute",
-        right: 0,
-        top: -1,
     },
     noticeCard: {
         backgroundColor: "rgba(36, 40, 50, 0.96)",

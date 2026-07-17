@@ -245,7 +245,7 @@
         overflow-y: auto;
         display: flex;
         flex-direction: column;
-        padding: 12px 16px 10px;
+        padding: 14px 18px 12px;
     }
 
     .message-box__empty {
@@ -268,7 +268,7 @@
         border: 1px solid var(--border);
         border-radius: 8px;
         background: var(--bg-surface);
-        color: var(--accent-hover);
+        color: var(--accent-text);
     }
 
     .message-box__empty strong {
@@ -302,9 +302,13 @@
         max-width: 960px;
         display: grid;
         grid-template-columns: 36px minmax(0, 1fr);
-        column-gap: 10px;
-        padding: 7px 6px 4px;
+        column-gap: 11px;
+        padding: 8px 7px 5px;
         border-radius: 5px;
+    }
+
+    .message-chunk + .message-chunk {
+        margin-top: 4px;
     }
 
     .message-chunk:hover {
@@ -334,7 +338,7 @@
     }
 
     .message-chunk__author--self {
-        color: var(--accent);
+        color: var(--accent-text);
     }
 
     .message-chunk__time {
@@ -344,10 +348,10 @@
 
     .message {
         position: relative;
-        min-height: 20px;
+        min-height: 21px;
         padding: 0 72px 0 0;
         font-size: 13.5px;
-        line-height: 1.48;
+        line-height: 1.5;
         color: var(--text-secondary);
         word-break: break-word;
     }
@@ -393,7 +397,7 @@
     }
 
     .message__action--danger:hover {
-        color: #ff7a7a;
+        color: var(--danger);
     }
 
     .message__decrypt-failure {
@@ -403,10 +407,10 @@
         max-width: 420px;
         margin: 4px 0;
         padding: 10px 12px;
-        border: 1px solid rgba(255, 107, 107, 0.42);
-        border-left: 3px solid #e53935;
+        border: 1px solid color-mix(in srgb, var(--danger) 42%, transparent);
+        border-left: 3px solid var(--danger);
         border-radius: 8px;
-        background: rgba(229, 57, 53, 0.12);
+        background: color-mix(in srgb, var(--danger) 12%, transparent);
     }
 
     .message__decrypt-failure-icon {
@@ -417,8 +421,8 @@
         width: 24px;
         height: 24px;
         border-radius: 7px;
-        background: rgba(229, 57, 53, 0.16);
-        color: #ff9b9b;
+        background: color-mix(in srgb, var(--danger) 16%, transparent);
+        color: var(--danger);
         font-size: 14px;
         font-weight: 800;
         line-height: 1;
@@ -432,7 +436,7 @@
     }
 
     .message__decrypt-failure-title {
-        color: #ff9b9b;
+        color: var(--danger);
         font-size: 13px;
         font-weight: 700;
         line-height: 1.35;
@@ -526,7 +530,7 @@
     }
 
     .message :global(a) {
-        color: var(--accent);
+        color: var(--accent-text);
         text-decoration: underline;
         cursor: pointer;
     }

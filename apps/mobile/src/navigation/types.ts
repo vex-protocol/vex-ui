@@ -8,6 +8,7 @@ export type AppScreenProps<T extends keyof AppStackParamList> =
 // ── App (content) stack ─────────────────────────────────────────────────────
 export type AppStackParamList = {
     AddServer: undefined;
+    Appearance: undefined;
     AvatarCrop: {
         requestId: number;
         sourceHeight: number;

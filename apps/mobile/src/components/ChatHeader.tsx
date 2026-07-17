@@ -57,19 +57,23 @@ export function ChatHeader({
                         <Text numberOfLines={1} style={styles.title}>
                             {title}
                         </Text>
+                        {subtitle ? (
+                            <Text numberOfLines={1} style={styles.subtitle}>
+                                {subtitle}
+                            </Text>
+                        ) : null}
                     </TouchableOpacity>
                 ) : (
-                    <Text numberOfLines={1} style={styles.title}>
-                        {title}
-                    </Text>
-                )}
-                {subtitle && (
-                    <>
-                        <Text style={styles.separator}>|</Text>
-                        <Text numberOfLines={1} style={styles.subtitle}>
-                            {subtitle}
+                    <View style={styles.titleBlock}>
+                        <Text numberOfLines={1} style={styles.title}>
+                            {title}
                         </Text>
-                    </>
+                        {subtitle ? (
+                            <Text numberOfLines={1} style={styles.subtitle}>
+                                {subtitle}
+                            </Text>
+                        ) : null}
+                    </View>
                 )}
             </View>
             <View style={styles.actions}>
@@ -128,6 +132,7 @@ export function ChatHeader({
 const styles = StyleSheet.create({
     actionBtn: {
         alignItems: "center",
+        borderRadius: 7,
         height: 36,
         justifyContent: "center",
         width: 36,
@@ -140,6 +145,7 @@ const styles = StyleSheet.create({
     },
     backBtn: {
         alignItems: "center",
+        borderRadius: 7,
         height: 36,
         justifyContent: "center",
         marginRight: 2,
@@ -163,22 +169,26 @@ const styles = StyleSheet.create({
         paddingLeft: TOPBAR_LEFT_GUTTER,
         paddingRight: 12,
     },
-    separator: {
-        color: colors.mutedDark,
-        fontSize: 14,
-    },
     subtitle: {
         ...typography.body,
-        color: colors.muted,
-        flex: 1,
+        color: colors.mutedDark,
+        fontSize: 10,
+        lineHeight: 13,
     },
     title: {
         ...typography.button,
         color: colors.text,
         flexShrink: 1,
-        fontSize: 16,
+        fontSize: 15,
+        lineHeight: 19,
+    },
+    titleBlock: {
+        flex: 1,
+        minWidth: 0,
     },
     titlePressable: {
+        flex: 1,
         flexShrink: 1,
+        minWidth: 0,
     },
 });

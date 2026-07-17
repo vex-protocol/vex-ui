@@ -518,7 +518,7 @@
 
     .group-dialog__submit {
         background: var(--accent);
-        color: #fff;
+        color: var(--on-accent);
     }
 
     .group-dialog__submit:hover:not(:disabled) {

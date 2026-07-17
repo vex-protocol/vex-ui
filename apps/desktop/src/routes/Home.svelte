@@ -155,7 +155,7 @@
         border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
         border-radius: 8px;
         background: var(--accent-soft);
-        color: var(--accent-hover);
+        color: var(--accent-text);
     }
 
     .inbox-home__intro h1 {
@@ -226,7 +226,7 @@
         place-items: center;
         border-radius: 7px;
         background: var(--accent-soft);
-        color: var(--accent-hover);
+        color: var(--accent-text);
     }
 
     .inbox-home__action-icon--green {

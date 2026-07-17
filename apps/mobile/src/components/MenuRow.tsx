@@ -12,7 +12,7 @@ import {
 
 import { Ionicons } from "@expo/vector-icons";
 
-import { colors, fontFamilies, typography } from "../theme";
+import { colors, fontFamilies, typography, useAccentColors } from "../theme";
 
 export type MenuRowTone = "danger" | "default" | "success";
 
@@ -63,27 +63,6 @@ interface MenuSectionProps {
     title?: string;
 }
 
-const TONE = {
-    danger: {
-        icon: colors.dangerText,
-        iconBg: colors.dangerBg,
-        iconBorder: colors.dangerBorder,
-        label: colors.dangerText,
-    },
-    default: {
-        icon: colors.textSecondary,
-        iconBg: "rgba(255,255,255,0.06)",
-        iconBorder: "rgba(255,255,255,0.18)",
-        label: colors.textSecondary,
-    },
-    success: {
-        icon: colors.successText,
-        iconBg: colors.successBg,
-        iconBorder: colors.successBorder,
-        label: colors.textSecondary,
-    },
-} as const;
-
 export function MenuRow({
     accessory,
     description,
@@ -100,7 +79,28 @@ export function MenuRow({
     tone = "default",
     value,
 }: MenuRowProps) {
-    const palette = TONE[tone];
+    const accent = useAccentColors();
+    const palette =
+        tone === "danger"
+            ? {
+                  icon: colors.dangerText,
+                  iconBg: colors.dangerBg,
+                  iconBorder: colors.dangerBorder,
+                  label: colors.dangerText,
+              }
+            : tone === "success"
+              ? {
+                    icon: colors.successText,
+                    iconBg: colors.successBg,
+                    iconBorder: colors.successBorder,
+                    label: colors.textSecondary,
+                }
+              : {
+                    icon: accent.accentText,
+                    iconBg: accent.accentSoft,
+                    iconBorder: accent.accentBorder,
+                    label: colors.textSecondary,
+                };
     const renderChevron =
         showChevron ?? (onPress != null && accessory == null && value == null);
 
@@ -149,7 +149,7 @@ export function MenuRow({
             {accessory}
             {renderChevron ? (
                 <Ionicons
-                    color="rgba(255,255,255,0.48)"
+                    color={colors.mutedDark}
                     name="chevron-forward"
                     size={18}
                 />
@@ -215,7 +215,7 @@ export function MenuSection({ children, footer, title }: MenuSectionProps) {
 const styles = StyleSheet.create({
     description: {
         ...typography.body,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.mutedDark,
         fontSize: 12,
         lineHeight: 16,
     },
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
     },
     iconBadge: {
         alignItems: "center",
-        borderRadius: 10,
+        borderRadius: 7,
         borderWidth: 1,
         height: 34,
         justifyContent: "center",
@@ -247,13 +247,13 @@ const styles = StyleSheet.create({
     mono: {
         fontFamily: fontFamilies.mono,
         fontSize: 12,
-        letterSpacing: 0.25,
+        letterSpacing: 0,
     },
     monoBlockBox: {
         alignSelf: "stretch",
-        backgroundColor: "rgba(0,0,0,0.32)",
-        borderColor: "rgba(255,255,255,0.08)",
-        borderRadius: 8,
+        backgroundColor: colors.rail,
+        borderColor: colors.borderSubtle,
+        borderRadius: 6,
         borderWidth: 1,
         marginLeft: 46,
     },
@@ -265,19 +265,18 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
     },
     monoBlockText: {
-        color: "rgba(245,245,245,0.92)",
+        color: colors.textSecondary,
         flexShrink: 0,
         fontFamily: fontFamilies.mono,
         fontSize: 12,
-        letterSpacing: 0.4,
+        letterSpacing: 0,
         lineHeight: 18,
     },
     row: {
         alignItems: "center",
-        backgroundColor: "rgba(255,255,255,0.02)",
-        borderColor: "rgba(255,255,255,0.08)",
-        borderRadius: 10,
-        borderWidth: 1,
+        backgroundColor: colors.transparent,
+        borderBottomColor: colors.borderSubtle,
+        borderBottomWidth: StyleSheet.hairlineWidth,
         flexDirection: "row",
         gap: 12,
         minHeight: 56,
@@ -288,10 +287,9 @@ const styles = StyleSheet.create({
         opacity: 0.5,
     },
     rowVertical: {
-        backgroundColor: "rgba(255,255,255,0.02)",
-        borderColor: "rgba(255,255,255,0.08)",
-        borderRadius: 10,
-        borderWidth: 1,
+        backgroundColor: colors.transparent,
+        borderBottomColor: colors.borderSubtle,
+        borderBottomWidth: StyleSheet.hairlineWidth,
         flexDirection: "column",
         gap: 10,
         paddingHorizontal: 12,
@@ -302,22 +300,26 @@ const styles = StyleSheet.create({
     },
     sectionFooter: {
         ...typography.body,
-        color: "rgba(255,255,255,0.5)",
+        color: colors.mutedDark,
         fontSize: 12,
         paddingHorizontal: 4,
     },
     sectionRows: {
-        gap: 8,
+        backgroundColor: colors.surface,
+        borderColor: colors.borderSubtle,
+        borderRadius: 8,
+        borderWidth: 1,
+        overflow: "hidden",
     },
     sectionTitle: {
         ...typography.label,
-        color: "rgba(255,255,255,0.52)",
+        color: colors.muted,
         paddingHorizontal: 4,
         textTransform: "uppercase",
     },
     value: {
         ...typography.body,
-        color: "rgba(255,255,255,0.66)",
+        color: colors.muted,
         fontSize: 13,
         maxWidth: 180,
         textAlign: "right",

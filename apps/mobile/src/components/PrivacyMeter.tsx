@@ -1,13 +1,14 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
 
-import { colors } from "../theme";
+import { colors, useAccentColors } from "../theme";
 
 interface PrivacyMeterProps {
     level: 1 | 2 | 3 | 4;
 }
 
 export function PrivacyMeter({ level }: PrivacyMeterProps) {
+    const accent = useAccentColors();
     return (
         <View style={styles.container}>
             {[1, 2, 3, 4].map((i) => (
@@ -15,7 +16,9 @@ export function PrivacyMeter({ level }: PrivacyMeterProps) {
                     key={i}
                     style={[
                         styles.bar,
-                        i <= level ? styles.filled : styles.unfilled,
+                        i <= level
+                            ? { backgroundColor: accent.accent }
+                            : styles.unfilled,
                     ]}
                 />
             ))}
@@ -33,9 +36,6 @@ const styles = StyleSheet.create({
         alignItems: "center",
         flexDirection: "row",
         gap: 3,
-    },
-    filled: {
-        backgroundColor: colors.accent,
     },
     unfilled: {
         backgroundColor: colors.surface,

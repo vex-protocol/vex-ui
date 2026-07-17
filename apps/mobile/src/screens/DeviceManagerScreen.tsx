@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     currentBadge: {
         backgroundColor: colors.successBg,
         borderColor: colors.successBorder,
-        borderRadius: 10,
+        borderRadius: 8,
         borderWidth: 1,
         paddingHorizontal: 10,
         paddingVertical: 6,
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
     errorCard: {
         backgroundColor: colors.dangerBg,
         borderColor: colors.dangerBorder,
-        borderRadius: 10,
+        borderRadius: 8,
         borderWidth: 1,
         paddingHorizontal: 12,
         paddingVertical: 10,
@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.infoBg,
         borderColor: "rgba(82,145,191,0.45)",
-        borderRadius: 10,
+        borderRadius: 8,
         borderWidth: 1,
         flexDirection: "row",
         gap: 12,

@@ -26,7 +26,7 @@ import {
     PasskeyCancelledError,
     registerPasskey,
 } from "../lib/passkey";
-import { colors, typography } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 interface AddState {
     error: null | string;
@@ -37,6 +37,7 @@ interface AddState {
 const DEFAULT_PASSKEY_NAME_HINT = "iPhone, Yubikey, etc.";
 
 export function PasskeysScreen() {
+    const accent = useAccentColors();
     const [passkeys, setPasskeys] = useState<Passkey[]>([]);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<null | string>(null);
@@ -182,7 +183,9 @@ export function PasskeysScreen() {
                 }
             >
                 <View style={styles.intro}>
-                    <Text style={styles.kicker}>ACCOUNT RECOVERY</Text>
+                    <Text style={[styles.kicker, { color: accent.accentText }]}>
+                        ACCOUNT RECOVERY
+                    </Text>
                     <Text style={styles.introText}>
                         {supported
                             ? "A passkey is an optional way to restore or sign in to your account. Vex never sees its secret."
@@ -227,7 +230,8 @@ export function PasskeysScreen() {
                     })}
                 </MenuSection>
 
-                <MenuSection title="Add a passkey">
+                <View style={styles.formSection}>
+                    <Text style={styles.sectionTitle}>Add a passkey</Text>
                     <View style={styles.formCard}>
                         <Text style={styles.formLabel}>Name</Text>
                         <TextInput
@@ -267,13 +271,26 @@ export function PasskeysScreen() {
                             variant="primary"
                         />
                     </View>
-                </MenuSection>
+                </View>
 
-                <View style={styles.warningCard}>
-                    <Text style={styles.warningTitle}>
+                <View
+                    style={[
+                        styles.guidanceCard,
+                        {
+                            backgroundColor: accent.accentSoft,
+                            borderColor: accent.accentBorder,
+                        },
+                    ]}
+                >
+                    <Text
+                        style={[
+                            styles.guidanceTitle,
+                            { color: accent.accentText },
+                        ]}
+                    >
                         Passkeys are supplementary
                     </Text>
-                    <Text style={styles.warningText}>
+                    <Text style={styles.guidanceText}>
                         You can use Vex without a passkey, then add or remove
                         passkeys here as your devices change.
                     </Text>
@@ -311,7 +328,7 @@ const styles = StyleSheet.create({
     errorCard: {
         backgroundColor: colors.dangerBg,
         borderColor: colors.dangerBorder,
-        borderRadius: 10,
+        borderRadius: 8,
         borderWidth: 1,
         paddingHorizontal: 12,
         paddingVertical: 10,
@@ -327,7 +344,7 @@ const styles = StyleSheet.create({
     formCard: {
         backgroundColor: "rgba(255,255,255,0.02)",
         borderColor: "rgba(255,255,255,0.08)",
-        borderRadius: 10,
+        borderRadius: 8,
         borderWidth: 1,
         gap: 8,
         paddingHorizontal: 12,
@@ -353,6 +370,27 @@ const styles = StyleSheet.create({
         color: "rgba(255,255,255,0.5)",
         textTransform: "uppercase",
     },
+    formSection: {
+        gap: 8,
+    },
+    guidanceCard: {
+        alignItems: "flex-start",
+        borderRadius: 8,
+        borderWidth: 1,
+        gap: 6,
+        padding: 14,
+    },
+    guidanceText: {
+        ...typography.body,
+        color: colors.textSecondary,
+        fontSize: 13,
+        lineHeight: 19,
+    },
+    guidanceTitle: {
+        ...typography.button,
+        fontSize: 14,
+        fontWeight: "600",
+    },
     intro: {
         gap: 6,
         marginBottom: -2,
@@ -363,27 +401,11 @@ const styles = StyleSheet.create({
     },
     kicker: {
         ...typography.label,
-        color: colors.accent,
     },
-    warningCard: {
-        alignItems: "flex-start",
-        backgroundColor: "rgba(251,36,36,0.1)",
-        borderColor: "rgba(251,36,36,0.4)",
-        borderRadius: 10,
-        borderWidth: 1,
-        gap: 6,
-        padding: 14,
-    },
-    warningText: {
-        ...typography.body,
-        color: colors.textSecondary,
-        fontSize: 13,
-        lineHeight: 19,
-    },
-    warningTitle: {
-        ...typography.button,
-        color: colors.error,
-        fontSize: 14,
-        fontWeight: "600",
+    sectionTitle: {
+        ...typography.label,
+        color: colors.muted,
+        paddingHorizontal: 4,
+        textTransform: "uppercase",
     },
 });

@@ -163,7 +163,7 @@
 
     .invite__create-btn {
         background: var(--accent);
-        color: #fff;
+        color: var(--on-accent);
         padding: 8px 16px;
         border-radius: 4px;
         font-size: 13px;
@@ -235,7 +235,7 @@
 
     .invite__copy-btn:hover {
         background: var(--accent);
-        color: #fff;
+        color: var(--on-accent);
         border-color: var(--accent);
     }
 

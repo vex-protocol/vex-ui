@@ -965,7 +965,7 @@
 
     .button--primary {
         background: var(--accent);
-        color: #fff;
+        color: var(--on-accent);
     }
 
     .button--primary:hover:not(:disabled) {

@@ -85,6 +85,14 @@ export function SettingsScreen({ navigation }: AppScreenProps<"Settings">) {
     ];
 
     const systemRows: ReadonlyArray<SettingsRow> = [
+        {
+            description: "Theme and primary color",
+            icon: "color-palette-outline",
+            label: "Appearance",
+            onPress: () => {
+                navigation.navigate("Appearance");
+            },
+        },
         // Foreground-service toggle is Android-only — iOS strictly
         // suspends backgrounded apps and there's no equivalent surface.
         ...(isAlwaysOnSupported() && Platform.OS === "android"

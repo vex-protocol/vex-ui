@@ -407,7 +407,7 @@
         padding: 0 4px;
         border-radius: 9px;
         background: var(--accent);
-        color: #fff;
+        color: var(--on-accent);
         font-size: 9px;
     }
 
@@ -455,7 +455,7 @@
     }
 
     .channel-sidebar__create-actions .channel-sidebar__save {
-        color: var(--accent-hover);
+        color: var(--accent-text);
     }
 
     .channel-sidebar__empty {

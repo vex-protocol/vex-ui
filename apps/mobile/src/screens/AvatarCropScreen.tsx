@@ -15,7 +15,7 @@ import * as ImageManipulator from "expo-image-manipulator";
 
 import { ChatHeader } from "../components/ChatHeader";
 import { $avatarCropResult } from "../lib/avatarCropResult";
-import { colors } from "../theme";
+import { colors, useAccentColors } from "../theme";
 
 /**
  * Lets the user pan a non-square image around so they can choose a
@@ -39,6 +39,7 @@ export function AvatarCropScreen({
     navigation,
     route,
 }: AppScreenProps<"AvatarCrop">) {
+    const accent = useAccentColors();
     const { requestId, sourceHeight, sourceUri, sourceWidth, title } =
         route.params;
     const screen = Dimensions.get("window");
@@ -232,10 +233,34 @@ export function AvatarCropScreen({
                         <View style={styles.gridV} />
                         <View style={styles.gridH} />
                         {/* corner brackets */}
-                        <View style={[styles.corner, styles.cornerTL]} />
-                        <View style={[styles.corner, styles.cornerTR]} />
-                        <View style={[styles.corner, styles.cornerBL]} />
-                        <View style={[styles.corner, styles.cornerBR]} />
+                        <View
+                            style={[
+                                styles.corner,
+                                styles.cornerTL,
+                                { borderColor: accent.accent },
+                            ]}
+                        />
+                        <View
+                            style={[
+                                styles.corner,
+                                styles.cornerTR,
+                                { borderColor: accent.accent },
+                            ]}
+                        />
+                        <View
+                            style={[
+                                styles.corner,
+                                styles.cornerBL,
+                                { borderColor: accent.accent },
+                            ]}
+                        />
+                        <View
+                            style={[
+                                styles.corner,
+                                styles.cornerBR,
+                                { borderColor: accent.accent },
+                            ]}
+                        />
                     </View>
                 </View>
 
@@ -262,11 +287,17 @@ export function AvatarCropScreen({
                         }}
                         style={({ pressed }) => [
                             styles.primaryBtn,
+                            { backgroundColor: accent.accent },
                             pressed && styles.btnPressed,
                             busy && styles.btnDisabled,
                         ]}
                     >
-                        <Text style={styles.primaryBtnText}>
+                        <Text
+                            style={[
+                                styles.primaryBtnText,
+                                { color: accent.onAccent },
+                            ]}
+                        >
                             {busy ? "Cropping..." : "Use this crop"}
                         </Text>
                     </Pressable>
@@ -304,7 +335,6 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     corner: {
-        borderColor: colors.error,
         position: "absolute",
     },
     cornerBL: {
@@ -392,16 +422,14 @@ const styles = StyleSheet.create({
     },
     primaryBtn: {
         alignItems: "center",
-        backgroundColor: colors.error,
-        borderRadius: 12,
+        borderRadius: 7,
         flex: 1.4,
         paddingVertical: 14,
     },
     primaryBtnText: {
-        color: "#fff",
         fontSize: 14,
         fontWeight: "700",
-        letterSpacing: 0.4,
+        letterSpacing: 0,
     },
     row: {
         alignSelf: "stretch",
@@ -411,9 +439,9 @@ const styles = StyleSheet.create({
     },
     secondaryBtn: {
         alignItems: "center",
-        backgroundColor: "#171a22",
-        borderColor: "rgba(255,255,255,0.12)",
-        borderRadius: 12,
+        backgroundColor: colors.surfaceLight,
+        borderColor: colors.borderSubtle,
+        borderRadius: 7,
         borderWidth: 1,
         flex: 1,
         paddingVertical: 14,

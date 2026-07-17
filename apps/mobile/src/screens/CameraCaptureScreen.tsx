@@ -21,7 +21,7 @@ import {
     nextCameraCaptureRequestId,
 } from "../lib/cameraCaptureResult";
 import { haptic } from "../lib/haptics";
-import { colors } from "../theme";
+import { colors, useAccentColors } from "../theme";
 
 interface IconButtonProps {
     accessibilityLabel: string;
@@ -35,6 +35,7 @@ export function CameraCaptureScreen({
     navigation,
     route,
 }: AppScreenProps<"CameraCapture">) {
+    const accent = useAccentColors();
     const { source } = route.params;
     const cameraRef = useRef<CameraView | null>(null);
     const isFocused = useIsFocused();
@@ -181,6 +182,7 @@ export function CameraCaptureScreen({
                     }}
                     style={({ pressed }) => [
                         styles.permissionButton,
+                        { backgroundColor: accent.accent },
                         pressed && styles.buttonPressed,
                     ]}
                 >
@@ -295,6 +297,7 @@ export function CameraCaptureScreen({
                         onPress={handleUsePhoto}
                         style={({ pressed }) => [
                             styles.primaryButton,
+                            { backgroundColor: accent.accent },
                             pressed && !usingPhoto && styles.buttonPressed,
                             usingPhoto && styles.buttonDisabled,
                         ]}
@@ -444,7 +447,6 @@ const styles = StyleSheet.create({
     },
     permissionButton: {
         alignItems: "center",
-        backgroundColor: colors.accent,
         borderRadius: 8,
         justifyContent: "center",
         minHeight: 44,
@@ -488,7 +490,6 @@ const styles = StyleSheet.create({
     },
     primaryButton: {
         alignItems: "center",
-        backgroundColor: colors.accent,
         borderRadius: 8,
         flex: 1,
         flexDirection: "row",

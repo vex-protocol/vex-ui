@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
     errorCard: {
         backgroundColor: colors.dangerBg,
         borderColor: colors.dangerBorder,
-        borderRadius: 10,
+        borderRadius: 8,
         borderWidth: 1,
         paddingHorizontal: 12,
         paddingVertical: 10,

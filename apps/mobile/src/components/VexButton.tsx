@@ -4,15 +4,14 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
+    View,
     type ViewStyle,
 } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
 
 import { haptic } from "../lib/haptics";
-import { colors, typography } from "../theme";
-
-import { CornerBracketBox } from "./CornerBracketBox";
+import { colors, typography, useAccentColors } from "../theme";
 
 interface VexButtonProps {
     disabled?: boolean;
@@ -35,25 +34,19 @@ export function VexButton({
     title,
     variant = "primary",
 }: VexButtonProps) {
+    const accent = useAccentColors();
     const isDanger = variant === "danger";
     const isPrimary = variant === "primary";
     const isFilled = isPrimary || isDanger;
 
     return (
-        <CornerBracketBox
-            color={
-                isDanger
-                    ? colors.error
-                    : isPrimary
-                      ? colors.accent
-                      : colors.border
-            }
-            size={8}
-            style={StyleSheet.flatten([
+        <View
+            style={[
                 styles.frame,
                 glow && styles.glow,
+                glow && { shadowColor: accent.accent },
                 style,
-            ])}
+            ]}
         >
             <TouchableOpacity
                 activeOpacity={0.7}
@@ -67,7 +60,10 @@ export function VexButton({
                     isDanger
                         ? styles.danger
                         : isPrimary
-                          ? styles.primary
+                          ? {
+                                backgroundColor: accent.accent,
+                                borderColor: accent.accent,
+                            }
                           : styles.outline,
                     (disabled || loading) && styles.disabled,
                 ]}
@@ -78,7 +74,9 @@ export function VexButton({
                     <>
                         {icon ? (
                             <Ionicons
-                                color={colors.text}
+                                color={
+                                    isPrimary ? accent.onAccent : colors.text
+                                }
                                 name={icon}
                                 size={16}
                             />
@@ -87,6 +85,7 @@ export function VexButton({
                             style={[
                                 styles.text,
                                 !isFilled && styles.outlineText,
+                                isPrimary && { color: accent.onAccent },
                             ]}
                         >
                             {title}
@@ -94,46 +93,45 @@ export function VexButton({
                     </>
                 )}
             </TouchableOpacity>
-        </CornerBracketBox>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     button: {
         alignItems: "center",
+        borderRadius: 7,
+        borderWidth: 1,
         flexDirection: "row",
         gap: 8,
         justifyContent: "center",
-        minHeight: 48,
+        minHeight: 46,
         paddingHorizontal: 24,
-        paddingVertical: 14,
+        paddingVertical: 12,
     },
     danger: {
         backgroundColor: colors.error,
+        borderColor: colors.error,
     },
     disabled: {
         opacity: 0.4,
     },
     frame: {
         alignSelf: "stretch",
+        borderRadius: 7,
     },
     glow: {
         elevation: 12,
-        shadowColor: colors.accent,
         shadowOffset: { height: 6, width: 0 },
-        shadowOpacity: 0.5,
-        shadowRadius: 26,
+        shadowOpacity: 0.32,
+        shadowRadius: 18,
     },
     outline: {
         backgroundColor: colors.transparent,
         borderColor: colors.border,
-        borderWidth: 1,
     },
     outlineText: {
         color: colors.text,
-    },
-    primary: {
-        backgroundColor: colors.accent,
     },
     text: {
         ...typography.button,

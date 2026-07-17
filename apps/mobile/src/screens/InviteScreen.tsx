@@ -22,7 +22,7 @@ import { ChatHeader } from "../components/ChatHeader";
 import { CornerBracketBox } from "../components/CornerBracketBox";
 import { VexButton } from "../components/VexButton";
 import { VexField } from "../components/VexField";
-import { colors, fontFamilies, typography } from "../theme";
+import { colors, fontFamilies, typography, useAccentColors } from "../theme";
 
 const DURATIONS: { label: string; value: string }[] = [
     { label: "1 hour", value: "1h" },
@@ -32,6 +32,7 @@ const DURATIONS: { label: string; value: string }[] = [
 ];
 
 export function InviteScreen({ route }: AppScreenProps<"Invite">) {
+    const accent = useAccentColors();
     const { serverID, serverName } = route.params;
     const [duration, setDuration] = useState("7d");
     const [invites, setInvites] = useState<Invite[]>([]);
@@ -118,7 +119,7 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
                 showsVerticalScrollIndicator={false}
             >
                 <View style={styles.hero}>
-                    <Text style={styles.kicker}>
+                    <Text style={[styles.kicker, { color: accent.accentText }]}>
                         {serverName ?? "GROUP INVITE"}
                     </Text>
                     <Text style={styles.heading}>Invite to group</Text>
@@ -127,7 +128,7 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
                 {primaryInvite ? (
                     <>
                         <View style={styles.qrWrap}>
-                            <CornerBracketBox color={colors.accent} size={10}>
+                            <CornerBracketBox color={accent.accent} size={10}>
                                 <View style={styles.qrSurface}>
                                     <Ionicons
                                         color={colors.text}
@@ -210,6 +211,10 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
                                 style={[
                                     styles.durationChip,
                                     selected && styles.durationChipActive,
+                                    selected && {
+                                        backgroundColor: accent.accent,
+                                        borderColor: accent.accent,
+                                    },
                                 ]}
                             >
                                 <Text
@@ -307,6 +312,11 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
                                             style={[
                                                 styles.btn,
                                                 styles.btnPrimary,
+                                                {
+                                                    backgroundColor:
+                                                        accent.accent,
+                                                    borderColor: accent.accent,
+                                                },
                                             ]}
                                         >
                                             <Text
@@ -324,7 +334,11 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
                         })}
                     </View>
                 )}
-                {error !== "" && <Text style={styles.error}>{error}</Text>}
+                {error !== "" && (
+                    <Text style={[styles.error, { color: colors.dangerText }]}>
+                        {error}
+                    </Text>
+                )}
             </ScrollView>
         </VexField>
     );
@@ -350,10 +364,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
         paddingVertical: 10,
     },
-    btnPrimary: {
-        backgroundColor: colors.accent,
-        borderColor: colors.accent,
-    },
+    btnPrimary: {},
     btnPrimaryText: { color: "#FFFFFF" },
     btnText: { ...typography.button, color: colors.text },
     codeBlock: {
@@ -376,7 +387,7 @@ const styles = StyleSheet.create({
         flex: 1,
         fontFamily: fontFamilies.mono,
         fontSize: 15,
-        letterSpacing: 1,
+        letterSpacing: 0,
     },
     container: { backgroundColor: colors.bg, flex: 1 },
     createButton: {
@@ -389,10 +400,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         paddingVertical: 8,
     },
-    durationChipActive: {
-        backgroundColor: colors.accent,
-        borderColor: colors.accent,
-    },
+    durationChipActive: {},
     durationLabel: { ...typography.body, color: colors.text },
     durationLabelActive: { color: "#FFFFFF", fontWeight: "600" },
     durationRow: {
@@ -402,7 +410,7 @@ const styles = StyleSheet.create({
         marginBottom: 16,
         marginTop: 8,
     },
-    error: { color: colors.accent, marginBottom: 12 },
+    error: { marginBottom: 12 },
     expires: {
         ...typography.body,
         color: colors.muted,
@@ -451,7 +459,6 @@ const styles = StyleSheet.create({
     },
     kicker: {
         ...typography.label,
-        color: colors.accent,
     },
     label: { ...typography.label, color: colors.muted, fontSize: 12 },
     listLabel: { marginTop: 12 },

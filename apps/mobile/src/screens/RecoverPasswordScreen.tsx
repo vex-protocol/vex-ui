@@ -23,7 +23,7 @@ import { VexButton } from "../components/VexButton";
 import { getServerOptions } from "../lib/config";
 import { keychainKeyStore } from "../lib/keychain";
 import { mobileConfig } from "../lib/platform";
-import { colors, typography } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 const HANDLE_PATTERN = /^[A-Za-z0-9_]{3,19}$/;
 
@@ -31,6 +31,7 @@ export function RecoverPasswordScreen({
     navigation,
     route,
 }: AuthScreenProps<"RecoverPassword">) {
+    const accent = useAccentColors();
     const [username, setUsername] = useState(
         route.params?.username?.toLowerCase() ?? "",
     );
@@ -143,7 +144,7 @@ export function RecoverPasswordScreen({
                                 placeholder="username"
                                 placeholderTextColor={colors.mutedDark}
                                 returnKeyType="next"
-                                selectionColor={colors.accent}
+                                selectionColor={accent.accent}
                                 style={styles.input}
                                 value={username}
                             />
@@ -164,7 +165,7 @@ export function RecoverPasswordScreen({
                                     placeholder="15 characters minimum"
                                     placeholderTextColor={colors.mutedDark}
                                     secureTextEntry={!showPassword}
-                                    selectionColor={colors.accent}
+                                    selectionColor={accent.accent}
                                     style={styles.input}
                                     textContentType="newPassword"
                                     value={newPassword}
@@ -196,7 +197,7 @@ export function RecoverPasswordScreen({
                                 placeholderTextColor={colors.mutedDark}
                                 returnKeyType="go"
                                 secureTextEntry={!showPassword}
-                                selectionColor={colors.accent}
+                                selectionColor={accent.accent}
                                 style={styles.input}
                                 textContentType="newPassword"
                                 value={confirmation}

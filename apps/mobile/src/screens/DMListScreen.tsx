@@ -30,12 +30,13 @@ import { useStore } from "@nanostores/react";
 import { Avatar } from "../components/Avatar";
 import { ChatHeader } from "../components/ChatHeader";
 import { VexField } from "../components/VexField";
-import { colors, typography } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 const FRIENDS_DRAWER_WIDTH = 232;
 const ONLINE_WINDOW_MS = 15 * 60 * 1000;
 
 export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
+    const accent = useAccentColors();
     const familiars = useStore($familiars);
     const allMessages = useStore($messages);
     const unreadCounts = useStore($dmUnreadCounts);
@@ -272,8 +273,18 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
                     </Text>
                 </View>
                 {unread > 0 && (
-                    <View style={styles.friendUnreadDot}>
-                        <Text style={styles.friendUnreadText}>
+                    <View
+                        style={[
+                            styles.friendUnreadDot,
+                            { backgroundColor: accent.accent },
+                        ]}
+                    >
+                        <Text
+                            style={[
+                                styles.friendUnreadText,
+                                { color: accent.onAccent },
+                            ]}
+                        >
                             {unread > 99 ? "99+" : unread}
                         </Text>
                     </View>
@@ -297,7 +308,11 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
                 onPress={() => {
                     openConversation(item);
                 }}
-                style={[styles.row, unread > 0 && styles.rowUnread]}
+                style={[
+                    styles.row,
+                    unread > 0 && styles.rowUnread,
+                    unread > 0 && { borderLeftColor: accent.accent },
+                ]}
             >
                 <Avatar
                     displayName={item.username}
@@ -317,8 +332,18 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
                     )}
                 </View>
                 {unread > 0 && (
-                    <View style={styles.unreadBadge}>
-                        <Text style={styles.unreadText}>
+                    <View
+                        style={[
+                            styles.unreadBadge,
+                            { backgroundColor: accent.accent },
+                        ]}
+                    >
+                        <Text
+                            style={[
+                                styles.unreadText,
+                                { color: accent.onAccent },
+                            ]}
+                        >
                             {unread > 99 ? "99+" : unread}
                         </Text>
                     </View>
@@ -553,7 +578,6 @@ const styles = StyleSheet.create({
     },
     friendUnreadDot: {
         alignItems: "center",
-        backgroundColor: colors.error,
         borderRadius: 10,
         justifyContent: "center",
         minWidth: 20,
@@ -561,7 +585,6 @@ const styles = StyleSheet.create({
         paddingVertical: 2,
     },
     friendUnreadText: {
-        color: "#fff",
         fontSize: 10,
         fontWeight: "700",
     },
@@ -625,7 +648,6 @@ const styles = StyleSheet.create({
     },
     rowUnread: {
         backgroundColor: colors.surfaceLight,
-        borderLeftColor: colors.accent,
         borderLeftWidth: 2,
     },
     searchBox: {
@@ -669,7 +691,6 @@ const styles = StyleSheet.create({
     },
     unreadBadge: {
         alignItems: "center",
-        backgroundColor: colors.error,
         borderRadius: 12,
         height: 22,
         justifyContent: "center",
@@ -677,7 +698,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 6,
     },
     unreadText: {
-        color: "#fff",
         fontSize: 11,
         fontWeight: "700",
     },
