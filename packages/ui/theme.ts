@@ -33,8 +33,14 @@ export const defaultAccentPresetID: AccentPresetID = "blue";
 
 // These base colors all maintain at least 4.5:1 contrast with white so the
 // selected accent remains safe for buttons, badges, and compact controls.
+const defaultAccentPreset: AccentPreset = {
+    color: "#2563EB",
+    id: defaultAccentPresetID,
+    label: "Blue",
+};
+
 export const accentPresets: readonly AccentPreset[] = [
-    { color: "#2563EB", id: "blue", label: "Blue" },
+    defaultAccentPreset,
     { color: "#0E7490", id: "cyan", label: "Cyan" },
     { color: "#15803D", id: "green", label: "Green" },
     { color: "#A16207", id: "gold", label: "Gold" },
@@ -45,7 +51,9 @@ export const accentPresets: readonly AccentPreset[] = [
 ];
 
 export function accentPresetFor(id: AccentPresetID): AccentPreset {
-    return accentPresets.find((preset) => preset.id === id) ?? accentPresets[0];
+    return (
+        accentPresets.find((preset) => preset.id === id) ?? defaultAccentPreset
+    );
 }
 
 export function accentTokensFor(

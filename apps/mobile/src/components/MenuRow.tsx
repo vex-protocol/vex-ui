@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
     mono: {
         fontFamily: fontFamilies.mono,
         fontSize: 12,
-        letterSpacing: 0.25,
+        letterSpacing: 0,
     },
     monoBlockBox: {
         alignSelf: "stretch",
@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
         flexShrink: 0,
         fontFamily: fontFamilies.mono,
         fontSize: 12,
-        letterSpacing: 0.4,
+        letterSpacing: 0,
         lineHeight: 18,
     },
     row: {

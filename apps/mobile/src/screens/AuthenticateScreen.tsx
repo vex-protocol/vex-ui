@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
         ...typography.headingSmall,
         color: colors.text,
         fontSize: 28,
-        letterSpacing: 1,
+        letterSpacing: 0,
     },
     codeRow: {
         flexDirection: "row",

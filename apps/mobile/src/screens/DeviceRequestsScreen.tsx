@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
         ...typography.button,
         color: colors.text,
         fontSize: 22,
-        letterSpacing: 1,
+        letterSpacing: 0,
     },
     codeRow: {
         flexDirection: "row",

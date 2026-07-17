@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
         ...typography.body,
         color: "rgba(255,255,255,0.48)",
         fontSize: 11,
-        letterSpacing: 0.9,
+        letterSpacing: 0,
         lineHeight: 16,
         marginTop: 26,
         textAlign: "center",

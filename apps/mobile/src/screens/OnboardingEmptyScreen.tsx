@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
     },
     kicker: {
         ...typography.label,
-        letterSpacing: 1.2,
+        letterSpacing: 0,
     },
     secondaryLink: {
         alignItems: "center",

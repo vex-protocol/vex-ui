@@ -590,7 +590,7 @@ const styles = StyleSheet.create({
     brand: {
         ...typography.label,
         color: "rgba(255,255,255,0.48)",
-        letterSpacing: 3,
+        letterSpacing: 0,
     },
     detail: {
         ...typography.body,

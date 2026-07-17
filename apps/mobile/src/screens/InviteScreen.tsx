@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
         flex: 1,
         fontFamily: fontFamilies.mono,
         fontSize: 15,
-        letterSpacing: 1,
+        letterSpacing: 0,
     },
     container: { backgroundColor: colors.bg, flex: 1 },
     createButton: {
