@@ -7,6 +7,7 @@ import {
     accentTokensFor,
     defaultAccentPresetID,
     isAccentPresetID,
+    neutralTokensFor,
 } from "@vex-chat/ui/theme";
 
 export type Theme = "dark" | "light";
@@ -28,20 +29,20 @@ theme.subscribe((t) => {
     currentTheme = t;
     localStorage.setItem("vex-theme", t);
     document.documentElement.setAttribute("data-theme", t);
-    applyAccentTokens();
+    applyAppearanceTokens();
 });
 
 accentPreference.subscribe((accent) => {
     currentAccent = accent;
     localStorage.setItem("vex-accent", accent);
     document.documentElement.setAttribute("data-accent", accent);
-    applyAccentTokens();
+    applyAppearanceTokens();
 });
 
 export function initializeAppearance(): void {
     document.documentElement.setAttribute("data-theme", currentTheme);
     document.documentElement.setAttribute("data-accent", currentAccent);
-    applyAccentTokens();
+    applyAppearanceTokens();
 }
 
 export function setAccentPreference(next: AccentPresetID): void {
@@ -56,15 +57,31 @@ export function toggleTheme(): void {
     theme.update((t) => (t === "dark" ? "light" : "dark"));
 }
 
-function applyAccentTokens(): void {
-    const tokens = accentTokensFor(currentAccent, currentTheme);
+function applyAppearanceTokens(): void {
+    const accent = accentTokensFor(currentAccent, currentTheme);
+    const neutral = neutralTokensFor(currentTheme);
     const root = document.documentElement.style;
-    root.setProperty("--accent", tokens.accent);
-    root.setProperty("--accent-border", tokens.accentBorder);
-    root.setProperty("--accent-hover", tokens.accentHover);
-    root.setProperty("--accent-soft", tokens.accentSoft);
-    root.setProperty("--accent-text", tokens.accentText);
-    root.setProperty("--on-accent", tokens.onAccent);
+    root.setProperty("--bg-primary", neutral.background);
+    root.setProperty("--bg-secondary", neutral.panel);
+    root.setProperty("--bg-tertiary", neutral.rail);
+    root.setProperty("--bg-surface", neutral.surface);
+    root.setProperty("--bg-elevated", neutral.elevated);
+    root.setProperty("--bg-hover", neutral.hover);
+    root.setProperty("--bg-selected", neutral.selected);
+    root.setProperty("--text-primary", neutral.text);
+    root.setProperty("--text-secondary", neutral.textSecondary);
+    root.setProperty("--text-muted", neutral.textMuted);
+    root.setProperty("--text-faint", neutral.textFaint);
+    root.setProperty("--border", neutral.border);
+    root.setProperty("--border-strong", neutral.borderStrong);
+    root.setProperty("--unread-bg", neutral.unread);
+    root.setProperty("--unread-text", neutral.unreadText);
+    root.setProperty("--accent", accent.accent);
+    root.setProperty("--accent-border", accent.accentBorder);
+    root.setProperty("--accent-hover", accent.accentHover);
+    root.setProperty("--accent-soft", accent.accentSoft);
+    root.setProperty("--accent-text", accent.accentText);
+    root.setProperty("--on-accent", accent.onAccent);
 }
 
 export { accentPresets };

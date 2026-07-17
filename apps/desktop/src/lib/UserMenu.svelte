@@ -152,8 +152,8 @@
         display: grid;
         place-items: center;
         border-radius: 50%;
-        background: var(--accent);
-        color: var(--on-accent);
+        background: var(--bg-selected);
+        color: var(--text-primary);
         font-weight: 700;
     }
 

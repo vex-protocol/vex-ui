@@ -851,7 +851,7 @@
     }
 
     .settings__tab--active {
-        background: var(--accent-soft);
+        background: var(--bg-selected);
         color: var(--text-primary);
     }
 

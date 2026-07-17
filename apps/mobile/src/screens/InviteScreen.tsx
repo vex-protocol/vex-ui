@@ -119,7 +119,7 @@ export function InviteScreen({ route }: AppScreenProps<"Invite">) {
                 showsVerticalScrollIndicator={false}
             >
                 <View style={styles.hero}>
-                    <Text style={[styles.kicker, { color: accent.accentText }]}>
+                    <Text style={styles.kicker}>
                         {serverName ?? "GROUP INVITE"}
                     </Text>
                     <Text style={styles.heading}>Invite to group</Text>
@@ -459,6 +459,7 @@ const styles = StyleSheet.create({
     },
     kicker: {
         ...typography.label,
+        color: colors.muted,
     },
     label: { ...typography.label, color: colors.muted, fontSize: 12 },
     listLabel: { marginTop: 12 },

@@ -40,31 +40,33 @@ body,
 
 :root {
     color-scheme: dark;
-    --bg-primary: #1e1f22;
-    --bg-secondary: #18191d;
-    --bg-tertiary: #111214;
-    --bg-surface: #24262b;
-    --bg-elevated: #2b2d33;
-    --bg-hover: #303238;
-    --bg-selected: #383a42;
+    --bg-primary: #0d0f12;
+    --bg-secondary: #13161b;
+    --bg-tertiary: #080a0d;
+    --bg-surface: #1a1e24;
+    --bg-elevated: #222730;
+    --bg-hover: #272d36;
+    --bg-selected: #2e3540;
 
-    --text-primary: #f2f3f5;
-    --text-secondary: #dbdee1;
-    --text-muted: #b5bac1;
-    --text-faint: #80848e;
+    --text-primary: #f7f8fa;
+    --text-secondary: #e3e6ea;
+    --text-muted: #a8b0bc;
+    --text-faint: #7d8794;
 
     --accent: #2563eb;
-    --accent-border: rgba(37, 99, 235, 0.5);
+    --accent-border: rgba(37, 99, 235, 0.42);
     --accent-hover: #225bd8;
-    --accent-soft: rgba(37, 99, 235, 0.18);
+    --accent-soft: rgba(37, 99, 235, 0.12);
     --accent-text: #6f98f2;
     --on-accent: #ffffff;
     --danger: #f23f42;
     --success: #3ba55c;
     --warning: #f0b232;
     --info: #5ca8e6;
-    --border: #292b31;
-    --border-strong: #3b3e46;
+    --border: #252b33;
+    --border-strong: #3b4450;
+    --unread-bg: #353d49;
+    --unread-text: #f7f8fa;
 
     --serverbar-width: 72px;
     --channelbar-width: 264px;
@@ -80,22 +82,24 @@ body,
 html[data-theme="light"] {
     color-scheme: light;
     --bg-primary: #ffffff;
-    --bg-secondary: #f2f3f5;
-    --bg-tertiary: #e3e5e8;
-    --bg-surface: #f8f9fa;
+    --bg-secondary: #f1f3f5;
+    --bg-tertiary: #e5e8ec;
+    --bg-surface: #f8f9fb;
     --bg-elevated: #ffffff;
-    --bg-hover: #e7e9ec;
-    --bg-selected: #dfe1e5;
-    --text-primary: #1e1f22;
-    --text-secondary: #313338;
-    --text-muted: #5c5e66;
-    --text-faint: #7c7f87;
+    --bg-hover: #e8ebef;
+    --bg-selected: #dde2e8;
+    --text-primary: #111318;
+    --text-secondary: #2a2f36;
+    --text-muted: #555d68;
+    --text-faint: #666f7a;
     --danger: #d83c3e;
     --success: #248046;
     --warning: #a85d00;
     --info: #256fa9;
-    --border: #d9dce1;
-    --border-strong: #c4c7cd;
+    --border: #d3d8df;
+    --border-strong: #b8c0ca;
+    --unread-bg: #3f4752;
+    --unread-text: #ffffff;
     --shadow-menu: 0 16px 40px rgba(30, 31, 34, 0.18);
 }
 

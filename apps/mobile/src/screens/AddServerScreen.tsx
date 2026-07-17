@@ -31,10 +31,9 @@ import {
 } from "../lib/avatarCropResult";
 import { prepareServerIcon } from "../lib/serverIconImage";
 import { navigateToJoinedServer } from "../navigation/navigationRef";
-import { colors, typography, useAccentColors } from "../theme";
+import { colors, typography } from "../theme";
 
 export function AddServerScreen() {
-    const accent = useAccentColors();
     const navigation =
         useNavigation<
             NativeStackNavigationProp<AppStackParamList, "AddServer">
@@ -194,14 +193,7 @@ export function AddServerScreen() {
             <ScreenLayout glows>
                 <View style={styles.content}>
                     <View style={styles.header}>
-                        <Text
-                            style={[
-                                styles.kicker,
-                                { color: accent.accentText },
-                            ]}
-                        >
-                            NEW GROUP
-                        </Text>
+                        <Text style={styles.kicker}>NEW GROUP</Text>
                         <Text style={styles.heading}>Create or join</Text>
                         <Text style={styles.subtitle}>
                             Encrypted from the first message. Only members hold
@@ -241,14 +233,7 @@ export function AddServerScreen() {
                     showsVerticalScrollIndicator={false}
                 >
                     <View style={styles.createIntro}>
-                        <Text
-                            style={[
-                                styles.kicker,
-                                { color: accent.accentText },
-                            ]}
-                        >
-                            NEW GROUP
-                        </Text>
+                        <Text style={styles.kicker}>NEW GROUP</Text>
                         <Text style={styles.createSubtitle}>
                             Encrypted from the first message. Only members hold
                             the keys.
@@ -363,9 +348,7 @@ export function AddServerScreen() {
         <ScreenLayout glows>
             <View style={styles.content}>
                 <View style={styles.header}>
-                    <Text style={[styles.kicker, { color: accent.accentText }]}>
-                        INVITE CODE
-                    </Text>
+                    <Text style={styles.kicker}>INVITE CODE</Text>
                     <Text style={styles.heading}>Join Group</Text>
                     <Text style={styles.subtitle}>
                         Enter an invite link or code
@@ -498,6 +481,7 @@ const styles = StyleSheet.create({
     },
     kicker: {
         ...typography.label,
+        color: colors.muted,
     },
     label: {
         ...typography.label,

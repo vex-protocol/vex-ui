@@ -40,14 +40,7 @@ export function VexButton({
     const isFilled = isPrimary || isDanger;
 
     return (
-        <View
-            style={[
-                styles.frame,
-                glow && styles.glow,
-                glow && { shadowColor: accent.accent },
-                style,
-            ]}
-        >
+        <View style={[styles.frame, glow && styles.glow, style]}>
             <TouchableOpacity
                 activeOpacity={0.7}
                 disabled={disabled || loading}
@@ -122,6 +115,7 @@ const styles = StyleSheet.create({
     },
     glow: {
         elevation: 12,
+        shadowColor: colors.rail,
         shadowOffset: { height: 6, width: 0 },
         shadowOpacity: 0.32,
         shadowRadius: 18,

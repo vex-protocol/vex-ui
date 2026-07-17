@@ -12,7 +12,7 @@ import {
 
 import { Ionicons } from "@expo/vector-icons";
 
-import { colors, fontFamilies, typography, useAccentColors } from "../theme";
+import { colors, fontFamilies, typography } from "../theme";
 
 export type MenuRowTone = "danger" | "default" | "success";
 
@@ -79,7 +79,6 @@ export function MenuRow({
     tone = "default",
     value,
 }: MenuRowProps) {
-    const accent = useAccentColors();
     const palette =
         tone === "danger"
             ? {
@@ -96,9 +95,9 @@ export function MenuRow({
                     label: colors.textSecondary,
                 }
               : {
-                    icon: accent.accentText,
-                    iconBg: accent.accentSoft,
-                    iconBorder: accent.accentBorder,
+                    icon: colors.textSecondary,
+                    iconBg: colors.surfaceLight,
+                    iconBorder: colors.borderSubtle,
                     label: colors.textSecondary,
                 };
     const renderChevron =

@@ -320,12 +320,17 @@
 
     .message-embed__action {
         padding: 6px 10px;
-        border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+        border: 1px solid var(--border-strong);
         border-radius: 6px;
-        background: color-mix(in srgb, var(--accent) 12%, transparent);
-        color: var(--accent);
+        background: var(--bg-surface);
+        color: var(--text-secondary);
         cursor: pointer;
         font-size: 12px;
         font-weight: 700;
+    }
+
+    .message-embed__action:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
     }
 </style>

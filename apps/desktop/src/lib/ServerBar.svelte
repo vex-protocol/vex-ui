@@ -169,7 +169,7 @@
     }
 
     .server-rail__server--active :global(.server-icon) {
-        box-shadow: 0 0 0 2px var(--accent);
+        box-shadow: 0 0 0 2px var(--border-strong);
     }
 
     .server-rail__divider {
@@ -203,8 +203,8 @@
         padding: 0 4px;
         border: 2px solid var(--bg-tertiary);
         border-radius: 9px;
-        background: var(--accent);
-        color: var(--on-accent);
+        background: var(--unread-bg);
+        color: var(--unread-text);
         font-size: 10px;
         font-weight: 700;
         line-height: 1;

@@ -5,6 +5,7 @@ import {
     accentTokensFor,
     defaultAccentPresetID,
     isAccentPresetID,
+    neutralTokensFor,
 } from "./theme";
 
 describe("accent theme", () => {
@@ -24,9 +25,9 @@ describe("accent theme", () => {
         for (const preset of accentPresets) {
             const dark = accentTokensFor(preset.id, "dark");
             const light = accentTokensFor(preset.id, "light");
-            expect(contrast(dark.accentText, "#1E1F22")).toBeGreaterThanOrEqual(
-                4.5,
-            );
+            expect(
+                contrast(dark.accentText, neutralTokensFor("dark").background),
+            ).toBeGreaterThanOrEqual(4.5);
             expect(
                 contrast(light.accentText, "#FFFFFF"),
             ).toBeGreaterThanOrEqual(4.5);
@@ -42,6 +43,45 @@ describe("accent theme", () => {
         expect(isAccentPresetID("purple")).toBe(true);
         expect(isAccentPresetID("chartreuse")).toBe(false);
         expect(isAccentPresetID(null)).toBe(false);
+    });
+
+    it.each(["dark", "light"] as const)(
+        "keeps %s neutral text readable on every common surface",
+        (scheme) => {
+            const tokens = neutralTokensFor(scheme);
+            for (const background of [
+                tokens.background,
+                tokens.panel,
+                tokens.surface,
+            ]) {
+                expect(
+                    contrast(tokens.text, background),
+                ).toBeGreaterThanOrEqual(7);
+                expect(
+                    contrast(tokens.textSecondary, background),
+                ).toBeGreaterThanOrEqual(7);
+                expect(
+                    contrast(tokens.textMuted, background),
+                ).toBeGreaterThanOrEqual(4.5);
+                expect(
+                    contrast(tokens.textFaint, background),
+                ).toBeGreaterThanOrEqual(4.5);
+            }
+            expect(
+                contrast(tokens.unreadText, tokens.unread),
+            ).toBeGreaterThanOrEqual(4.5);
+        },
+    );
+
+    it("uses a near-black dark workspace with distinct interactive surfaces", () => {
+        const tokens = neutralTokensFor("dark");
+        expect(tokens.background).toBe("#0D0F12");
+        expect(contrast(tokens.surface, tokens.background)).toBeGreaterThan(
+            1.1,
+        );
+        expect(contrast(tokens.selected, tokens.background)).toBeGreaterThan(
+            1.5,
+        );
     });
 });
 

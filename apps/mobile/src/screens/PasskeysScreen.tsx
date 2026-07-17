@@ -26,7 +26,7 @@ import {
     PasskeyCancelledError,
     registerPasskey,
 } from "../lib/passkey";
-import { colors, typography, useAccentColors } from "../theme";
+import { colors, typography } from "../theme";
 
 interface AddState {
     error: null | string;
@@ -37,7 +37,6 @@ interface AddState {
 const DEFAULT_PASSKEY_NAME_HINT = "iPhone, Yubikey, etc.";
 
 export function PasskeysScreen() {
-    const accent = useAccentColors();
     const [passkeys, setPasskeys] = useState<Passkey[]>([]);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<null | string>(null);
@@ -183,9 +182,7 @@ export function PasskeysScreen() {
                 }
             >
                 <View style={styles.intro}>
-                    <Text style={[styles.kicker, { color: accent.accentText }]}>
-                        ACCOUNT RECOVERY
-                    </Text>
+                    <Text style={styles.kicker}>ACCOUNT RECOVERY</Text>
                     <Text style={styles.introText}>
                         {supported
                             ? "A passkey is an optional way to restore or sign in to your account. Vex never sees its secret."
@@ -273,21 +270,8 @@ export function PasskeysScreen() {
                     </View>
                 </View>
 
-                <View
-                    style={[
-                        styles.guidanceCard,
-                        {
-                            backgroundColor: accent.accentSoft,
-                            borderColor: accent.accentBorder,
-                        },
-                    ]}
-                >
-                    <Text
-                        style={[
-                            styles.guidanceTitle,
-                            { color: accent.accentText },
-                        ]}
-                    >
+                <View style={styles.guidanceCard}>
+                    <Text style={styles.guidanceTitle}>
                         Passkeys are supplementary
                     </Text>
                     <Text style={styles.guidanceText}>
@@ -375,6 +359,8 @@ const styles = StyleSheet.create({
     },
     guidanceCard: {
         alignItems: "flex-start",
+        backgroundColor: colors.surfaceLight,
+        borderColor: colors.border,
         borderRadius: 8,
         borderWidth: 1,
         gap: 6,
@@ -388,6 +374,7 @@ const styles = StyleSheet.create({
     },
     guidanceTitle: {
         ...typography.button,
+        color: colors.text,
         fontSize: 14,
         fontWeight: "600",
     },
@@ -401,6 +388,7 @@ const styles = StyleSheet.create({
     },
     kicker: {
         ...typography.label,
+        color: colors.muted,
     },
     sectionTitle: {
         ...typography.label,

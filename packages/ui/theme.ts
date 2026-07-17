@@ -29,6 +29,25 @@ export interface AccentTokens {
 
 export type ColorScheme = "dark" | "light";
 
+export interface NeutralTokens {
+    background: string;
+    border: string;
+    borderStrong: string;
+    elevated: string;
+    hover: string;
+    overlay: string;
+    panel: string;
+    rail: string;
+    selected: string;
+    surface: string;
+    text: string;
+    textFaint: string;
+    textMuted: string;
+    textSecondary: string;
+    unread: string;
+    unreadText: string;
+}
+
 export const defaultAccentPresetID: AccentPresetID = "blue";
 
 // These base colors all maintain at least 4.5:1 contrast with white so the
@@ -50,6 +69,44 @@ export const accentPresets: readonly AccentPreset[] = [
     { color: "#B91C1C", id: "red", label: "Red" },
 ];
 
+const darkNeutralTokens: NeutralTokens = {
+    background: "#0D0F12",
+    border: "#252B33",
+    borderStrong: "#3B4450",
+    elevated: "#222730",
+    hover: "#272D36",
+    overlay: "rgba(0, 0, 0, 0.72)",
+    panel: "#13161B",
+    rail: "#080A0D",
+    selected: "#2E3540",
+    surface: "#1A1E24",
+    text: "#F7F8FA",
+    textFaint: "#7D8794",
+    textMuted: "#A8B0BC",
+    textSecondary: "#E3E6EA",
+    unread: "#353D49",
+    unreadText: "#F7F8FA",
+};
+
+const lightNeutralTokens: NeutralTokens = {
+    background: "#FFFFFF",
+    border: "#D3D8DF",
+    borderStrong: "#B8C0CA",
+    elevated: "#FFFFFF",
+    hover: "#E8EBEF",
+    overlay: "rgba(17, 19, 24, 0.48)",
+    panel: "#F1F3F5",
+    rail: "#E5E8EC",
+    selected: "#DDE2E8",
+    surface: "#F8F9FB",
+    text: "#111318",
+    textFaint: "#666F7A",
+    textMuted: "#555D68",
+    textSecondary: "#2A2F36",
+    unread: "#3F4752",
+    unreadText: "#FFFFFF",
+};
+
 export function accentPresetFor(id: AccentPresetID): AccentPreset {
     return (
         accentPresets.find((preset) => preset.id === id) ?? defaultAccentPreset
@@ -65,11 +122,11 @@ export function accentTokensFor(
 
     return {
         accent: base,
-        accentBorder: rgba(base, dark ? 0.5 : 0.38),
+        accentBorder: rgba(base, dark ? 0.42 : 0.32),
         accentDark: mixHex(base, "#000000", 0.2),
         accentHover: mixHex(base, "#000000", 0.08),
         accentMuted: mixHex(base, dark ? "#FFFFFF" : "#000000", 0.3),
-        accentSoft: rgba(base, dark ? 0.18 : 0.11),
+        accentSoft: rgba(base, dark ? 0.12 : 0.08),
         accentText: mixHex(
             base,
             dark ? "#FFFFFF" : "#000000",
@@ -77,6 +134,10 @@ export function accentTokensFor(
         ),
         onAccent: "#FFFFFF",
     };
+}
+
+export function neutralTokensFor(scheme: ColorScheme = "dark"): NeutralTokens {
+    return scheme === "dark" ? darkNeutralTokens : lightNeutralTokens;
 }
 
 export function isAccentPresetID(value: unknown): value is AccentPresetID {

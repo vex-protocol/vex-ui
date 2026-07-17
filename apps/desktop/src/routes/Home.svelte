@@ -152,10 +152,10 @@
         display: grid;
         place-items: center;
         margin-bottom: 18px;
-        border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+        border: 1px solid var(--border-strong);
         border-radius: 8px;
-        background: var(--accent-soft);
-        color: var(--accent-text);
+        background: var(--bg-surface);
+        color: var(--text-secondary);
     }
 
     .inbox-home__intro h1 {
@@ -225,8 +225,8 @@
         display: grid;
         place-items: center;
         border-radius: 7px;
-        background: var(--accent-soft);
-        color: var(--accent-text);
+        background: var(--bg-surface);
+        color: var(--text-secondary);
     }
 
     .inbox-home__action-icon--green {

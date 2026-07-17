@@ -1003,7 +1003,7 @@
     }
 
     .settings-nav__item--active {
-        background: var(--accent-soft);
+        background: var(--bg-selected);
         color: var(--text-primary);
     }
 
@@ -1230,8 +1230,8 @@
         padding: 1px 6px;
         margin-left: 6px;
         border-radius: 3px;
-        background: var(--accent);
-        color: var(--on-accent);
+        background: var(--unread-bg);
+        color: var(--unread-text);
         vertical-align: middle;
     }
 
