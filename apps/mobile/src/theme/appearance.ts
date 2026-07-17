@@ -14,6 +14,7 @@ import { atom, computed } from "nanostores";
 const ACCENT_STORE_KEY = "vex.appearance.accent.v1";
 
 export const $accentPreference = atom<AccentPresetID>(defaultAccentPresetID);
+export const $accentPreferenceHydrated = atom(false);
 export const $accentColors = computed($accentPreference, (id) =>
     accentTokensFor(id, "dark"),
 );
@@ -29,6 +30,8 @@ export function hydrateAccentPreference(): Promise<void> {
             }
         } catch (error) {
             console.warn("[vex-appearance] could not read accent", error);
+        } finally {
+            $accentPreferenceHydrated.set(true);
         }
     })();
     return hydrationPromise;

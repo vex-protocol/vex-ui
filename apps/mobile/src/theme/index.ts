@@ -1,6 +1,7 @@
 export {
     $accentColors,
     $accentPreference,
+    $accentPreferenceHydrated,
     accentPresets,
     accentTokensFor,
     defaultAccentPresetID,

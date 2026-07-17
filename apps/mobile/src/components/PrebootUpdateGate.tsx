@@ -33,7 +33,13 @@ import {
 } from "../lib/appUpdates";
 import { buildInfo } from "../lib/buildInfo";
 import { usePendingOtaReload } from "../lib/usePendingOtaReload";
-import { colors, typography, useAccentColors } from "../theme";
+import {
+    $accentPreferenceHydrated,
+    colors,
+    hydrateAccentPreference,
+    typography,
+    useAccentColors,
+} from "../theme";
 
 type PrebootPhase =
     | "apk_downloading"
@@ -68,6 +74,7 @@ export function PrebootSplash({
     title: string;
 }) {
     const accent = useAccentColors();
+    const appearanceReady = useStore($accentPreferenceHydrated);
     const [spin] = useState(() => new Animated.Value(0));
     const [pulse] = useState(() => new Animated.Value(1));
     const [progressValue] = useState(
@@ -89,6 +96,10 @@ export function PrebootSplash({
             }),
         [progressValue],
     );
+
+    useEffect(() => {
+        void hydrateAccentPreference();
+    }, []);
 
     useEffect(() => {
         const spinLoop = Animated.loop(
@@ -131,6 +142,14 @@ export function PrebootSplash({
             useNativeDriver: false,
         }).start();
     }, [progress, progressValue]);
+
+    if (!appearanceReady) {
+        return (
+            <View style={styles.root}>
+                <StatusBar barStyle="light-content" />
+            </View>
+        );
+    }
 
     return (
         <View style={styles.root}>
