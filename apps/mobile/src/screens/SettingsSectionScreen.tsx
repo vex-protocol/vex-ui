@@ -79,7 +79,7 @@ import {
     unsubscribeStoredPushNotificationSubscription,
 } from "../lib/pushNotifications";
 import { persistLocalMessageRetentionDays } from "../lib/retentionPreference";
-import { colors, fontFamilies, typography } from "../theme";
+import { colors, fontFamilies, typography, useAccentColors } from "../theme";
 
 const LOCAL_RETENTION_CHOICES = [7, 14, 21, 30] as const;
 
@@ -90,6 +90,7 @@ export function SettingsSectionScreen({
     navigation,
     route,
 }: AppScreenProps<"SettingsSection">) {
+    const accent = useAccentColors();
     const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
     const appUpdateState = useStore($appUpdateState);
     const accountEntitlements = useStore($accountEntitlements);
@@ -933,7 +934,7 @@ export function SettingsSectionScreen({
                                 pressed && styles.accountHeroPressed,
                             ]}
                         >
-                            <CornerBracketBox color={colors.accent} size={9}>
+                            <CornerBracketBox color={accent.accent} size={9}>
                                 <View style={styles.accountAvatarFrame}>
                                     {user?.userID ? (
                                         <Avatar
@@ -1771,7 +1772,7 @@ const styles = StyleSheet.create({
     statusCardError: {
         backgroundColor: colors.dangerBg,
         borderColor: colors.dangerBorder,
-        borderRadius: 10,
+        borderRadius: 8,
         borderWidth: 1,
         gap: 4,
         paddingHorizontal: 12,
@@ -1780,7 +1781,7 @@ const styles = StyleSheet.create({
     statusCardOk: {
         backgroundColor: colors.successBg,
         borderColor: colors.successBorder,
-        borderRadius: 10,
+        borderRadius: 8,
         borderWidth: 1,
         gap: 4,
         paddingHorizontal: 12,

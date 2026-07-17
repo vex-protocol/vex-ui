@@ -58,7 +58,7 @@ import { useVideoPlayer, VideoView } from "expo-video";
 import { bytesToBase64, writeAttachmentToCache } from "../lib/attachments";
 import { haptic } from "../lib/haptics";
 import { type CodeHighlightKind, highlightCode } from "../lib/syntaxHighlight";
-import { colors, fontFamilies, typography } from "../theme";
+import { colors, fontFamilies, typography, useAccentColors } from "../theme";
 
 import { Avatar } from "./Avatar";
 import { ImagePreviewModal } from "./ImagePreviewModal";
@@ -194,6 +194,7 @@ export function MessageBubbleRN({
     replyTarget = null,
     showIdentity = true,
 }: MessageBubbleRNProps) {
+    const accent = useAccentColors();
     const { height: windowHeight, width: windowWidth } = useWindowDimensions();
     const [menuOpen, setMenuOpen] = React.useState(false);
     const [menuX, setMenuX] = React.useState(0);
@@ -616,7 +617,9 @@ export function MessageBubbleRN({
                                     <Text
                                         style={[
                                             styles.author,
-                                            isOwn && styles.authorSelf,
+                                            isOwn && {
+                                                color: accent.accentText,
+                                            },
                                         ]}
                                     >
                                         {authorName}
@@ -906,6 +909,7 @@ function AudioAttachment({
     onShare: () => Promise<void>;
     sharing: boolean;
 }) {
+    const accent = useAccentColors();
     const player = useAudioPlayer(null, { updateInterval: 250 });
     const status = useAudioPlayerStatus(player);
     const mountedRef = React.useRef(true);
@@ -1046,7 +1050,13 @@ function AudioAttachment({
             </View>
             <View style={styles.mediaProgressTrack}>
                 <View
-                    style={[styles.mediaProgressFill, { width: progressWidth }]}
+                    style={[
+                        styles.mediaProgressFill,
+                        {
+                            backgroundColor: accent.accent,
+                            width: progressWidth,
+                        },
+                    ]}
                 />
             </View>
             <View style={styles.mediaTimeRow}>
@@ -1607,6 +1617,7 @@ function ReactionRow({
     onToggle?: ((emoji: MessageEmoji) => void) | undefined;
     reactions: MessageReaction[];
 }) {
+    const accent = useAccentColors();
     return (
         <View style={styles.reactionRow}>
             {reactions.map((reaction) => {
@@ -1630,7 +1641,10 @@ function ReactionRow({
                         }
                         style={({ pressed }) => [
                             styles.reactionPill,
-                            selected && styles.reactionPillSelected,
+                            selected && {
+                                backgroundColor: accent.accentSoft,
+                                borderColor: accent.accentBorder,
+                            },
                             pressed && styles.attachmentPressed,
                         ]}
                     >
@@ -1981,9 +1995,6 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         lineHeight: 18,
     },
-    authorSelf: {
-        color: colors.accentMuted,
-    },
     avatarSpacer: {
         width: 36,
     },
@@ -2044,10 +2055,11 @@ const styles = StyleSheet.create({
     },
     container: {
         paddingHorizontal: 16,
-        paddingVertical: 4,
+        paddingVertical: 6,
     },
     containerGrouped: {
-        paddingVertical: 0,
+        paddingBottom: 1,
+        paddingTop: 1,
     },
     content: {
         flex: 1,
@@ -2328,7 +2340,6 @@ const styles = StyleSheet.create({
         width: 38,
     },
     mediaProgressFill: {
-        backgroundColor: colors.accent,
         borderRadius: 999,
         height: "100%",
     },
@@ -2408,7 +2419,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         flexDirection: "row",
         gap: 8,
-        marginBottom: 0,
+        marginBottom: 1,
     },
     reactionCount: {
         ...typography.body,
@@ -2492,10 +2503,6 @@ const styles = StyleSheet.create({
         minHeight: 22,
         paddingHorizontal: 9,
         paddingVertical: 3,
-    },
-    reactionPillSelected: {
-        backgroundColor: "rgba(231,0,0,0.18)",
-        borderColor: "rgba(255,107,107,0.45)",
     },
     reactionRow: {
         flexDirection: "row",

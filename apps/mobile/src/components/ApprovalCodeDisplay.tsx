@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { colors, typography } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 import { CornerBracketBox } from "./CornerBracketBox";
 
@@ -18,6 +18,7 @@ export function ApprovalCodeDisplay({
     helperText?: string;
     label?: string;
 }) {
+    const accent = useAccentColors();
     const normalized = code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
     return (
         <View style={[styles.container, compact && styles.containerCompact]}>
@@ -27,7 +28,7 @@ export function ApprovalCodeDisplay({
                     const filled = i < normalized.length;
                     return (
                         <CornerBracketBox
-                            color={filled ? colors.accent : colors.border}
+                            color={filled ? accent.accent : colors.border}
                             key={i}
                             size={compact ? 3 : 6}
                         >
@@ -35,7 +36,9 @@ export function ApprovalCodeDisplay({
                                 style={[
                                     styles.cell,
                                     compact && styles.cellCompact,
-                                    filled && styles.cellFilled,
+                                    filled && {
+                                        borderColor: accent.accent,
+                                    },
                                 ]}
                             >
                                 <Text
@@ -71,9 +74,6 @@ const styles = StyleSheet.create({
     cellCompact: {
         height: 30,
         width: 24,
-    },
-    cellFilled: {
-        borderColor: colors.accent,
     },
     cellText: {
         ...typography.headingSmall,

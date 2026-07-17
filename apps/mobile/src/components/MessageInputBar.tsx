@@ -26,7 +26,7 @@ import * as FileSystem from "expo-file-system/legacy";
 
 import { localVoiceMemoAttachmentFromUri } from "../lib/attachments";
 import { haptic } from "../lib/haptics";
-import { colors } from "../theme";
+import { colors, useAccentColors } from "../theme";
 
 interface ComposerAttachment {
     contentType: string;
@@ -100,6 +100,7 @@ export function MessageInputBar({
     sending = false,
     value,
 }: MessageInputBarProps) {
+    const accent = useAccentColors();
     const [voiceMemoOpen, setVoiceMemoOpen] = useState(false);
     const recordingInProgress = voiceMemoOpen;
     const canSend =
@@ -339,9 +340,17 @@ export function MessageInputBar({
                         haptic("confirm");
                         onSend();
                     }}
-                    style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}
+                    style={[
+                        styles.sendBtn,
+                        { backgroundColor: accent.accent },
+                        !canSend && styles.sendBtnDisabled,
+                    ]}
                 >
-                    <Ionicons color={colors.text} name="arrow-up" size={18} />
+                    <Ionicons
+                        color={accent.onAccent}
+                        name="arrow-up"
+                        size={18}
+                    />
                 </TouchableOpacity>
             </View>
         </View>
@@ -715,6 +724,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.input,
         borderColor: colors.borderSubtle,
+        borderRadius: 7,
         borderWidth: 1,
         height: 42,
         justifyContent: "center",
@@ -722,6 +732,7 @@ const styles = StyleSheet.create({
     },
     attachmentImage: {
         backgroundColor: colors.input,
+        borderRadius: 7,
         height: 42,
         width: 42,
     },
@@ -738,6 +749,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.surfaceLight,
         borderColor: colors.borderSubtle,
+        borderRadius: 8,
         borderWidth: 1,
         flexDirection: "row",
         gap: 10,
@@ -752,12 +764,15 @@ const styles = StyleSheet.create({
         borderTopColor: colors.borderSubtle,
         borderTopWidth: 1,
         gap: 8,
-        padding: 8,
+        paddingBottom: 10,
+        paddingHorizontal: 10,
+        paddingTop: 8,
     },
     editingPreview: {
         alignItems: "center",
         backgroundColor: colors.surfaceLight,
         borderColor: colors.borderSubtle,
+        borderRadius: 8,
         borderWidth: 1,
         flexDirection: "row",
         gap: 8,
@@ -774,13 +789,14 @@ const styles = StyleSheet.create({
     input: {
         backgroundColor: colors.input,
         borderColor: colors.borderSubtle,
+        borderRadius: 8,
         borderWidth: 1,
         color: colors.textSecondary,
         flex: 1,
         fontSize: 14,
         lineHeight: 20,
         maxHeight: 132,
-        minHeight: 40,
+        minHeight: 44,
         paddingHorizontal: 12,
         paddingVertical: 8,
         textAlignVertical: "top",
@@ -797,6 +813,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.dangerBg,
         borderColor: colors.dangerBorder,
+        borderRadius: 8,
         borderWidth: 1,
         flexDirection: "row",
         gap: 10,
@@ -807,6 +824,7 @@ const styles = StyleSheet.create({
     recordingButton: {
         alignItems: "center",
         borderColor: colors.borderSubtle,
+        borderRadius: 16,
         borderWidth: 1,
         height: 32,
         justifyContent: "center",
@@ -832,6 +850,7 @@ const styles = StyleSheet.create({
     removeAttachmentBtn: {
         alignItems: "center",
         borderColor: colors.borderSubtle,
+        borderRadius: 16,
         borderWidth: 1,
         height: 32,
         justifyContent: "center",
@@ -841,6 +860,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.input,
         borderColor: colors.borderSubtle,
+        borderRadius: 6,
         borderWidth: 1,
         height: 32,
         justifyContent: "center",
@@ -854,6 +874,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.surfaceLight,
         borderColor: colors.borderSubtle,
+        borderRadius: 8,
         borderWidth: 1,
         flexDirection: "row",
         gap: 8,
@@ -878,7 +899,6 @@ const styles = StyleSheet.create({
     },
     sendBtn: {
         alignItems: "center",
-        backgroundColor: colors.accent,
         borderRadius: 18,
         height: 36,
         justifyContent: "center",

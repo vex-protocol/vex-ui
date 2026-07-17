@@ -47,6 +47,7 @@
         "@tauri-apps/plugin-sql": "^2.4.0",
         "@tauri-apps/plugin-updater": "^2.10.0",
         "@vex-chat/store": "workspace:*",
+        "@vex-chat/ui": "workspace:*",
         "dompurify": "catalog:",
         "eventemitter3": "5.0.4",
         "highlight.js": "catalog:",

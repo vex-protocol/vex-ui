@@ -51,6 +51,12 @@
         "/settings": wrap({
             asyncComponent: () => import("./routes/Settings.svelte"),
         }),
+        "/settings/appearance": wrap({
+            asyncComponent: () => import("./routes/SettingsAppearance.svelte"),
+        }),
+        "/settings/connection": wrap({
+            asyncComponent: () => import("./routes/SettingsConnection.svelte"),
+        }),
         "/settings/passkeys": wrap({
             asyncComponent: () => import("./routes/SettingsPasskeys.svelte"),
         }),

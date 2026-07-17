@@ -13,6 +13,7 @@ import { ServerSidebar } from "../components/ServerSidebar";
 import { haptic } from "../lib/haptics";
 import { $leftSidebarOpen, $rightSidebarOpen } from "../lib/sidebarState";
 import { AddServerScreen } from "../screens/AddServerScreen";
+import { AppearanceScreen } from "../screens/AppearanceScreen";
 import { AvatarCropScreen } from "../screens/AvatarCropScreen";
 import { CameraCaptureScreen } from "../screens/CameraCaptureScreen";
 import { ChannelListScreen } from "../screens/ChannelListScreen";
@@ -55,6 +56,7 @@ const SIDEBAR_CLOSE_EASING = Easing.bezier(0.4, 0.0, 0.2, 1.0);
 const SIDEBAR_SLOT_HAPTIC_INTERVAL_MS = 95;
 const TOP_LEFT_BACK_ROUTES: ReadonlyArray<keyof AppStackParamList> = [
     "AddServer",
+    "Appearance",
     "AvatarCrop",
     "CameraCapture",
     "DeviceDetails",
@@ -638,6 +640,11 @@ function ContentStack({
                 component={SettingsScreen}
                 listeners={withFocus("Settings")}
                 name="Settings"
+            />
+            <Stack.Screen
+                component={AppearanceScreen}
+                listeners={withFocus("Appearance")}
+                name="Appearance"
             />
             <Stack.Screen
                 component={SettingsSectionScreen}

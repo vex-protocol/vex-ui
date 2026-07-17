@@ -315,7 +315,7 @@
     .chat-input__editing-icon {
         display: grid;
         place-items: center;
-        color: var(--accent-hover);
+        color: var(--accent-text);
     }
 
     .chat-input__editing-label {
@@ -466,7 +466,7 @@
         height: 34px;
         border-radius: 7px;
         background: var(--accent);
-        color: #fff;
+        color: var(--on-accent);
         display: flex;
         align-items: center;
         justify-content: center;

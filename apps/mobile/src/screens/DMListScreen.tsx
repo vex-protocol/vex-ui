@@ -30,12 +30,13 @@ import { useStore } from "@nanostores/react";
 import { Avatar } from "../components/Avatar";
 import { ChatHeader } from "../components/ChatHeader";
 import { VexField } from "../components/VexField";
-import { colors, typography } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 const FRIENDS_DRAWER_WIDTH = 232;
 const ONLINE_WINDOW_MS = 15 * 60 * 1000;
 
 export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
+    const accent = useAccentColors();
     const familiars = useStore($familiars);
     const allMessages = useStore($messages);
     const unreadCounts = useStore($dmUnreadCounts);
@@ -297,7 +298,11 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
                 onPress={() => {
                     openConversation(item);
                 }}
-                style={[styles.row, unread > 0 && styles.rowUnread]}
+                style={[
+                    styles.row,
+                    unread > 0 && styles.rowUnread,
+                    unread > 0 && { borderLeftColor: accent.accent },
+                ]}
             >
                 <Avatar
                     displayName={item.username}
@@ -625,7 +630,6 @@ const styles = StyleSheet.create({
     },
     rowUnread: {
         backgroundColor: colors.surfaceLight,
-        borderLeftColor: colors.accent,
         borderLeftWidth: 2,
     },
     searchBox: {

@@ -39,7 +39,7 @@ import {
     nextAvatarCropRequestId,
 } from "../lib/avatarCropResult";
 import { prepareServerIcon } from "../lib/serverIconImage";
-import { colors, typography } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 type BusyAction =
     | "channel"
@@ -56,6 +56,7 @@ export function ServerSettingsScreen({
     navigation,
     route,
 }: AppScreenProps<"ServerSettings">) {
+    const accent = useAccentColors();
     const { serverID } = route.params;
     const channelsByServer = useStore($channels);
     const localPermissions = useStore($permissions);
@@ -893,7 +894,7 @@ export function ServerSettingsScreen({
                             {membersLoading && members.length === 0 ? (
                                 <View style={styles.loadingRow}>
                                     <ActivityIndicator
-                                        color={colors.accent}
+                                        color={accent.accentText}
                                         size="small"
                                     />
                                     <Text style={styles.emptyText}>
@@ -1002,6 +1003,7 @@ function ActionButton({
     onPress: () => void;
     tone?: "danger" | "dangerFilled" | "default" | "primary" | "quiet";
 }) {
+    const accent = useAccentColors();
     const danger = tone === "danger" || tone === "dangerFilled";
     return (
         <TouchableOpacity
@@ -1011,7 +1013,10 @@ function ActionButton({
             onPress={onPress}
             style={[
                 styles.button,
-                tone === "primary" && styles.buttonPrimary,
+                tone === "primary" && {
+                    backgroundColor: accent.accent,
+                    borderColor: accent.accent,
+                },
                 tone === "quiet" && styles.buttonQuiet,
                 tone === "danger" && styles.buttonDanger,
                 tone === "dangerFilled" && styles.buttonDangerFilled,
@@ -1020,11 +1025,13 @@ function ActionButton({
         >
             <Ionicons
                 color={
-                    tone === "primary" || tone === "dangerFilled"
-                        ? "#fff"
-                        : danger
-                          ? colors.error
-                          : colors.textSecondary
+                    tone === "primary"
+                        ? accent.onAccent
+                        : tone === "dangerFilled"
+                          ? "#fff"
+                          : danger
+                            ? colors.error
+                            : colors.textSecondary
                 }
                 name={icon}
                 size={16}
@@ -1032,8 +1039,8 @@ function ActionButton({
             <Text
                 style={[
                     styles.buttonText,
-                    (tone === "primary" || tone === "dangerFilled") &&
-                        styles.buttonTextFilled,
+                    tone === "primary" && { color: accent.onAccent },
+                    tone === "dangerFilled" && styles.buttonTextFilled,
                     danger &&
                         tone !== "dangerFilled" &&
                         styles.buttonTextDanger,
@@ -1098,14 +1105,20 @@ function TabButton({
     label: string;
     onPress: () => void;
 }) {
+    const accent = useAccentColors();
     return (
         <TouchableOpacity
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
             onPress={onPress}
-            style={[styles.tab, active && styles.tabActive]}
+            style={[
+                styles.tab,
+                active && { backgroundColor: accent.accentSoft },
+            ]}
         >
-            <Text style={[styles.tabText, active && styles.tabTextActive]}>
+            <Text
+                style={[styles.tabText, active && { color: accent.accentText }]}
+            >
                 {label}
             </Text>
         </TouchableOpacity>
@@ -1154,10 +1167,6 @@ const styles = StyleSheet.create({
     buttonDangerFilled: {
         backgroundColor: colors.error,
         borderColor: colors.error,
-    },
-    buttonPrimary: {
-        backgroundColor: colors.accent,
-        borderColor: colors.accent,
     },
     buttonQuiet: {
         borderColor: colors.transparent,
@@ -1427,9 +1436,6 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         minHeight: 36,
     },
-    tabActive: {
-        backgroundColor: "rgba(231,0,0,0.16)",
-    },
     tabs: {
         backgroundColor: colors.surface,
         borderBottomColor: colors.borderSubtle,
@@ -1442,8 +1448,5 @@ const styles = StyleSheet.create({
         ...typography.button,
         color: colors.muted,
         fontSize: 12,
-    },
-    tabTextActive: {
-        color: colors.accentMuted,
     },
 });

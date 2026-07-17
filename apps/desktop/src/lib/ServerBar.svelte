@@ -204,7 +204,7 @@
         border: 2px solid var(--bg-tertiary);
         border-radius: 9px;
         background: var(--accent);
-        color: #fff;
+        color: var(--on-accent);
         font-size: 10px;
         font-weight: 700;
         line-height: 1;

@@ -35,7 +35,7 @@ import { localFileAttachmentFromUri } from "../lib/attachments";
 import { haptic } from "../lib/haptics";
 import { $incomingShare } from "../lib/incomingShareState";
 import { clearIncomingShareIntent } from "../lib/shareIntent";
-import { colors, typography } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 type RecipientTarget =
     | {
@@ -60,6 +60,7 @@ type RecipientTarget =
 export function ShareComposerScreen({
     navigation,
 }: AppScreenProps<"ShareComposer">) {
+    const accent = useAccentColors();
     const insets = useSafeAreaInsets();
     const share = useStore($incomingShare);
     const familiars = useStore($familiars);
@@ -268,7 +269,12 @@ export function ShareComposerScreen({
                 }}
                 style={[
                     styles.targetRow,
-                    selected ? styles.targetRowSelected : null,
+                    selected
+                        ? {
+                              backgroundColor: accent.accentSoft,
+                              borderColor: accent.accentBorder,
+                          }
+                        : null,
                     sent ? styles.targetRowSent : null,
                 ]}
             >
@@ -298,11 +304,23 @@ export function ShareComposerScreen({
                 <View
                     style={[
                         styles.check,
-                        selected ? styles.checkSelected : null,
+                        selected
+                            ? [
+                                  styles.checkSelected,
+                                  {
+                                      backgroundColor: accent.accent,
+                                      borderColor: accent.accent,
+                                  },
+                              ]
+                            : null,
                     ]}
                 >
                     {(selected || sent) && (
-                        <Ionicons color="#130E0E" name="checkmark" size={16} />
+                        <Ionicons
+                            color={accent.onAccent}
+                            name="checkmark"
+                            size={16}
+                        />
                     )}
                 </View>
             </TouchableOpacity>
@@ -357,17 +375,30 @@ export function ShareComposerScreen({
                     onPress={sendShare}
                     style={[
                         styles.sendButton,
+                        { backgroundColor: accent.accent },
                         pendingTargets.length === 0 || sending
                             ? styles.sendButtonDisabled
                             : null,
                     ]}
                 >
                     {sending ? (
-                        <ActivityIndicator color="#180F0F" size="small" />
+                        <ActivityIndicator
+                            color={accent.onAccent}
+                            size="small"
+                        />
                     ) : (
                         <>
-                            <Ionicons color="#180F0F" name="send" size={16} />
-                            <Text style={styles.sendButtonText}>
+                            <Ionicons
+                                color={accent.onAccent}
+                                name="send"
+                                size={16}
+                            />
+                            <Text
+                                style={[
+                                    styles.sendButtonText,
+                                    { color: accent.onAccent },
+                                ]}
+                            >
                                 Send
                                 {pendingTargets.length > 0
                                     ? ` to ${pendingTargets.length}`
@@ -481,10 +512,7 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         width: 20,
     },
-    checkSelected: {
-        backgroundColor: colors.accentMuted,
-        borderColor: colors.accentMuted,
-    },
+    checkSelected: {},
     container: {
         backgroundColor: colors.bg,
         flex: 1,
@@ -581,7 +609,6 @@ const styles = StyleSheet.create({
     },
     sendButton: {
         alignItems: "center",
-        backgroundColor: colors.accentMuted,
         borderRadius: 8,
         flexDirection: "row",
         gap: 8,
@@ -610,10 +637,6 @@ const styles = StyleSheet.create({
         marginTop: 8,
         paddingHorizontal: 12,
         paddingVertical: 10,
-    },
-    targetRowSelected: {
-        backgroundColor: "rgba(255,107,107,0.12)",
-        borderColor: "rgba(255,107,107,0.52)",
     },
     targetRowSent: {
         opacity: 0.58,

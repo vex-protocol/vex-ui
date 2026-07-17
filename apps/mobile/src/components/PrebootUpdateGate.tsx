@@ -33,7 +33,7 @@ import {
 } from "../lib/appUpdates";
 import { buildInfo } from "../lib/buildInfo";
 import { usePendingOtaReload } from "../lib/usePendingOtaReload";
-import { colors, typography } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 type PrebootPhase =
     | "apk_downloading"
@@ -67,6 +67,7 @@ export function PrebootSplash({
     progress: number;
     title: string;
 }) {
+    const accent = useAccentColors();
     const [spin] = useState(() => new Animated.Value(0));
     const [pulse] = useState(() => new Animated.Value(1));
     const [progressValue] = useState(
@@ -134,16 +135,12 @@ export function PrebootSplash({
     return (
         <View style={styles.root}>
             <StatusBar barStyle="light-content" />
-            <View pointerEvents="none" style={styles.gridLineTop} />
-            <View pointerEvents="none" style={styles.gridLineBottom} />
-            <View pointerEvents="none" style={styles.glowTop} />
-            <View pointerEvents="none" style={styles.glowBottom} />
-
             <View style={styles.shell}>
                 <Text style={styles.brand}>VEX</Text>
                 <Animated.Text
                     style={[
                         styles.spinner,
+                        { color: accent.accentText },
                         {
                             transform: [{ rotate: rotation }, { scale: pulse }],
                         },
@@ -156,7 +153,13 @@ export function PrebootSplash({
                 {detail ? <Text style={styles.detail}>{detail}</Text> : null}
                 <View style={styles.progressTrack}>
                     <Animated.View
-                        style={[styles.progressFill, { width: progressWidth }]}
+                        style={[
+                            styles.progressFill,
+                            {
+                                backgroundColor: accent.accent,
+                                width: progressWidth,
+                            },
+                        ]}
                     />
                 </View>
                 <Text style={styles.version}>
@@ -518,9 +521,17 @@ function PrimaryAction({
     label: string;
     onPress: () => void;
 }) {
+    const accent = useAccentColors();
     return (
-        <Pressable onPress={onPress} style={styles.primaryAction}>
-            <Text style={styles.primaryActionText}>{label}</Text>
+        <Pressable
+            onPress={onPress}
+            style={[styles.primaryAction, { backgroundColor: accent.accent }]}
+        >
+            <Text
+                style={[styles.primaryActionText, { color: accent.onAccent }]}
+            >
+                {label}
+            </Text>
         </Pressable>
     );
 }
@@ -588,42 +599,6 @@ const styles = StyleSheet.create({
         minHeight: 36,
         textAlign: "center",
     },
-    glowBottom: {
-        backgroundColor: colors.accent,
-        borderRadius: 160,
-        bottom: -72,
-        height: 190,
-        left: "12%",
-        opacity: 0.1,
-        position: "absolute",
-        width: 190,
-    },
-    glowTop: {
-        backgroundColor: colors.accent,
-        borderRadius: 200,
-        height: 220,
-        opacity: 0.14,
-        position: "absolute",
-        right: -72,
-        top: -86,
-        width: 220,
-    },
-    gridLineBottom: {
-        backgroundColor: "rgba(255,255,255,0.05)",
-        bottom: "20%",
-        height: 1,
-        left: 0,
-        position: "absolute",
-        right: 0,
-    },
-    gridLineTop: {
-        backgroundColor: "rgba(255,255,255,0.05)",
-        height: 1,
-        left: 0,
-        position: "absolute",
-        right: 0,
-        top: "22%",
-    },
     message: {
         ...typography.bodyLarge,
         color: "rgba(255,255,255,0.74)",
@@ -633,7 +608,6 @@ const styles = StyleSheet.create({
     },
     primaryAction: {
         alignItems: "center",
-        backgroundColor: colors.accent,
         borderColor: "rgba(255,255,255,0.18)",
         borderRadius: 8,
         borderWidth: 1,
@@ -648,13 +622,8 @@ const styles = StyleSheet.create({
         color: "#fff",
     },
     progressFill: {
-        backgroundColor: colors.accent,
         borderRadius: 999,
         height: "100%",
-        shadowColor: colors.accent,
-        shadowOffset: { height: 0, width: 0 },
-        shadowOpacity: 0.8,
-        shadowRadius: 12,
     },
     progressTrack: {
         backgroundColor: "rgba(255,255,255,0.12)",
@@ -668,7 +637,7 @@ const styles = StyleSheet.create({
     },
     root: {
         alignItems: "center",
-        backgroundColor: "#050506",
+        backgroundColor: colors.bg,
         flex: 1,
         justifyContent: "center",
         paddingHorizontal: 28,
@@ -695,8 +664,7 @@ const styles = StyleSheet.create({
         width: "100%",
     },
     spinner: {
-        color: colors.accent,
-        fontSize: 54,
+        fontSize: 44,
         marginBottom: 4,
         marginTop: 6,
     },

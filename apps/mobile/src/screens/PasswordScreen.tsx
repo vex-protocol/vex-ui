@@ -14,9 +14,10 @@ import { ChatHeader } from "../components/ChatHeader";
 import { CornerBracketBox } from "../components/CornerBracketBox";
 import { VexButton } from "../components/VexButton";
 import { VexField } from "../components/VexField";
-import { colors, typography } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 export function PasswordScreen() {
+    const accent = useAccentColors();
     const [currentPassword, setCurrentPassword] = useState("");
     const [newPassword, setNewPassword] = useState("");
     const [confirmation, setConfirmation] = useState("");
@@ -79,7 +80,9 @@ export function PasswordScreen() {
                 keyboardShouldPersistTaps="handled"
             >
                 <View style={styles.intro}>
-                    <Text style={styles.kicker}>ACCOUNT SECURITY</Text>
+                    <Text style={[styles.kicker, { color: accent.accentText }]}>
+                        ACCOUNT SECURITY
+                    </Text>
                     <Text style={styles.introText}>
                         Use 15 or more characters. Symbols and capitalization
                         are optional.
@@ -136,7 +139,7 @@ export function PasswordScreen() {
                         thumbColor={colors.text}
                         trackColor={{
                             false: colors.border,
-                            true: colors.accentDark,
+                            true: accent.accentDark,
                         }}
                         value={showPasswords}
                     />
@@ -184,6 +187,7 @@ function PasswordField({
     secure: boolean;
     value: string;
 }) {
+    const accent = useAccentColors();
     return (
         <View style={styles.field}>
             <Text style={styles.fieldLabel}>{label}</Text>
@@ -199,7 +203,7 @@ function PasswordField({
                     placeholderTextColor={colors.mutedDark}
                     returnKeyType={onSubmit ? "go" : "next"}
                     secureTextEntry={secure}
-                    selectionColor={colors.accent}
+                    selectionColor={accent.accent}
                     style={styles.input}
                     textContentType={
                         autoComplete === "current-password"
@@ -264,7 +268,6 @@ const styles = StyleSheet.create({
     },
     kicker: {
         ...typography.label,
-        color: colors.accentMuted,
         letterSpacing: 0,
     },
     noticeBox: {

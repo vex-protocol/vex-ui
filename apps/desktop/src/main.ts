@@ -19,6 +19,7 @@ import "./app.css";
 import App from "./App.svelte";
 import { authenticatePasskey, registerPasskey } from "./lib/passkey.js";
 import { vexService } from "./lib/store/index.js";
+import { initializeAppearance } from "./lib/stores/theme.js";
 
 const browserFetch = globalThis.fetch.bind(globalThis);
 const nativeHttpOrigins = new Set([
@@ -43,9 +44,8 @@ vexService.setPasskeyCeremonyDriver({
     register: registerPasskey,
 });
 
-// Apply saved theme before mount to prevent flash of wrong theme
-const savedTheme = localStorage.getItem("vex-theme") ?? "dark";
-document.documentElement.setAttribute("data-theme", savedTheme);
+// Apply color scheme and accent before mount to prevent a flash of defaults.
+initializeAppearance();
 
 const target = document.getElementById("app");
 if (!target) {

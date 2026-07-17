@@ -14,12 +14,14 @@
         HardDrive,
         KeyRound,
         LockKeyhole,
+        Network,
+        Palette,
         Settings2,
         ShieldCheck,
     } from "@lucide/svelte";
 
     import Avatar from "../lib/Avatar.svelte";
-    import { clearSession, getServerUrl, setServerUrl } from "../lib/config.js";
+    import { clearSession, getServerUrl } from "../lib/config.js";
     import { keyStore } from "../lib/keystore.js";
     import {
         getNotificationPermissionState,
@@ -35,7 +37,6 @@
         setSoundsEnabled,
     } from "../lib/sounds.js";
     import { avatarHash, user, vexService } from "../lib/store/index.js";
-    import { theme, toggleTheme } from "../lib/stores/theme.js";
     import {
         applyUpdate,
         checkForUpdates,
@@ -255,16 +256,7 @@
 
     // ── Server URL ──────────────────────────────────────────────────────────────
 
-    let serverUrl = $state(getServerUrl());
-    let serverUrlSaved = $state(false);
-
-    function saveServerUrl(): void {
-        setServerUrl(serverUrl.trim());
-        serverUrlSaved = true;
-        setTimeout(() => {
-            serverUrlSaved = false;
-        }, 2000);
-    }
+    const serverUrl = getServerUrl();
 
     // ── Account info ────────────────────────────────────────────────────────────
 
@@ -422,19 +414,27 @@
                 <!-- ── Appearance ── -->
                 <section class="settings-section">
                     <h2 class="settings-section__title">Appearance</h2>
-                    <div class="settings-row">
-                        <div class="settings-row__info">
-                            <span class="settings-row__label">Theme</span>
-                            <span class="settings-row__desc"
-                                >Toggle between dark and light mode</span
+                    <button
+                        class="settings-link-row"
+                        type="button"
+                        onclick={() => void push("/settings/appearance")}
+                    >
+                        <span class="settings-link-row__icon">
+                            <Palette size={18} strokeWidth={1.8} />
+                        </span>
+                        <span class="settings-row__info">
+                            <span class="settings-row__label"
+                                >Theme and primary color</span
                             >
-                        </div>
-                        <button class="settings-btn" onclick={toggleTheme}>
-                            {$theme === "dark"
-                                ? "Switch to Light"
-                                : "Switch to Dark"}
-                        </button>
-                    </div>
+                            <span class="settings-row__desc"
+                                >Dark or light mode with your preferred accent</span
+                            >
+                        </span>
+                        <ChevronRight
+                            class="settings-link-row__chevron"
+                            size={17}
+                        />
+                    </button>
                     <div class="settings-row">
                         <div class="settings-row__info">
                             <span class="settings-row__label"
@@ -512,30 +512,23 @@
                 <!-- ── Connection ── -->
                 <section class="settings-section">
                     <h2 class="settings-section__title">Connection</h2>
-                    <div class="settings-row settings-row--column">
-                        <label class="settings-row__label" for="server-url"
-                            >Server URL</label
-                        >
-                        <span class="settings-row__desc"
-                            >The Vex Chat server this client connects to</span
-                        >
-                        <div class="settings-row__input-row">
-                            <input
-                                id="server-url"
-                                class="settings-input"
-                                type="url"
-                                bind:value={serverUrl}
-                                placeholder="api.vex.wtf"
-                            />
-                            <button
-                                class="settings-btn"
-                                onclick={saveServerUrl}
-                                disabled={!serverUrl.trim()}
-                            >
-                                {serverUrlSaved ? "Saved!" : "Save"}
-                            </button>
-                        </div>
-                    </div>
+                    <button
+                        class="settings-link-row"
+                        type="button"
+                        onclick={() => void push("/settings/connection")}
+                    >
+                        <span class="settings-link-row__icon">
+                            <Network size={18} strokeWidth={1.8} />
+                        </span>
+                        <span class="settings-row__info">
+                            <span class="settings-row__label">Homeserver</span>
+                            <span class="settings-row__desc">{serverUrl}</span>
+                        </span>
+                        <ChevronRight
+                            class="settings-link-row__chevron"
+                            size={17}
+                        />
+                    </button>
                 </section>
 
                 <!-- ── Updates ── -->
@@ -1059,11 +1052,6 @@
         border-bottom: none;
     }
 
-    .settings-row--column {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
     .settings-row__info {
         display: flex;
         flex-direction: column;
@@ -1091,29 +1079,6 @@
     .settings-row__value--mono {
         font-family: monospace;
         font-size: 12px;
-    }
-
-    .settings-row__input-row {
-        display: flex;
-        gap: 8px;
-        width: 100%;
-        margin-top: 6px;
-    }
-
-    .settings-input {
-        flex: 1;
-        padding: 7px 10px;
-        background: var(--bg-surface);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        color: var(--text-primary);
-        font-size: 13px;
-        min-width: 0;
-    }
-
-    .settings-input:focus {
-        outline: none;
-        border-color: var(--accent);
     }
 
     .settings-btn {
@@ -1158,18 +1123,18 @@
 
     .settings-btn--toggle-on {
         background: var(--accent);
-        color: #fff;
+        color: var(--on-accent);
         border-color: var(--accent);
     }
 
     .settings-btn--primary {
         background: var(--accent);
-        color: #fff;
+        color: var(--on-accent);
         border-color: var(--accent);
     }
 
     .settings-btn--primary:hover:not(:disabled) {
-        background: color-mix(in srgb, var(--accent) 82%, white);
+        background: var(--accent-hover);
     }
 
     .settings-btn--danger {
@@ -1266,7 +1231,7 @@
         margin-left: 6px;
         border-radius: 3px;
         background: var(--accent);
-        color: #fff;
+        color: var(--on-accent);
         vertical-align: middle;
     }
 

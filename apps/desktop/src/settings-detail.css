@@ -84,7 +84,7 @@
     border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
     border-radius: 8px;
     background: var(--accent-soft);
-    color: var(--accent-hover);
+    color: var(--accent-text);
 }
 
 .settings-detail__intro h2 {
@@ -214,7 +214,7 @@
 .settings-detail__button--primary {
     border-color: var(--accent);
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
 }
 
 .settings-detail__button--primary:hover:not(:disabled) {

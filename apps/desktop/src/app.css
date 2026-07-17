@@ -40,28 +40,31 @@ body,
 
 :root {
     color-scheme: dark;
-    --bg-primary: #202126;
-    --bg-secondary: #1b1c21;
-    --bg-tertiary: #141519;
-    --bg-surface: #292a31;
-    --bg-elevated: #303139;
-    --bg-hover: #34363d;
-    --bg-selected: #393b43;
+    --bg-primary: #1e1f22;
+    --bg-secondary: #18191d;
+    --bg-tertiary: #111214;
+    --bg-surface: #24262b;
+    --bg-elevated: #2b2d33;
+    --bg-hover: #303238;
+    --bg-selected: #383a42;
 
     --text-primary: #f2f3f5;
     --text-secondary: #dbdee1;
     --text-muted: #b5bac1;
     --text-faint: #80848e;
 
-    --accent: #e5484d;
-    --accent-hover: #f05b60;
-    --accent-soft: rgba(229, 72, 77, 0.16);
+    --accent: #2563eb;
+    --accent-border: rgba(37, 99, 235, 0.5);
+    --accent-hover: #3b73ed;
+    --accent-soft: rgba(37, 99, 235, 0.18);
+    --accent-text: #6692f1;
+    --on-accent: #ffffff;
     --danger: #f23f42;
     --success: #3ba55c;
     --warning: #f0b232;
     --info: #5ca8e6;
-    --border: #2b2d33;
-    --border-strong: #41434b;
+    --border: #292b31;
+    --border-strong: #3b3e46;
 
     --serverbar-width: 72px;
     --channelbar-width: 264px;
@@ -87,9 +90,6 @@ html[data-theme="light"] {
     --text-secondary: #313338;
     --text-muted: #5c5e66;
     --text-faint: #7c7f87;
-    --accent: #c9383d;
-    --accent-hover: #d94247;
-    --accent-soft: rgba(201, 56, 61, 0.11);
     --danger: #d83c3e;
     --success: #248046;
     --warning: #a85d00;
@@ -151,12 +151,25 @@ textarea::placeholder {
 }
 
 a {
-    color: var(--accent-hover);
+    color: var(--accent-text);
     text-decoration: none;
 }
 
 ::selection {
-    background: rgba(229, 72, 77, 0.32);
+    background: color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+:where(button, a, input, textarea, select):focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+}
+
+:where(button, a) {
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease,
+        opacity 120ms ease;
 }
 
 ::-webkit-scrollbar {
@@ -184,5 +197,16 @@ a {
     :root {
         --serverbar-width: 64px;
         --channelbar-width: 232px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
     }
 }

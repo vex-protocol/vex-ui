@@ -24,7 +24,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useStore } from "@nanostores/react";
 
 import { haptic } from "../lib/haptics";
-import { colors } from "../theme";
+import { colors, useAccentColors } from "../theme";
 
 import { Avatar } from "./Avatar";
 import { ServerIcon } from "./ServerIcon";
@@ -67,6 +67,7 @@ export function ServerSidebar({
     safeAreaBottom = 0,
     safeAreaTop = 0,
 }: ServerSidebarProps) {
+    const accent = useAccentColors();
     const servers = useStore($servers);
     const allChannels = useStore($channels);
     const familiars = useStore($familiars);
@@ -135,6 +136,7 @@ export function ServerSidebar({
                         <View
                             style={[
                                 styles.activePill,
+                                { backgroundColor: accent.accent },
                                 homeActive && styles.activePillVisible,
                             ]}
                         />
@@ -149,6 +151,9 @@ export function ServerSidebar({
                             style={[
                                 styles.homeBtn,
                                 homeActive && styles.homeBtnActive,
+                                homeActive && {
+                                    borderColor: accent.accentBorder,
+                                },
                             ]}
                         >
                             <Ionicons
@@ -184,6 +189,7 @@ export function ServerSidebar({
                                     <View
                                         style={[
                                             styles.activePill,
+                                            { backgroundColor: accent.accent },
                                             active && styles.activePillVisible,
                                         ]}
                                     />
@@ -195,6 +201,10 @@ export function ServerSidebar({
                                         style={[
                                             styles.serverBtn,
                                             active && styles.serverBtnActive,
+                                            active && {
+                                                borderColor:
+                                                    accent.accentBorder,
+                                            },
                                         ]}
                                     >
                                         <ServerIcon
@@ -218,7 +228,12 @@ export function ServerSidebar({
                         })}
 
                         <View style={styles.serverRow}>
-                            <View style={styles.activePill} />
+                            <View
+                                style={[
+                                    styles.activePill,
+                                    { backgroundColor: accent.accent },
+                                ]}
+                            />
                             <TouchableOpacity
                                 accessibilityLabel="Create or join a group"
                                 accessibilityRole="button"
@@ -300,9 +315,13 @@ export function ServerSidebar({
                                                         </Text>
                                                         {unread > 0 ? (
                                                             <View
-                                                                style={
-                                                                    styles.dmNewDot
-                                                                }
+                                                                style={[
+                                                                    styles.dmNewDot,
+                                                                    {
+                                                                        backgroundColor:
+                                                                            accent.accent,
+                                                                    },
+                                                                ]}
                                                             />
                                                         ) : null}
                                                     </View>
@@ -406,7 +425,7 @@ export function ServerSidebar({
                         <Avatar
                             displayName={me.username}
                             ring={{
-                                color: "rgba(231,0,0,0.45)",
+                                color: accent.accentBorder,
                                 width: 1.5,
                             }}
                             size={42}
@@ -451,7 +470,6 @@ function formatUnreadCount(count: number): string {
 
 const styles = StyleSheet.create({
     activePill: {
-        backgroundColor: colors.accent,
         borderRadius: 2,
         height: 28,
         opacity: 0,
@@ -575,7 +593,6 @@ const styles = StyleSheet.create({
         gap: 6,
     },
     dmNewDot: {
-        backgroundColor: colors.accent,
         borderRadius: 999,
         height: 6,
         marginTop: 1,
@@ -625,7 +642,6 @@ const styles = StyleSheet.create({
     },
     homeBtnActive: {
         backgroundColor: colors.selected,
-        borderColor: colors.accentBorder,
     },
     profileAuthDot: {
         backgroundColor: colors.mutedDark,
@@ -711,7 +727,6 @@ const styles = StyleSheet.create({
     },
     serverBtnActive: {
         backgroundColor: colors.selected,
-        borderColor: colors.accentBorder,
     },
     serverList: {
         flex: 1,

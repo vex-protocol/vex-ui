@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
     approveBtn: {
         alignItems: "center",
         borderColor: colors.successBorder,
-        borderRadius: 10,
+        borderRadius: 8,
         borderWidth: 1,
         minWidth: 74,
         paddingHorizontal: 12,
@@ -285,7 +285,7 @@ const styles = StyleSheet.create({
     errorCard: {
         backgroundColor: colors.dangerBg,
         borderColor: colors.dangerBorder,
-        borderRadius: 10,
+        borderRadius: 8,
         borderWidth: 1,
         paddingHorizontal: 12,
         paddingVertical: 10,
@@ -313,7 +313,7 @@ const styles = StyleSheet.create({
     rejectBtn: {
         alignItems: "center",
         borderColor: "rgba(255,255,255,0.18)",
-        borderRadius: 10,
+        borderRadius: 8,
         borderWidth: 1,
         minWidth: 70,
         paddingHorizontal: 12,
@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
     requestCard: {
         backgroundColor: "rgba(255,255,255,0.02)",
         borderColor: "rgba(255,255,255,0.08)",
-        borderRadius: 10,
+        borderRadius: 8,
         borderWidth: 1,
         gap: 10,
         paddingHorizontal: 12,

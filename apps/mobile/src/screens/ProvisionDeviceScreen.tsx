@@ -17,13 +17,14 @@ import { VexButton } from "../components/VexButton";
 import { getServerOptions } from "../lib/config";
 import { keychainKeyStore } from "../lib/keychain";
 import { mobileConfig } from "../lib/platform";
-import { colors, typography } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 type Props = AuthScreenProps<"ProvisionDevice">;
 
 type ProvisionPhase = "error" | "requesting_approval" | "signing_in";
 
 export function ProvisionDeviceScreen({ navigation, route }: Props) {
+    const accent = useAccentColors();
     const username = route.params.username;
     const hasLocalDevice = route.params.hasLocalDevice;
     const [phase, setPhase] = useState<ProvisionPhase>(
@@ -151,6 +152,7 @@ export function ProvisionDeviceScreen({ navigation, route }: Props) {
                 <Animated.Text
                     style={[
                         styles.spinner,
+                        { color: accent.accentText },
                         {
                             transform: [{ rotate: rotation }, { scale: pulse }],
                         },
@@ -227,7 +229,6 @@ const styles = StyleSheet.create({
         backgroundColor: "#000000",
     },
     spinner: {
-        color: colors.accent,
         fontSize: 50,
         marginBottom: 2,
     },

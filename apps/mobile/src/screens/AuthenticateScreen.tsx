@@ -25,7 +25,7 @@ import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
 import { matchingCodeForSignKey } from "../lib/deviceApprovalCode";
 import { isPasskeySupported } from "../lib/passkey";
-import { colors, typography } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 type Props = AuthScreenProps<"Authenticate">;
 
@@ -41,6 +41,7 @@ type DisplayPhase =
     | "waiting";
 
 export function AuthenticateScreen({ navigation, route }: Props) {
+    const accent = useAccentColors();
     const user = useStore($user);
     const stage = useStore($pendingApprovalStage);
     const requestID = route.params?.requestID ?? null;
@@ -333,7 +334,12 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                                     restoreBusy && styles.linkDisabled,
                                 ]}
                             >
-                                <Text style={styles.linkText}>
+                                <Text
+                                    style={[
+                                        styles.linkText,
+                                        { color: accent.accentText },
+                                    ]}
+                                >
                                     Other methods
                                 </Text>
                             </TouchableOpacity>
@@ -354,8 +360,22 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                                 footerBusy && styles.linkDisabled,
                             ]}
                         >
-                            <Text style={styles.linkArrow}>‹</Text>
-                            <Text style={styles.linkText}>Back to sign in</Text>
+                            <Text
+                                style={[
+                                    styles.linkArrow,
+                                    { color: accent.accentText },
+                                ]}
+                            >
+                                ‹
+                            </Text>
+                            <Text
+                                style={[
+                                    styles.linkText,
+                                    { color: accent.accentText },
+                                ]}
+                            >
+                                Back to sign in
+                            </Text>
                         </TouchableOpacity>
                     </>
                 ) : null}
@@ -432,7 +452,14 @@ export function AuthenticateScreen({ navigation, route }: Props) {
                                 restoreBusy && styles.linkDisabled,
                             ]}
                         >
-                            <Text style={styles.linkText}>Cancel</Text>
+                            <Text
+                                style={[
+                                    styles.linkText,
+                                    { color: accent.accentText },
+                                ]}
+                            >
+                                Cancel
+                            </Text>
                         </TouchableOpacity>
                     </Pressable>
                 </Pressable>
@@ -519,7 +546,6 @@ const styles = StyleSheet.create({
     },
     linkArrow: {
         ...typography.body,
-        color: colors.accent,
         fontSize: 18,
         marginTop: -2,
     },
@@ -535,8 +561,6 @@ const styles = StyleSheet.create({
     },
     linkText: {
         ...typography.body,
-        color: colors.accent,
-        textDecorationColor: colors.accent,
         textDecorationLine: "underline",
         textDecorationStyle: "dotted",
     },

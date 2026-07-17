@@ -27,7 +27,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useStore } from "@nanostores/react";
 
 import { BackButton } from "../components/BackButton";
-import { CornerBracketBox } from "../components/CornerBracketBox";
 import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
 import { VexLogo } from "../components/VexLogo";
@@ -35,7 +34,7 @@ import { getServerOptions } from "../lib/config";
 import { keychainKeyStore, listKnownAccounts } from "../lib/keychain";
 import { mobileConfig } from "../lib/platform";
 import { hydrateLocalMessageRetention } from "../lib/retentionPreference";
-import { colors, typography } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 type Phase = "boot" | "form";
 
@@ -45,6 +44,7 @@ export function HangTightScreen({
     navigation,
     route,
 }: AuthScreenProps<"HangTight">) {
+    const accent = useAccentColors();
     // `force: true` skips autoLogin and goes straight to the handle form —
     // used when the user explicitly chooses "Sign in with a different
     // account" or "Create an account" from a non-bootstrap entry point.
@@ -79,10 +79,9 @@ export function HangTightScreen({
         [spin],
     );
 
-    // ── Form animations: fade/slide entrance + pulsing input glow ──────────
+    // ── Form animations: a short fade/slide entrance ──────────────────────
     const formOpacity = useRef(new Animated.Value(0)).current;
     const formY = useRef(new Animated.Value(20)).current;
-    const inputGlow = useRef(new Animated.Value(0)).current;
     const buttonScale = useRef(new Animated.Value(1)).current;
     const errorShake = useRef(new Animated.Value(0)).current;
     const passwordInputRef = useRef<TextInput>(null);
@@ -149,28 +148,7 @@ export function HangTightScreen({
                 useNativeDriver: true,
             }),
         ]).start();
-
-        const loop = Animated.loop(
-            Animated.sequence([
-                Animated.timing(inputGlow, {
-                    duration: 1400,
-                    easing: Easing.inOut(Easing.quad),
-                    toValue: 1,
-                    useNativeDriver: false,
-                }),
-                Animated.timing(inputGlow, {
-                    duration: 1400,
-                    easing: Easing.inOut(Easing.quad),
-                    toValue: 0,
-                    useNativeDriver: false,
-                }),
-            ]),
-        );
-        loop.start();
-        return () => {
-            loop.stop();
-        };
-    }, [phase, formOpacity, formY, inputGlow]);
+    }, [phase, formOpacity, formY]);
 
     useEffect(() => {
         let cancelled = false;
@@ -473,20 +451,6 @@ export function HangTightScreen({
 
     const handleValid = HANDLE_PATTERN.test(username.trim());
     const showHint = username.length > 0;
-    const cornerColor = focused ? colors.accent : colors.border;
-    const passwordCornerColor = passwordFocused ? colors.accent : colors.border;
-    const confirmationCornerColor = confirmationFocused
-        ? colors.accent
-        : colors.border;
-
-    const inputGlowOpacity = inputGlow.interpolate({
-        inputRange: [0, 1],
-        outputRange: focused ? [0.55, 0.85] : [0.18, 0.38],
-    });
-    const inputGlowScale = inputGlow.interpolate({
-        inputRange: [0, 1],
-        outputRange: [1, 1.06],
-    });
     const shakeX = errorShake.interpolate({
         inputRange: [-1, 1],
         outputRange: [-8, 8],
@@ -495,9 +459,6 @@ export function HangTightScreen({
     if (phase === "form") {
         return (
             <ScreenLayout style={styles.layout}>
-                <View pointerEvents="none" style={styles.blackoutLayer} />
-                <View pointerEvents="none" style={styles.glowTop} />
-                <View pointerEvents="none" style={styles.glowBottom} />
                 {forceForm && navigation.canGoBack() ? (
                     <View style={styles.backButton}>
                         <BackButton />
@@ -560,22 +521,13 @@ export function HangTightScreen({
                             ) : null}
 
                             <View style={styles.inputArea}>
-                                <Animated.View
-                                    pointerEvents="none"
+                                <View
                                     style={[
-                                        styles.inputGlow,
-                                        {
-                                            opacity: inputGlowOpacity,
-                                            transform: [
-                                                { scale: inputGlowScale },
-                                            ],
+                                        styles.inputFrame,
+                                        focused && {
+                                            borderColor: accent.accent,
                                         },
                                     ]}
-                                />
-                                <CornerBracketBox
-                                    color={cornerColor}
-                                    size={10}
-                                    thickness={1.5}
                                 >
                                     <View style={styles.inputRow}>
                                         <Text style={styles.atSign}>@</Text>
@@ -619,7 +571,7 @@ export function HangTightScreen({
                                                 colors.mutedDark
                                             }
                                             returnKeyType="next"
-                                            selectionColor={colors.accent}
+                                            selectionColor={accent.accent}
                                             style={styles.input}
                                             submitBehavior="submit"
                                             value={username}
@@ -637,7 +589,7 @@ export function HangTightScreen({
                                             </Text>
                                         ) : null}
                                     </View>
-                                </CornerBracketBox>
+                                </View>
                             </View>
 
                             <Text style={styles.hint}>
@@ -645,10 +597,13 @@ export function HangTightScreen({
                             </Text>
 
                             <View style={styles.passwordArea}>
-                                <CornerBracketBox
-                                    color={passwordCornerColor}
-                                    size={10}
-                                    thickness={1.5}
+                                <View
+                                    style={[
+                                        styles.inputFrame,
+                                        passwordFocused && {
+                                            borderColor: accent.accent,
+                                        },
+                                    ]}
                                 >
                                     <View style={styles.inputRow}>
                                         <TextInput
@@ -690,7 +645,7 @@ export function HangTightScreen({
                                                     : "go"
                                             }
                                             secureTextEntry={!showPassword}
-                                            selectionColor={colors.accent}
+                                            selectionColor={accent.accent}
                                             style={styles.input}
                                             textContentType={
                                                 isCreatingAccount
@@ -725,15 +680,18 @@ export function HangTightScreen({
                                             />
                                         </Pressable>
                                     </View>
-                                </CornerBracketBox>
+                                </View>
                             </View>
 
                             {isCreatingAccount ? (
                                 <View style={styles.passwordArea}>
-                                    <CornerBracketBox
-                                        color={confirmationCornerColor}
-                                        size={10}
-                                        thickness={1.5}
+                                    <View
+                                        style={[
+                                            styles.inputFrame,
+                                            confirmationFocused && {
+                                                borderColor: accent.accent,
+                                            },
+                                        ]}
                                     >
                                         <View style={styles.inputRow}>
                                             <TextInput
@@ -767,13 +725,13 @@ export function HangTightScreen({
                                                 ref={confirmationInputRef}
                                                 returnKeyType="go"
                                                 secureTextEntry={!showPassword}
-                                                selectionColor={colors.accent}
+                                                selectionColor={accent.accent}
                                                 style={styles.input}
                                                 textContentType="newPassword"
                                                 value={confirmPassword}
                                             />
                                         </View>
-                                    </CornerBracketBox>
+                                    </View>
                                 </View>
                             ) : null}
 
@@ -792,7 +750,6 @@ export function HangTightScreen({
                                     disabled={
                                         busy || username.trim().length === 0
                                     }
-                                    glow
                                     loading={busy}
                                     onPress={handleSubmit}
                                     style={styles.signInBtn}
@@ -836,7 +793,14 @@ export function HangTightScreen({
                                             }}
                                             style={styles.forgotButton}
                                         >
-                                            <Text style={styles.forgotText}>
+                                            <Text
+                                                style={[
+                                                    styles.forgotText,
+                                                    {
+                                                        color: accent.accentText,
+                                                    },
+                                                ]}
+                                            >
                                                 Forgot password?
                                             </Text>
                                         </Pressable>
@@ -864,6 +828,7 @@ export function HangTightScreen({
                 <Animated.Text
                     style={[
                         styles.icon,
+                        { color: accent.accentText },
                         { transform: [{ rotate: rotation }, { scale: pulse }] },
                     ]}
                 >
@@ -892,11 +857,6 @@ const styles = StyleSheet.create({
         position: "absolute",
         top: 20,
         zIndex: 2,
-    },
-    blackoutLayer: {
-        ...StyleSheet.absoluteFill,
-        backgroundColor: "#000000",
-        opacity: 0.72,
     },
     bootContainer: {
         alignItems: "center",
@@ -934,6 +894,7 @@ const styles = StyleSheet.create({
         alignSelf: "stretch",
         backgroundColor: colors.dangerBg,
         borderColor: colors.dangerBorder,
+        borderRadius: 8,
         borderWidth: 1,
         marginTop: 14,
         paddingHorizontal: 12,
@@ -957,7 +918,6 @@ const styles = StyleSheet.create({
     },
     forgotText: {
         ...typography.body,
-        color: colors.accentMuted,
         fontSize: 13,
     },
     formContent: {
@@ -966,11 +926,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 8,
         width: "100%",
     },
-    // ScrollView contentContainer that hosts the form. flexGrow:1 +
-    // justifyContent:"center" preserves the "centered floating card"
-    // feel on tall screens, while still letting the form scroll into
-    // view when the keyboard or a small device shrinks the viewport
-    // below the form's intrinsic height.
+    // Keep the form centered on tall screens while allowing it to scroll
+    // above the keyboard on compact devices.
     formScrollContent: {
         flexGrow: 1,
         justifyContent: "center",
@@ -979,26 +936,6 @@ const styles = StyleSheet.create({
     formWrap: {
         flex: 1,
         zIndex: 1,
-    },
-    glowBottom: {
-        backgroundColor: colors.accent,
-        borderRadius: 140,
-        bottom: -50,
-        height: 160,
-        left: "20%",
-        opacity: 0.1,
-        position: "absolute",
-        width: 160,
-    },
-    glowTop: {
-        backgroundColor: colors.accent,
-        borderRadius: 160,
-        height: 180,
-        opacity: 0.12,
-        position: "absolute",
-        right: -50,
-        top: -60,
-        width: 180,
     },
     heading: {
         ...typography.heading,
@@ -1013,7 +950,6 @@ const styles = StyleSheet.create({
         textAlign: "center",
     },
     icon: {
-        color: colors.accent,
         fontSize: 48,
         marginBottom: 24,
     },
@@ -1029,30 +965,20 @@ const styles = StyleSheet.create({
         marginTop: 22,
         position: "relative",
     },
-    inputGlow: {
-        backgroundColor: colors.accent,
-        borderRadius: 18,
-        bottom: -8,
-        elevation: 18,
-        left: -10,
-        position: "absolute",
-        right: -10,
-        shadowColor: colors.accent,
-        shadowOffset: { height: 0, width: 0 },
-        shadowOpacity: 0.75,
-        shadowRadius: 28,
-        top: -8,
+    inputFrame: {
+        backgroundColor: colors.input,
+        borderColor: colors.border,
+        borderRadius: 8,
+        borderWidth: 1,
+        overflow: "hidden",
     },
     inputRow: {
         alignItems: "center",
-        backgroundColor: colors.input,
-        borderColor: "rgba(255,255,255,0.06)",
-        borderWidth: 1,
         flexDirection: "row",
         paddingHorizontal: 14,
     },
     layout: {
-        backgroundColor: "#000000",
+        backgroundColor: colors.bg,
     },
     logoBlock: {
         alignItems: "flex-start",
@@ -1061,6 +987,7 @@ const styles = StyleSheet.create({
         alignSelf: "stretch",
         backgroundColor: colors.successBg,
         borderColor: colors.successBorder,
+        borderRadius: 8,
         borderWidth: 1,
         marginTop: 14,
         paddingHorizontal: 12,
