@@ -1167,6 +1167,7 @@ const styles = StyleSheet.create({
         zIndex: 1200,
     },
     hydrationPercent: {
+        color: colors.textSecondary,
         fontSize: 12,
         fontWeight: "600",
     },
