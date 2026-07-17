@@ -152,7 +152,7 @@ export function ServerSidebar({
                                 styles.homeBtn,
                                 homeActive && styles.homeBtnActive,
                                 homeActive && {
-                                    borderColor: accent.accentBorder,
+                                    borderColor: colors.border,
                                 },
                             ]}
                         >
@@ -165,13 +165,13 @@ export function ServerSidebar({
                                 <View
                                     style={[
                                         styles.homeBadge,
-                                        { backgroundColor: accent.accent },
+                                        { backgroundColor: colors.unread },
                                     ]}
                                 >
                                     <Text
                                         style={[
                                             styles.homeBadgeText,
-                                            { color: accent.onAccent },
+                                            { color: colors.unreadText },
                                         ]}
                                     >
                                         {formatUnreadCount(totalDmUnread)}
@@ -212,8 +212,7 @@ export function ServerSidebar({
                                             styles.serverBtn,
                                             active && styles.serverBtnActive,
                                             active && {
-                                                borderColor:
-                                                    accent.accentBorder,
+                                                borderColor: colors.border,
                                             },
                                         ]}
                                     >
@@ -229,7 +228,7 @@ export function ServerSidebar({
                                                     styles.serverBadge,
                                                     {
                                                         backgroundColor:
-                                                            accent.accent,
+                                                            colors.unread,
                                                     },
                                                 ]}
                                             >
@@ -237,7 +236,7 @@ export function ServerSidebar({
                                                     style={[
                                                         styles.dmBadgeText,
                                                         {
-                                                            color: accent.onAccent,
+                                                            color: colors.unreadText,
                                                         },
                                                     ]}
                                                 >
@@ -336,17 +335,6 @@ export function ServerSidebar({
                                                         >
                                                             {user.username}
                                                         </Text>
-                                                        {unread > 0 ? (
-                                                            <View
-                                                                style={[
-                                                                    styles.dmNewDot,
-                                                                    {
-                                                                        backgroundColor:
-                                                                            accent.accent,
-                                                                    },
-                                                                ]}
-                                                            />
-                                                        ) : null}
                                                     </View>
                                                 </View>
                                                 {unread > 0 ? (
@@ -355,7 +343,7 @@ export function ServerSidebar({
                                                             styles.dmBadge,
                                                             {
                                                                 backgroundColor:
-                                                                    accent.accent,
+                                                                    colors.unread,
                                                             },
                                                         ]}
                                                     >
@@ -363,7 +351,7 @@ export function ServerSidebar({
                                                             style={[
                                                                 styles.dmBadgeText,
                                                                 {
-                                                                    color: accent.onAccent,
+                                                                    color: colors.unreadText,
                                                                 },
                                                             ]}
                                                         >
@@ -423,7 +411,7 @@ export function ServerSidebar({
                                                         styles.channelBadge,
                                                         {
                                                             backgroundColor:
-                                                                accent.accent,
+                                                                colors.unread,
                                                         },
                                                     ]}
                                                 >
@@ -431,7 +419,7 @@ export function ServerSidebar({
                                                         style={[
                                                             styles.dmBadgeText,
                                                             {
-                                                                color: accent.onAccent,
+                                                                color: colors.unreadText,
                                                             },
                                                         ]}
                                                     >
@@ -466,7 +454,7 @@ export function ServerSidebar({
                         <Avatar
                             displayName={me.username}
                             ring={{
-                                color: accent.accentBorder,
+                                color: colors.border,
                                 width: 1.5,
                             }}
                             size={42}
@@ -629,12 +617,6 @@ const styles = StyleSheet.create({
         alignItems: "center",
         flexDirection: "row",
         gap: 6,
-    },
-    dmNewDot: {
-        borderRadius: 999,
-        height: 6,
-        marginTop: 1,
-        width: 6,
     },
     dmRow: {
         alignItems: "center",

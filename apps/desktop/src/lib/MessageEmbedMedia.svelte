@@ -180,7 +180,7 @@
 
     .embed-media__file-icon {
         flex-shrink: 0;
-        color: var(--accent);
+        color: var(--text-muted);
         font-size: 18px;
     }
 
@@ -193,7 +193,7 @@
 
     .embed-media__file-name {
         overflow: hidden;
-        color: var(--accent);
+        color: var(--text-secondary);
         font-size: 13px;
         font-weight: 600;
         text-overflow: ellipsis;

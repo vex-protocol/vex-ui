@@ -194,7 +194,6 @@ export function MessageBubbleRN({
     replyTarget = null,
     showIdentity = true,
 }: MessageBubbleRNProps) {
-    const accent = useAccentColors();
     const { height: windowHeight, width: windowWidth } = useWindowDimensions();
     const [menuOpen, setMenuOpen] = React.useState(false);
     const [menuX, setMenuX] = React.useState(0);
@@ -614,14 +613,7 @@ export function MessageBubbleRN({
                         <View style={styles.content}>
                             {showIdentity && (
                                 <View style={styles.meta}>
-                                    <Text
-                                        style={[
-                                            styles.author,
-                                            isOwn && {
-                                                color: accent.accentText,
-                                            },
-                                        ]}
-                                    >
+                                    <Text style={styles.author}>
                                         {authorName}
                                     </Text>
                                     <Text style={styles.timestamp}>
@@ -1502,7 +1494,7 @@ function MessageEmbedCard({
                                 {action.label}
                             </Text>
                             <Ionicons
-                                color={colors.info}
+                                color={colors.muted}
                                 name="open-outline"
                                 size={14}
                             />
@@ -2113,8 +2105,8 @@ const styles = StyleSheet.create({
     embedAction: {
         alignItems: "center",
         alignSelf: "flex-start",
-        backgroundColor: colors.infoBg,
-        borderColor: colors.infoBorder,
+        backgroundColor: colors.surfaceLight,
+        borderColor: colors.border,
         borderRadius: 8,
         borderWidth: 1,
         flexDirection: "row",
@@ -2130,7 +2122,7 @@ const styles = StyleSheet.create({
     },
     embedActionText: {
         ...typography.body,
-        color: colors.info,
+        color: colors.textSecondary,
         fontSize: 12,
         fontWeight: "700",
     },

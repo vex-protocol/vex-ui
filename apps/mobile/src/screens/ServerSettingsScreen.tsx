@@ -1105,20 +1105,14 @@ function TabButton({
     label: string;
     onPress: () => void;
 }) {
-    const accent = useAccentColors();
     return (
         <TouchableOpacity
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
             onPress={onPress}
-            style={[
-                styles.tab,
-                active && { backgroundColor: accent.accentSoft },
-            ]}
+            style={[styles.tab, active && styles.tabActive]}
         >
-            <Text
-                style={[styles.tabText, active && { color: accent.accentText }]}
-            >
+            <Text style={[styles.tabText, active && styles.tabTextActive]}>
                 {label}
             </Text>
         </TouchableOpacity>
@@ -1436,6 +1430,9 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         minHeight: 36,
     },
+    tabActive: {
+        backgroundColor: colors.selected,
+    },
     tabs: {
         backgroundColor: colors.surface,
         borderBottomColor: colors.borderSubtle,
@@ -1448,5 +1445,8 @@ const styles = StyleSheet.create({
         ...typography.button,
         color: colors.muted,
         fontSize: 12,
+    },
+    tabTextActive: {
+        color: colors.text,
     },
 });

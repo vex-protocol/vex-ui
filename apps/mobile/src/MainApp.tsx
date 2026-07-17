@@ -1054,7 +1054,7 @@ function MainApp() {
                         background: colors.bg,
                         border: colors.borderSubtle,
                         card: colors.card,
-                        notification: accent.accent,
+                        notification: colors.unread,
                         primary: accent.accentMuted,
                         text: colors.textSecondary,
                     },
@@ -1102,12 +1102,7 @@ function MainApp() {
                                 ]}
                             />
                         </View>
-                        <Text
-                            style={[
-                                styles.hydrationPercent,
-                                { color: accent.accentText },
-                            ]}
-                        >
+                        <Text style={styles.hydrationPercent}>
                             {hydrationPercent}% complete
                         </Text>
                     </View>

@@ -15,7 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { haptic } from "../lib/haptics";
 import { navigateToJoinedServer } from "../navigation/navigationRef";
-import { colors, fontFamilies, typography, useAccentColors } from "../theme";
+import { colors, fontFamilies, typography } from "../theme";
 
 interface InvitePreviewCardProps {
     inviteID: string;
@@ -28,7 +28,6 @@ export function InvitePreviewCard({
     inviteID,
     isOwn = false,
 }: InvitePreviewCardProps) {
-    const accent = useAccentColors();
     const [error, setError] = React.useState("");
     const [joinState, setJoinState] = React.useState<JoinState>("idle");
     const [loading, setLoading] = React.useState(true);
@@ -105,30 +104,17 @@ export function InvitePreviewCard({
     const buttonIcon = joinState === "joined" ? "checkmark" : "enter-outline";
 
     return (
-        <View
-            style={[
-                styles.card,
-                {
-                    backgroundColor: accent.accentSoft,
-                    borderColor: accent.accentBorder,
-                },
-                isOwn && { borderColor: accent.accentText },
-            ]}
-        >
+        <View style={[styles.card, isOwn && styles.cardOwn]}>
             <View style={styles.header}>
                 <View style={styles.iconBox}>
                     <Ionicons
-                        color={accent.accentText}
+                        color={colors.textSecondary}
                         name="link-outline"
                         size={18}
                     />
                 </View>
                 <View style={styles.titleColumn}>
-                    <Text
-                        style={[styles.eyebrow, { color: accent.accentText }]}
-                    >
-                        Server invite
-                    </Text>
+                    <Text style={styles.eyebrow}>Server invite</Text>
                     <Text numberOfLines={1} style={styles.serverName}>
                         {serverName}
                     </Text>
@@ -167,10 +153,7 @@ export function InvitePreviewCard({
                     onPress={() => void handleJoin()}
                     style={({ pressed }) => [
                         styles.joinButton,
-                        { backgroundColor: accent.accent },
-                        pressed && {
-                            backgroundColor: accent.accentDark,
-                        },
+                        pressed && styles.joinButtonPressed,
                         (isPreviewLoading ||
                             !preview ||
                             joinState === "joining" ||
@@ -180,15 +163,16 @@ export function InvitePreviewCard({
                 >
                     {isPreviewLoading || joinState === "joining" ? (
                         <ActivityIndicator
-                            color={accent.onAccent}
+                            color={colors.textSecondary}
                             size="small"
                         />
                     ) : (
-                        <Ionicons color={accent.onAccent} name={buttonIcon} />
+                        <Ionicons
+                            color={colors.textSecondary}
+                            name={buttonIcon}
+                        />
                     )}
-                    <Text style={[styles.joinText, { color: accent.onAccent }]}>
-                        {buttonLabel}
-                    </Text>
+                    <Text style={styles.joinText}>{buttonLabel}</Text>
                 </Pressable>
             </View>
         </View>
@@ -229,12 +213,17 @@ function shortInviteID(inviteID: string): string {
 
 const styles = StyleSheet.create({
     card: {
+        backgroundColor: colors.surfaceLight,
+        borderColor: colors.borderSubtle,
         borderRadius: 8,
         borderWidth: 1,
         gap: 8,
         marginTop: 8,
         maxWidth: 440,
         padding: 10,
+    },
+    cardOwn: {
+        borderColor: colors.border,
     },
     detailMuted: {
         ...typography.body,
@@ -256,6 +245,7 @@ const styles = StyleSheet.create({
     },
     eyebrow: {
         ...typography.label,
+        color: colors.muted,
         fontSize: 10,
         lineHeight: 13,
     },
@@ -286,7 +276,10 @@ const styles = StyleSheet.create({
     },
     joinButton: {
         alignItems: "center",
+        backgroundColor: colors.elevated,
+        borderColor: colors.border,
         borderRadius: 6,
+        borderWidth: 1,
         flexDirection: "row",
         gap: 6,
         minHeight: 32,
@@ -297,8 +290,12 @@ const styles = StyleSheet.create({
     joinButtonDisabled: {
         opacity: 0.58,
     },
+    joinButtonPressed: {
+        backgroundColor: colors.hover,
+    },
     joinText: {
         ...typography.button,
+        color: colors.textSecondary,
         fontSize: 13,
     },
     serverName: {

@@ -325,8 +325,8 @@
         place-items: center;
         padding: 0 4px;
         border-radius: 9px;
-        background: var(--accent);
-        color: var(--on-accent);
+        background: var(--unread-bg);
+        color: var(--unread-text);
         font-size: 9px;
     }
 

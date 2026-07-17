@@ -80,9 +80,7 @@ export function PasswordScreen() {
                 keyboardShouldPersistTaps="handled"
             >
                 <View style={styles.intro}>
-                    <Text style={[styles.kicker, { color: accent.accentText }]}>
-                        ACCOUNT SECURITY
-                    </Text>
+                    <Text style={styles.kicker}>ACCOUNT SECURITY</Text>
                     <Text style={styles.introText}>
                         Use 15 or more characters. Symbols and capitalization
                         are optional.
@@ -268,6 +266,7 @@ const styles = StyleSheet.create({
     },
     kicker: {
         ...typography.label,
+        color: colors.muted,
         letterSpacing: 0,
     },
     noticeBox: {

@@ -42,7 +42,6 @@ type Props = AuthScreenProps<"AccountSelector">;
  * entry for that account. Long-press removes key material for that slot.
  */
 export function AccountSelectorScreen({ navigation, route }: Props) {
-    const accent = useAccentColors();
     const [accounts, setAccounts] = useState<KnownAccount[]>([]);
     const [hydrated, setHydrated] = useState(false);
     const [errorText, setErrorText] = useState<null | string>(null);
@@ -169,9 +168,7 @@ export function AccountSelectorScreen({ navigation, route }: Props) {
     return (
         <ScreenLayout glows>
             <View style={styles.header}>
-                <Text style={[styles.kicker, { color: accent.accentText }]}>
-                    SAVED ACCOUNTS
-                </Text>
+                <Text style={styles.kicker}>SAVED ACCOUNTS</Text>
                 <Text style={styles.heading}>Choose account</Text>
             </View>
 
@@ -403,6 +400,7 @@ const styles = StyleSheet.create({
     },
     kicker: {
         ...typography.label,
+        color: colors.muted,
     },
     list: {
         flex: 1,

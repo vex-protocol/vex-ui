@@ -8,10 +8,9 @@ import { useNavigation } from "@react-navigation/native";
 
 import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
-import { colors, typography, useAccentColors } from "../theme";
+import { colors, typography } from "../theme";
 
 export function OnboardingEmptyScreen() {
-    const accent = useAccentColors();
     const navigation =
         useNavigation<
             NativeStackNavigationProp<AppStackParamList, "OnboardingEmpty">
@@ -21,9 +20,7 @@ export function OnboardingEmptyScreen() {
         <ScreenLayout glows>
             <View style={styles.body}>
                 <View style={styles.hero}>
-                    <Text style={[styles.kicker, { color: accent.accentText }]}>
-                        NEW ACCOUNT
-                    </Text>
+                    <Text style={styles.kicker}>NEW ACCOUNT</Text>
                     <Text style={styles.heading}>Welcome to Vex</Text>
                     <Text style={styles.subtitle}>
                         You are all set, but there is nothing to show yet.
@@ -85,6 +82,7 @@ const styles = StyleSheet.create({
     },
     kicker: {
         ...typography.label,
+        color: colors.muted,
         letterSpacing: 0,
     },
     secondaryLink: {

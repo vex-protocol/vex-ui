@@ -276,13 +276,13 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
                     <View
                         style={[
                             styles.friendUnreadDot,
-                            { backgroundColor: accent.accent },
+                            { backgroundColor: colors.unread },
                         ]}
                     >
                         <Text
                             style={[
                                 styles.friendUnreadText,
-                                { color: accent.onAccent },
+                                { color: colors.unreadText },
                             ]}
                         >
                             {unread > 99 ? "99+" : unread}
@@ -335,13 +335,13 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
                     <View
                         style={[
                             styles.unreadBadge,
-                            { backgroundColor: accent.accent },
+                            { backgroundColor: colors.unread },
                         ]}
                     >
                         <Text
                             style={[
                                 styles.unreadText,
-                                { color: accent.onAccent },
+                                { color: colors.unreadText },
                             ]}
                         >
                             {unread > 99 ? "99+" : unread}

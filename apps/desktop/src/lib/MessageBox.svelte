@@ -268,7 +268,7 @@
         border: 1px solid var(--border);
         border-radius: 8px;
         background: var(--bg-surface);
-        color: var(--accent-text);
+        color: var(--text-secondary);
     }
 
     .message-box__empty strong {
@@ -338,7 +338,7 @@
     }
 
     .message-chunk__author--self {
-        color: var(--accent-text);
+        color: var(--text-primary);
     }
 
     .message-chunk__time {
