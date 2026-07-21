@@ -12,6 +12,7 @@ export type WebRoute =
     | { kind: "recover" }
     | { kind: "register" }
     | { kind: "server"; serverID: string }
+    | { kind: "serverSettings"; serverID: string }
     | { kind: "servers" }
     | { kind: "settings"; section: SettingsSection };
 
@@ -44,6 +45,10 @@ export function settingsPath(section: SettingsSection): string {
     return `/app/settings/${section}`;
 }
 
+export function serverSettingsPath(serverID: string): string {
+    return `/app/server/${encodeURIComponent(serverID)}/settings`;
+}
+
 export function useWebRoute(): WebRoute {
     const [route, setRoute] = useState<WebRoute>(() => parseRoute());
     useEffect(() => {
@@ -71,6 +76,9 @@ function parseRoute(): WebRoute {
     if (first === "dms") return { kind: "dms" };
     if (first === "dm" && second) return { kind: "dm", userID: second };
     if (first === "servers") return { kind: "servers" };
+    if (first === "server" && second && third === "settings") {
+        return { kind: "serverSettings", serverID: second };
+    }
     if (first === "server" && second && third) {
         return { channelID: third, kind: "channel", serverID: second };
     }
