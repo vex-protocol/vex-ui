@@ -23,12 +23,9 @@
         "@vex-chat/store": "workspace:*",
         "@vex-chat/types": "catalog:",
         "@vex-chat/ui": "workspace:*",
-        "dompurify": "catalog:",
         "eventemitter3": "5.0.4",
-        "highlight.js": "catalog:",
         "idb": "catalog:",
         "lucide-preact": "catalog:",
-        "marked": "catalog:",
         "preact": "^10.27.2"
     },
     "browserslist": {
