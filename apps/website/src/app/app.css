@@ -375,6 +375,7 @@
 
 .web-rail button {
     flex: 0 0 auto;
+    padding: 0;
     border: 0;
 }
 
@@ -562,7 +563,7 @@
 
 .web-account-bar {
     display: grid;
-    grid-template-columns: 22px minmax(0, 1fr) 30px;
+    grid-template-columns: 30px minmax(0, 1fr) 30px;
     align-items: center;
     gap: 8px;
     padding: 0 10px;
