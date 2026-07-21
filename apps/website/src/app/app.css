@@ -2392,7 +2392,8 @@
 }
 
 .group-setup-page,
-.invite-page {
+.invite-page,
+.share-page {
     width: 100%;
     height: 100%;
     min-width: 0;
@@ -2401,7 +2402,8 @@
 }
 
 .group-setup-page__body,
-.invite-page__body {
+.invite-page__body,
+.share-page__body {
     width: min(100%, 660px);
     height: calc(100% - 56px);
     margin: 0 auto;
@@ -2682,6 +2684,265 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+}
+
+.share-page__body {
+    width: min(100%, 700px);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding-top: 30px;
+}
+
+.share-page__intro {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.share-page__intro > span {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    flex: 0 0 42px;
+    place-items: center;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    background: var(--bg-panel);
+}
+
+.share-page__intro h1 {
+    margin: 0;
+    font-size: 21px;
+}
+
+.share-page__intro p {
+    margin: 3px 0 0;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.share-page__loading {
+    min-height: 280px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.share-compose {
+    display: grid;
+    gap: 10px;
+}
+
+.share-compose > label {
+    display: grid;
+    gap: 7px;
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.share-compose textarea {
+    min-height: 108px;
+    resize: vertical;
+    padding: 11px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    outline: none;
+    color: var(--text-primary);
+    background: var(--bg-surface);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.share-compose textarea:focus,
+.share-search:focus-within {
+    border-color: var(--accent-border);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.share-files {
+    display: grid;
+    gap: 1px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--border);
+}
+
+.share-files > div {
+    min-height: 48px;
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) 30px;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 7px;
+    background: var(--bg-panel);
+}
+
+.share-files > div > span:first-child,
+.share-destination__icon {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 5px;
+    color: var(--text-muted);
+    background: var(--bg-hover);
+}
+
+.share-files > div > span:nth-child(2) {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.share-files strong,
+.share-files small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.share-files strong {
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.share-files small {
+    color: var(--text-faint);
+    font-size: 9px;
+}
+
+.share-files button,
+.share-search button {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    color: var(--text-muted);
+    background: transparent;
+}
+
+.share-files button:hover,
+.share-search button:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.share-search {
+    min-height: 40px;
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) 30px;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 5px 4px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    color: var(--text-muted);
+    background: var(--bg-surface);
+}
+
+.share-search input {
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    color: var(--text-primary);
+    background: transparent;
+    font-size: 11px;
+}
+
+.share-destinations {
+    display: grid;
+    gap: 18px;
+}
+
+.share-destinations > section {
+    display: grid;
+    gap: 3px;
+}
+
+.share-destinations h2 {
+    margin: 0 0 3px;
+    color: var(--text-faint);
+    font-size: 9px;
+    font-weight: 750;
+    text-transform: uppercase;
+}
+
+.share-destinations section > button {
+    min-height: 48px;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) 18px;
+    align-items: center;
+    gap: 9px;
+    padding: 6px 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--text-muted);
+    background: transparent;
+    text-align: left;
+}
+
+.share-destinations section > button:hover {
+    background: var(--bg-hover);
+}
+
+.share-destinations section > button.is-selected {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
+}
+
+.share-destinations section > button > span:nth-child(2) {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.share-destinations strong,
+.share-destinations small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.share-destinations strong {
+    color: var(--text-secondary);
+    font-size: 11.5px;
+}
+
+.share-destinations small {
+    color: var(--text-faint);
+    font-size: 9.5px;
+}
+
+.share-destinations__empty {
+    min-height: 90px;
+    display: grid;
+    place-items: center;
+    color: var(--text-faint);
+    font-size: 11px;
+}
+
+.share-page__actions {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    justify-content: flex-end;
+    padding: 14px 0 0;
+    border-top: 1px solid var(--border);
+    background: var(--bg-primary);
+}
+
+.share-page__actions .button {
+    max-width: 100%;
 }
 
 .settings-page {
@@ -3728,7 +3989,8 @@
     }
 
     .group-setup-page__body,
-    .invite-page__body {
+    .invite-page__body,
+    .share-page__body {
         width: 100%;
         padding: 26px 16px 46px;
     }
@@ -3741,6 +4003,10 @@
     .invite-page__actions {
         display: grid;
         grid-template-columns: minmax(0, 0.65fr) minmax(0, 1fr);
+    }
+
+    .share-page__actions .button {
+        width: 100%;
     }
 }
 

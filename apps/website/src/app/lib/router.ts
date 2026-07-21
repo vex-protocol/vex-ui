@@ -14,6 +14,7 @@ export type WebRoute =
     | { kind: "server"; serverID: string }
     | { kind: "serverSettings"; serverID: string }
     | { kind: "servers" }
+    | { kind: "share" }
     | { kind: "settings"; section: SettingsSection };
 
 export type SettingsSection =
@@ -76,6 +77,7 @@ function parseRoute(): WebRoute {
     if (first === "dms") return { kind: "dms" };
     if (first === "dm" && second) return { kind: "dm", userID: second };
     if (first === "servers") return { kind: "servers" };
+    if (first === "share") return { kind: "share" };
     if (first === "server" && second && third === "settings") {
         return { kind: "serverSettings", serverID: second };
     }

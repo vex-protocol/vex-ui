@@ -53,6 +53,7 @@ import { ConversationView } from "./views/ConversationView";
 import { GroupSetupView } from "./views/GroupSetupView";
 import { InviteView } from "./views/InviteView";
 import { ServerManagementView } from "./views/ServerManagementView";
+import { ShareComposerView } from "./views/ShareComposerView";
 import { SettingsView } from "./views/SettingsView";
 
 import "./app.css";
@@ -111,7 +112,9 @@ export function WebApp() {
 
     useEffect(() => {
         if (!user && !explicitAuthRoute && route.kind !== "home") {
-            rememberPostAuthPath(window.location.pathname);
+            rememberPostAuthPath(
+                `${window.location.pathname}${window.location.search}`,
+            );
             return;
         }
         if (user && !explicitAuthRoute) consumePostAuthPath();
@@ -246,12 +249,14 @@ function ConnectedShell({ route }: { route: WebRoute }) {
         "servers",
         "serverSettings",
         "settings",
+        "share",
     ].includes(route.kind);
     const isStandaloneRoute = [
         "invite",
         "servers",
         "serverSettings",
         "settings",
+        "share",
     ].includes(route.kind);
 
     return (
@@ -526,6 +531,9 @@ function RouteContent({
     }
     if (route.kind === "invite") {
         return <InviteView inviteID={route.inviteID} />;
+    }
+    if (route.kind === "share") {
+        return <ShareComposerView />;
     }
     if (route.kind === "settings") {
         return <SettingsView section={route.section} />;
