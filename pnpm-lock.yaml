@@ -90,6 +90,12 @@ catalogs:
     highlight.js:
       specifier: ^11.11.1
       version: 11.11.1
+    idb:
+      specifier: ^8.0.3
+      version: 8.0.3
+    lucide-preact:
+      specifier: ^1.23.0
+      version: 1.24.0
     marked:
       specifier: ^15.0.12
       version: 15.0.12
@@ -461,6 +467,39 @@ importers:
 
   apps/website:
     dependencies:
+      '@vex-chat/crypto':
+        specifier: 'catalog:'
+        version: 12.0.0(@vex-chat/types@4.3.3)(typescript@5.9.3)
+      '@vex-chat/libvex':
+        specifier: 'catalog:'
+        version: 10.0.0(better-sqlite3@11.10.0)(typescript@5.9.3)
+      '@vex-chat/store':
+        specifier: workspace:*
+        version: link:../../packages/store
+      '@vex-chat/types':
+        specifier: 'catalog:'
+        version: 4.3.3
+      '@vex-chat/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      dompurify:
+        specifier: 'catalog:'
+        version: 3.4.11
+      eventemitter3:
+        specifier: 5.0.4
+        version: 5.0.4
+      highlight.js:
+        specifier: 'catalog:'
+        version: 11.11.1
+      idb:
+        specifier: 'catalog:'
+        version: 8.0.3
+      lucide-preact:
+        specifier: 'catalog:'
+        version: 1.24.0(preact@10.29.1)
+      marked:
+        specifier: 'catalog:'
+        version: 15.0.12
       preact:
         specifier: ^10.27.2
         version: 10.29.1
@@ -4304,6 +4343,9 @@ packages:
     resolution: {integrity: sha512-v3MXnZAcvnywkTUEZomIActle7RXXeedOR31wwl7VlyoXO4Qi9arvSenNQWne1TcRwhCL1HwLI21bEqdpj8/rA==}
     engines: {node: '>=0.10.0'}
 
+  idb@8.0.3:
+    resolution: {integrity: sha512-LtwtVyVYO5BqRvcsKuB2iUMnHwPVByPCXFXOpuU96IZPPoPN6xjOGxZQ74pgSVVLQWtUOYgyeL4GE98BY5D3wg==}
+
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
 
@@ -4824,6 +4866,11 @@ packages:
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
+
+  lucide-preact@1.24.0:
+    resolution: {integrity: sha512-At4Yi9tcwgVPrKeDkK/JcY/E+brWHlEdKB7lTl7LGP455DlarbcEsoUxHcgSVA7TFohd49EzlK7q+oGv87cbZg==}
+    peerDependencies:
+      preact: ^10.27.2
 
   magic-string@0.27.0:
     resolution: {integrity: sha512-8UnnX2PeRAPZuN12svgR9j7M1uWMovg/CEnIwIG0LFkXSJJe4PdfUGiTGl8V9bsBHFUtfVINcSyYxd7q+kx9fA==}
@@ -6546,7 +6593,7 @@ packages:
       '@vitest/ui': 4.1.0
       happy-dom: '*'
       jsdom: '*'
-      vite: '>=6.4.3'
+      vite: '>=7.3.5'
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
@@ -11422,6 +11469,8 @@ snapshots:
       safer-buffer: 2.1.2
     optional: true
 
+  idb@8.0.3: {}
+
   ieee754@1.2.1:
     optional: true
 
@@ -11955,6 +12004,10 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
+
+  lucide-preact@1.24.0(preact@10.29.1):
+    dependencies:
+      preact: 10.29.1
 
   magic-string@0.27.0:
     dependencies:

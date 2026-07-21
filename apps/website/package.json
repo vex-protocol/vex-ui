@@ -18,6 +18,17 @@
         "license:check": "npx @onebeyond/license-checker scan --allowOnly MIT ISC BSD-2-Clause BSD-3-Clause Apache-2.0 0BSD MPL-2.0 CC0-1.0 CC-BY-4.0 Unlicense BlueOak-1.0.0 Python-2.0 Zlib PSF-2.0 Artistic-2.0 AGPL-3.0-or-later WTFPL --ignoreRootPackageLicense --disableReport"
     },
     "dependencies": {
+        "@vex-chat/crypto": "catalog:",
+        "@vex-chat/libvex": "catalog:",
+        "@vex-chat/store": "workspace:*",
+        "@vex-chat/types": "catalog:",
+        "@vex-chat/ui": "workspace:*",
+        "dompurify": "catalog:",
+        "eventemitter3": "5.0.4",
+        "highlight.js": "catalog:",
+        "idb": "catalog:",
+        "lucide-preact": "catalog:",
+        "marked": "catalog:",
         "preact": "^10.27.2"
     },
     "browserslist": {
