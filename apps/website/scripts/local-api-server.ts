@@ -24,6 +24,7 @@ import login from "../api/gh/login";
 import logout from "../api/gh/logout";
 import session from "../api/gh/session";
 import { ghOAuthMissingForCallback } from "../api/lib/ghOAuthEnv";
+import linkPreview from "../api/link-preview";
 
 type Handler = (
     req: IncomingMessage,
@@ -31,6 +32,7 @@ type Handler = (
 ) => void | Promise<void>;
 
 const routes: Array<{ method: string; path: string; handler: Handler }> = [
+    { method: "GET", path: "/api/link-preview", handler: linkPreview },
     { method: "GET", path: "/api/gh/login", handler: login },
     { method: "GET", path: "/api/gh/logout", handler: logout },
     { method: "POST", path: "/api/gh/logout", handler: logout },

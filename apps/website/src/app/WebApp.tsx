@@ -24,6 +24,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 
 import { Avatar } from "./components/Avatar";
 import { NewDmDialog } from "./components/NewDmDialog";
+import { PasskeyUpgradePrompt } from "./components/PasskeyUpgradePrompt";
 import { ServerIcon } from "./components/ServerIcon";
 import { VexMark } from "./components/VexMark";
 import {
@@ -480,6 +481,7 @@ function ConnectedShell({ route }: { route: WebRoute }) {
                 </section>
             </main>
             <NewDmDialog open={newDmOpen} onClose={() => setNewDmOpen(false)} />
+            <PasskeyUpgradePrompt />
         </>
     );
 }

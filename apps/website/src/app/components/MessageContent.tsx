@@ -17,6 +17,8 @@ import {
     vexService,
 } from "@vex-chat/store";
 
+import { LinkPreviewCard } from "./LinkPreviewCard";
+
 interface MessageContentProps {
     content: string;
     extra?: null | string;
@@ -44,6 +46,9 @@ export function MessageContent({ content, extra }: MessageContentProps) {
                       />
                   ))
                 : null}
+            {!embed?.suppressLinkPreview ? (
+                <LinkPreviewCard content={content} />
+            ) : null}
         </div>
     );
 }

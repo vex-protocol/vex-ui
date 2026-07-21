@@ -10,11 +10,16 @@ import {
     RefreshCw,
     Trash2,
 } from "lucide-preact";
-import { useCallback, useEffect, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 
 import { vexService } from "@vex-chat/store";
 
+import { webBootstrapConfig } from "../../lib/config";
 import { passkeysAvailable, registerPasskey } from "../../lib/passkey";
+import {
+    PASSKEY_SETUP_INTENT_EVENT,
+    takePasskeySetupIntent,
+} from "../../lib/passkeySetupIntent";
 
 export function PasswordSettings() {
     const [currentPassword, setCurrentPassword] = useState("");
@@ -146,6 +151,7 @@ export function PasskeysSettings() {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
     const [notice, setNotice] = useState("");
+    const busyRef = useRef(false);
 
     const loadPasskeys = useCallback(async () => {
         setLoading(true);
@@ -166,9 +172,77 @@ export function PasskeysSettings() {
         }
     }, []);
 
+    const addPasskeyNamed = useCallback(
+        async (passkeyName: string, isActive: () => boolean = () => true) => {
+            if (busyRef.current) return;
+            if (!supported) {
+                setError("Passkeys are not available in this browser context.");
+                return;
+            }
+            if (!passkeyName) {
+                setError("Give the passkey a recognizable name.");
+                return;
+            }
+            busyRef.current = true;
+            setBusy(true);
+            setError("");
+            setNotice("");
+            try {
+                const begin =
+                    await vexService.beginPasskeyRegistration(passkeyName);
+                if (!isActive()) return;
+                const response = await registerPasskey(begin.options);
+                if (!isActive()) return;
+                const result = await vexService.finishPasskeyRegistration({
+                    name: passkeyName,
+                    requestID: begin.requestID,
+                    response,
+                });
+                if (!result.ok) {
+                    setError(result.error ?? "Could not add this passkey.");
+                    return;
+                }
+                setName("");
+                setNotice("Passkey added.");
+                await loadPasskeys();
+            } catch (cause: unknown) {
+                if (!isCancelledCredentialRequest(cause) && isActive()) {
+                    setError(
+                        errorMessage(cause, "Could not add this passkey."),
+                    );
+                }
+            } finally {
+                busyRef.current = false;
+                if (isActive()) setBusy(false);
+            }
+        },
+        [loadPasskeys, supported],
+    );
+
     useEffect(() => {
-        void loadPasskeys();
-    }, [loadPasskeys]);
+        let active = true;
+        const initialLoad = loadPasskeys();
+        const startIntent = async () => {
+            const intent = takePasskeySetupIntent(
+                webBootstrapConfig().deviceName,
+            );
+            if (!intent) return;
+            setName(intent.suggestedName);
+            await initialLoad;
+            if (!active) return;
+            await addPasskeyNamed(intent.suggestedName, () => active);
+        };
+        const handleSetupIntent = () => void startIntent();
+        window.addEventListener(PASSKEY_SETUP_INTENT_EVENT, handleSetupIntent);
+        void startIntent();
+        return () => {
+            active = false;
+            window.removeEventListener(
+                PASSKEY_SETUP_INTENT_EVENT,
+                handleSetupIntent,
+            );
+        };
+    }, [addPasskeyNamed, loadPasskeys]);
 
     async function addPasskey(event: SubmitEvent) {
         event.preventDefault();
@@ -181,32 +255,7 @@ export function PasskeysSettings() {
             setError("Give the passkey a recognizable name.");
             return;
         }
-        setBusy(true);
-        setError("");
-        setNotice("");
-        try {
-            const begin =
-                await vexService.beginPasskeyRegistration(passkeyName);
-            const response = await registerPasskey(begin.options);
-            const result = await vexService.finishPasskeyRegistration({
-                name: passkeyName,
-                requestID: begin.requestID,
-                response,
-            });
-            if (!result.ok) {
-                setError(result.error ?? "Could not add this passkey.");
-                return;
-            }
-            setName("");
-            setNotice("Passkey added.");
-            await loadPasskeys();
-        } catch (cause: unknown) {
-            if (!isCancelledCredentialRequest(cause)) {
-                setError(errorMessage(cause, "Could not add this passkey."));
-            }
-        } finally {
-            setBusy(false);
-        }
+        await addPasskeyNamed(passkeyName);
     }
 
     async function removePasskey(passkey: Passkey) {
