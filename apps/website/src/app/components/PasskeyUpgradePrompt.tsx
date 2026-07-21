@@ -123,7 +123,7 @@ export function PasskeyUpgradePrompt() {
                         type="button"
                         onClick={startSetup}
                     >
-                        <KeyRound size={17} /> Create passkey
+                        <KeyRound size={17} /> Continue
                     </button>
                 </div>
             </section>

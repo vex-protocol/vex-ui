@@ -1074,8 +1074,12 @@
     white-space: nowrap;
 }
 
-.message-reply-reference:hover span,
-.message-reply-reference:hover strong {
+.message-reply-reference:disabled {
+    cursor: default;
+}
+
+.message-reply-reference:not(:disabled):hover span,
+.message-reply-reference:not(:disabled):hover strong {
     color: var(--text-secondary);
 }
 

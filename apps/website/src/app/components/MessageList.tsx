@@ -130,11 +130,19 @@ export function MessageList({
 
     function scrollToMessage(mailID: string) {
         const element = messageElements.current.get(mailID);
-        if (!element) {
-            setVisibleLimit(messages.length);
-            window.requestAnimationFrame(() => scrollToMessage(mailID));
+        if (element) {
+            showMessage(element, mailID);
             return;
         }
+        if (hiddenCount === 0) return;
+        setVisibleLimit(messages.length);
+        window.requestAnimationFrame(() => {
+            const revealed = messageElements.current.get(mailID);
+            if (revealed) showMessage(revealed, mailID);
+        });
+    }
+
+    function showMessage(element: HTMLDivElement, mailID: string) {
         element.scrollIntoView({ behavior: "smooth", block: "center" });
         setHighlighted(mailID);
         window.setTimeout(() => setHighlighted(""), 1600);
@@ -222,11 +230,20 @@ export function MessageList({
                                         {reply ? (
                                             <button
                                                 className="message-reply-reference"
+                                                disabled={!target}
+                                                title={
+                                                    target
+                                                        ? undefined
+                                                        : "Original message is no longer available"
+                                                }
                                                 type="button"
-                                                onClick={() =>
-                                                    scrollToMessage(
-                                                        reply.targetMailID,
-                                                    )
+                                                onClick={
+                                                    target
+                                                        ? () =>
+                                                              scrollToMessage(
+                                                                  reply.targetMailID,
+                                                              )
+                                                        : undefined
                                                 }
                                             >
                                                 <CornerUpLeft size={13} />

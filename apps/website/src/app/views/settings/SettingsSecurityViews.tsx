@@ -173,7 +173,7 @@ export function PasskeysSettings() {
     }, []);
 
     const addPasskeyNamed = useCallback(
-        async (passkeyName: string, isActive: () => boolean = () => true) => {
+        async (passkeyName: string) => {
             if (busyRef.current) return;
             if (!supported) {
                 setError("Passkeys are not available in this browser context.");
@@ -190,9 +190,7 @@ export function PasskeysSettings() {
             try {
                 const begin =
                     await vexService.beginPasskeyRegistration(passkeyName);
-                if (!isActive()) return;
                 const response = await registerPasskey(begin.options);
-                if (!isActive()) return;
                 const result = await vexService.finishPasskeyRegistration({
                     name: passkeyName,
                     requestID: begin.requestID,
@@ -206,43 +204,40 @@ export function PasskeysSettings() {
                 setNotice("Passkey added.");
                 await loadPasskeys();
             } catch (cause: unknown) {
-                if (!isCancelledCredentialRequest(cause) && isActive()) {
+                if (!isCancelledCredentialRequest(cause)) {
                     setError(
                         errorMessage(cause, "Could not add this passkey."),
                     );
                 }
             } finally {
                 busyRef.current = false;
-                if (isActive()) setBusy(false);
+                setBusy(false);
             }
         },
         [loadPasskeys, supported],
     );
 
     useEffect(() => {
-        let active = true;
-        const initialLoad = loadPasskeys();
-        const startIntent = async () => {
+        void loadPasskeys();
+        const prepareSetup = () => {
             const intent = takePasskeySetupIntent(
                 webBootstrapConfig().deviceName,
             );
             if (!intent) return;
             setName(intent.suggestedName);
-            await initialLoad;
-            if (!active) return;
-            await addPasskeyNamed(intent.suggestedName, () => active);
+            setError("");
+            setNotice("Review the name, then choose Add passkey to continue.");
         };
-        const handleSetupIntent = () => void startIntent();
+        const handleSetupIntent = () => prepareSetup();
         window.addEventListener(PASSKEY_SETUP_INTENT_EVENT, handleSetupIntent);
-        void startIntent();
+        prepareSetup();
         return () => {
-            active = false;
             window.removeEventListener(
                 PASSKEY_SETUP_INTENT_EVENT,
                 handleSetupIntent,
             );
         };
-    }, [addPasskeyNamed, loadPasskeys]);
+    }, [loadPasskeys]);
 
     async function addPasskey(event: SubmitEvent) {
         event.preventDefault();
