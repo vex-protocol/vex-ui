@@ -156,6 +156,7 @@ export function WebApp() {
         const resume = () => {
             if (
                 document.visibilityState === "visible" &&
+                !explicitAuthRoute &&
                 !$user.get() &&
                 !vexService.isAuthFlowInFlight()
             ) {
@@ -168,7 +169,7 @@ export function WebApp() {
             document.removeEventListener("visibilitychange", resume);
             window.removeEventListener("online", resume);
         };
-    }, []);
+    }, [explicitAuthRoute]);
 
     if (user) return <ConnectedShell route={route} />;
     if (explicitAuthRoute) return <AuthView route={route} />;
