@@ -50,6 +50,7 @@ interface VaultEnvelope {
 }
 
 let vaultPromise: ReturnType<typeof openVault> | null = null;
+let masterKeyPromise: Promise<CryptoKey> | null = null;
 
 export interface BrowserAccount {
     updatedAt: string;
@@ -57,7 +58,7 @@ export interface BrowserAccount {
 }
 
 export interface BrowserKeyStore extends KeyStore {
-    deactivate(): Promise<void>;
+    deactivate(scope?: string): Promise<void>;
     listAccounts(): Promise<BrowserAccount[]>;
     loadActive(): Promise<null | StoredCredentials>;
 }
@@ -79,12 +80,10 @@ export async function getBrowserDatabaseKey(
 ): Promise<Uint8Array> {
     const id = accountID(scope, username);
     const vault = await getVault();
-    const existing = await vault.get("secrets", `database:${id}`);
+    const keyID = `database:${id}`;
+    const existing = await vault.get("secrets", keyID);
     if (existing) {
-        const decoded = await decryptJson<{ key: string }>(
-            `database:${id}`,
-            existing,
-        );
+        const decoded = await decryptJson<{ key: string }>(keyID, existing);
         const key = XUtils.decodeHex(decoded.key);
         if (key.length !== 32) {
             throw new Error("Stored browser database key is invalid.");
@@ -93,11 +92,21 @@ export async function getBrowserDatabaseKey(
     }
 
     const key = generateVexDbAtRestKey();
-    await vault.put(
-        "secrets",
-        await encryptJson(`database:${id}`, { key: XUtils.encodeHex(key) }),
-        `database:${id}`,
-    );
+    const envelope = await encryptJson(keyID, { key: XUtils.encodeHex(key) });
+    const transaction = vault.transaction("secrets", "readwrite");
+    const store = transaction.objectStore("secrets");
+    const stored = await store.get(keyID);
+    if (stored) {
+        await transaction.done;
+        const decoded = await decryptJson<{ key: string }>(keyID, stored);
+        const storedKey = XUtils.decodeHex(decoded.key);
+        if (storedKey.length !== 32) {
+            throw new Error("Stored browser database key is invalid.");
+        }
+        return storedKey;
+    }
+    await store.add(envelope, keyID);
+    await transaction.done;
     return key;
 }
 
@@ -128,9 +137,9 @@ class EncryptedBrowserKeyStore implements BrowserKeyStore {
         return clearBrowserAccount(this.scope(), normalizeUsername(username));
     }
 
-    async deactivate(): Promise<void> {
+    async deactivate(scope = this.scope()): Promise<void> {
         const vault = await getVault();
-        await vault.delete("activeAccounts", this.scope());
+        await vault.delete("activeAccounts", normalizeScope(scope));
     }
 
     async listAccounts(): Promise<BrowserAccount[]> {
@@ -248,7 +257,15 @@ function arrayBuffer(bytes: Uint8Array): ArrayBuffer {
     ) as ArrayBuffer;
 }
 
-async function getMasterKey(): Promise<CryptoKey> {
+function getMasterKey(): Promise<CryptoKey> {
+    masterKeyPromise ??= loadOrCreateMasterKey().catch((error: unknown) => {
+        masterKeyPromise = null;
+        throw error;
+    });
+    return masterKeyPromise;
+}
+
+async function loadOrCreateMasterKey(): Promise<CryptoKey> {
     const vault = await getVault();
     const existing = await vault.get("keys", MASTER_KEY_ID);
     if (existing) return existing;
@@ -257,7 +274,15 @@ async function getMasterKey(): Promise<CryptoKey> {
         false,
         ["decrypt", "encrypt"],
     );
-    await vault.put("keys", generated, MASTER_KEY_ID);
+    const transaction = vault.transaction("keys", "readwrite");
+    const store = transaction.objectStore("keys");
+    const stored = await store.get(MASTER_KEY_ID);
+    if (stored) {
+        await transaction.done;
+        return stored;
+    }
+    await store.add(generated, MASTER_KEY_ID);
+    await transaction.done;
     return generated;
 }
 

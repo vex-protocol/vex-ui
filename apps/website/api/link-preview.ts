@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { isIP } from "node:net";
 
 import {
     fetchPublicPreviewHtml,
@@ -74,10 +75,25 @@ function pruneRateBuckets(now: number): void {
     }
 }
 
-function clientAddress(req: IncomingMessage): string {
-    const forwarded = req.headers["x-forwarded-for"];
-    const first = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-    return (
-        first?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown"
-    );
+export function clientAddress(
+    req: IncomingMessage,
+    environment: NodeJS.ProcessEnv = process.env,
+): string {
+    if (environment.VERCEL === "1") {
+        const address = singleIPAddress(req.headers["x-vercel-forwarded-for"]);
+        if (address) return address;
+    }
+    if (environment.VEX_WEB_TRUST_PROXY === "1") {
+        const address = singleIPAddress(req.headers["x-vex-client-ip"]);
+        if (address) return address;
+    }
+    return req.socket.remoteAddress || "unknown";
+}
+
+function singleIPAddress(value: string | string[] | undefined): string | null {
+    if (Array.isArray(value) && value.length !== 1) return null;
+    const candidate = (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
+    return candidate && !candidate.includes(",") && isIP(candidate)
+        ? candidate
+        : null;
 }

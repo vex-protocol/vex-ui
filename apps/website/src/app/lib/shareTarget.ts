@@ -2,6 +2,7 @@ import { openDB, type DBSchema } from "idb";
 
 const SHARE_DATABASE = "vex-web-share-target";
 const SHARE_STORE = "shares";
+const SHARE_MAX_AGE_MS = 60 * 60 * 1000;
 
 export interface PendingShare {
     createdAt: number;
@@ -27,19 +28,70 @@ interface ShareTargetDatabase extends DBSchema {
 }
 
 export async function deletePendingShare(id: string): Promise<void> {
+    if (!id) return;
     const database = await shareDatabase();
-    await database.delete(SHARE_STORE, id);
-    database.close();
+    try {
+        await database.delete(SHARE_STORE, id);
+    } finally {
+        database.close();
+    }
 }
 
-export async function loadPendingShare(
+export async function consumePendingShare(
     id: string,
 ): Promise<PendingShare | null> {
     if (!id) return null;
     const database = await shareDatabase();
-    const value: unknown = await database.get(SHARE_STORE, id);
-    database.close();
-    return parsePendingShare(value);
+    try {
+        const transaction = database.transaction(SHARE_STORE, "readwrite");
+        const value: unknown = await transaction.store.get(id);
+        await transaction.store.delete(id);
+        await transaction.done;
+        const share = parsePendingShare(value);
+        return share && isFreshShare(share.createdAt) ? share : null;
+    } finally {
+        database.close();
+    }
+}
+
+export async function clearPendingShares(): Promise<void> {
+    const database = await shareDatabase();
+    try {
+        await database.clear(SHARE_STORE);
+    } finally {
+        database.close();
+    }
+}
+
+export async function prunePendingShares(now = Date.now()): Promise<void> {
+    const database = await shareDatabase();
+    try {
+        const transaction = database.transaction(SHARE_STORE, "readwrite");
+        const shares = await transaction.store.getAll();
+        await Promise.all(
+            shares
+                .filter(({ createdAt }) => !isFreshShare(createdAt, now))
+                .map(({ id }) => transaction.store.delete(id)),
+        );
+        await transaction.done;
+    } finally {
+        database.close();
+    }
+}
+
+export function discardPendingShareOnPageExit(id: string): () => void {
+    if (!id) return () => {};
+    const discard = () => {
+        if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.controller?.postMessage({
+                id,
+                type: "DISCARD_SHARE",
+            });
+        }
+        void deletePendingShare(id).catch(() => {});
+    };
+    window.addEventListener("pagehide", discard, { once: true });
+    return () => window.removeEventListener("pagehide", discard);
 }
 
 export function pendingShareFile(file: PendingShareFile): File {
@@ -96,6 +148,14 @@ function parsePendingShare(value: unknown): PendingShare | null {
         .filter((file): file is PendingShareFile => file !== null)
         .slice(0, 10);
     return { ...candidate, files } as PendingShare;
+}
+
+function isFreshShare(createdAt: number, now = Date.now()): boolean {
+    return (
+        Number.isFinite(createdAt) &&
+        createdAt <= now &&
+        createdAt >= now - SHARE_MAX_AGE_MS
+    );
 }
 
 function parsePendingShareFile(value: unknown): PendingShareFile | null {

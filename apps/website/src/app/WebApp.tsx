@@ -45,6 +45,10 @@ import {
     useWebRoute,
     type WebRoute,
 } from "./lib/router";
+import {
+    discardPendingShareOnPageExit,
+    prunePendingShares,
+} from "./lib/shareTarget";
 import { useWebTheme } from "./lib/theme";
 import { useIncomingNotifications } from "./lib/useIncomingNotifications";
 import { useStoreValue } from "./lib/useStoreValue";
@@ -88,12 +92,40 @@ export function WebApp() {
     const authStatus = useStoreValue($authStatus);
     const [boot, setBoot] = useState<BootState>({ kind: "checking" });
     const bootStarted = useRef(false);
+    const pendingShareExitCleanup = useRef<null | (() => void)>(null);
     const explicitAuthRoute = isAuthRoute(route);
 
     useEffect(() => {
         document.body.classList.add("vex-web-app");
+        void prunePendingShares().catch(() => {});
         return () => document.body.classList.remove("vex-web-app");
     }, []);
+
+    useEffect(() => {
+        if (route.kind === "share" && !pendingShareExitCleanup.current) {
+            const id = new URLSearchParams(window.location.search).get("id");
+            if (id) {
+                pendingShareExitCleanup.current =
+                    discardPendingShareOnPageExit(id);
+            }
+        }
+        if (
+            user &&
+            !explicitAuthRoute &&
+            route.kind !== "share" &&
+            pendingShareExitCleanup.current
+        ) {
+            pendingShareExitCleanup.current();
+            pendingShareExitCleanup.current = null;
+        }
+    }, [explicitAuthRoute, route.kind, user]);
+
+    useEffect(
+        () => () => {
+            pendingShareExitCleanup.current?.();
+        },
+        [],
+    );
 
     useEffect(() => {
         if (bootStarted.current || explicitAuthRoute) {

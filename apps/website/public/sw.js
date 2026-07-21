@@ -2,7 +2,7 @@ const APP_CACHE = "vex-web-shell-v1";
 const APP_SHELL_URL = "/app/home";
 const SHARE_DATABASE = "vex-web-share-target";
 const SHARE_STORE = "shares";
-const SHARE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const SHARE_MAX_AGE_MS = 60 * 60 * 1000;
 
 self.addEventListener("install", (event) => {
     event.waitUntil(
@@ -22,25 +22,36 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
     event.waitUntil(
-        caches
-            .keys()
-            .then((keys) =>
-                Promise.all(
-                    keys
-                        .filter(
-                            (key) =>
-                                key.startsWith("vex-web-shell-") &&
-                                key !== APP_CACHE,
-                        )
-                        .map((key) => caches.delete(key)),
+        Promise.all([
+            caches
+                .keys()
+                .then((keys) =>
+                    Promise.all(
+                        keys
+                            .filter(
+                                (key) =>
+                                    key.startsWith("vex-web-shell-") &&
+                                    key !== APP_CACHE,
+                            )
+                            .map((key) => caches.delete(key)),
+                    ),
                 ),
-            )
-            .then(() => self.clients.claim()),
+            pruneExpiredShares().catch(() => {}),
+        ]).then(() => self.clients.claim()),
     );
 });
 
 self.addEventListener("message", (event) => {
-    if (event.data === "SKIP_WAITING") self.skipWaiting();
+    if (event.data === "SKIP_WAITING") {
+        void self.skipWaiting();
+        return;
+    }
+    if (
+        event.data?.type === "DISCARD_SHARE" &&
+        typeof event.data.id === "string"
+    ) {
+        event.waitUntil(deleteShare(event.data.id));
+    }
 });
 
 self.addEventListener("fetch", (event) => {
@@ -168,6 +179,59 @@ function storeShare(record) {
                 };
             }),
     );
+}
+
+function deleteShare(id) {
+    if (!id) return Promise.resolve();
+    return openShareDatabase().then(
+        (database) =>
+            new Promise((resolve, reject) => {
+                const transaction = database.transaction(
+                    SHARE_STORE,
+                    "readwrite",
+                );
+                transaction.objectStore(SHARE_STORE).delete(id);
+                settleShareTransaction(database, transaction, resolve, reject);
+            }),
+    );
+}
+
+function pruneExpiredShares(now = Date.now()) {
+    return openShareDatabase().then(
+        (database) =>
+            new Promise((resolve, reject) => {
+                const transaction = database.transaction(
+                    SHARE_STORE,
+                    "readwrite",
+                );
+                const store = transaction.objectStore(SHARE_STORE);
+                const existing = store.getAll();
+                existing.onsuccess = () => {
+                    const cutoff = now - SHARE_MAX_AGE_MS;
+                    for (const candidate of existing.result) {
+                        if (candidate.createdAt < cutoff) {
+                            store.delete(candidate.id);
+                        }
+                    }
+                };
+                settleShareTransaction(database, transaction, resolve, reject);
+            }),
+    );
+}
+
+function settleShareTransaction(database, transaction, resolve, reject) {
+    transaction.oncomplete = () => {
+        database.close();
+        resolve();
+    };
+    transaction.onerror = () => {
+        database.close();
+        reject(transaction.error);
+    };
+    transaction.onabort = () => {
+        database.close();
+        reject(transaction.error);
+    };
 }
 
 function openShareDatabase() {

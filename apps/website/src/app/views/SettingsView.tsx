@@ -47,9 +47,14 @@ import {
     showBrowserNotification,
     type BrowserNotificationState,
 } from "../lib/browserNotifications";
-import { browserKeyStore } from "../lib/config";
-import { getServerHost, setServerHost } from "../lib/config";
+import {
+    browserKeyStore,
+    getServerHost,
+    getServerIdentity,
+    setServerHost,
+} from "../lib/config";
 import { navigate, settingsPath, type SettingsSection } from "../lib/router";
+import { clearPendingShares } from "../lib/shareTarget";
 import { useWebTheme } from "../lib/theme";
 import { useStoreValue } from "../lib/useStoreValue";
 import { DeviceSettings } from "./settings/DeviceSettings";
@@ -574,9 +579,10 @@ function ConnectionSettings() {
         setBusy(true);
         setError("");
         try {
-            setServerHost(normalized);
+            const currentScope = getServerIdentity();
             await vexService.logout();
-            await browserKeyStore.deactivate();
+            await browserKeyStore.deactivate(currentScope);
+            setServerHost(normalized);
             window.location.assign("/app/login");
         } catch (cause: unknown) {
             setError(errorMessage(cause, "Could not change homeserver."));
@@ -676,6 +682,7 @@ function DataSettings() {
         setError("");
         try {
             const credentials = await browserKeyStore.loadActive();
+            await clearPendingShares();
             await vexService.deleteAllData();
             if (credentials?.username) {
                 await browserKeyStore.clear(credentials.username);

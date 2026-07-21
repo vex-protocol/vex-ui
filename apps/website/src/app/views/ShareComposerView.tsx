@@ -26,8 +26,7 @@ import { Avatar } from "../components/Avatar";
 import { ServerIcon } from "../components/ServerIcon";
 import { channelPath, dmPath, navigate } from "../lib/router";
 import {
-    deletePendingShare,
-    loadPendingShare,
+    consumePendingShare,
     pendingShareFile,
     sharedText,
     type PendingShareFile,
@@ -50,7 +49,6 @@ export function ShareComposerView() {
     const messages = useStoreValue($messages);
     const servers = useStoreValue($servers);
     const channels = useStoreValue($channels);
-    const [pendingID, setPendingID] = useState("");
     const [content, setContent] = useState("");
     const [files, setFiles] = useState<PendingShareFile[]>([]);
     const [query, setQuery] = useState("");
@@ -99,7 +97,6 @@ export function ShareComposerView() {
         let active = true;
         const parameters = new URLSearchParams(window.location.search);
         const id = parameters.get("id")?.trim() ?? "";
-        setPendingID(id);
         setError("");
         if (!id) {
             setContent(
@@ -115,7 +112,7 @@ export function ShareComposerView() {
             }
             return;
         }
-        void loadPendingShare(id)
+        void consumePendingShare(id)
             .then((share) => {
                 if (!active) return;
                 if (!share) {
@@ -185,7 +182,6 @@ export function ShareComposerView() {
                 return;
             }
 
-            if (pendingID) await deletePendingShare(pendingID).catch(() => {});
             navigate(
                 selected.kind === "dm"
                     ? dmPath(selected.user.userID)
