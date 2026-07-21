@@ -1,3 +1,5 @@
+import type { FunctionComponent } from "preact";
+
 import {
     $authStatus,
     $channelUnreadCounts,
@@ -482,8 +484,23 @@ function ConnectedShell({ route }: { route: WebRoute }) {
             </main>
             <NewDmDialog open={newDmOpen} onClose={() => setNewDmOpen(false)} />
             <PasskeyUpgradePrompt />
+            {productFeatures.voiceCalling ? <LazyVoiceCallOverlay /> : null}
         </>
     );
+}
+
+function LazyVoiceCallOverlay() {
+    const [Overlay, setOverlay] = useState<FunctionComponent | null>(null);
+    useEffect(() => {
+        let active = true;
+        void import("./components/VoiceCallOverlay").then((loaded) => {
+            if (active) setOverlay(() => loaded.VoiceCallOverlay);
+        });
+        return () => {
+            active = false;
+        };
+    }, []);
+    return Overlay ? <Overlay /> : null;
 }
 
 function RouteContent({

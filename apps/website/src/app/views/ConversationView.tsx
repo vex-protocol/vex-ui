@@ -5,6 +5,7 @@ import {
     ArrowLeft,
     Ellipsis,
     Hash,
+    Phone,
     Settings2,
     Trash2,
     Users,
@@ -14,6 +15,7 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 
 import {
     $channels,
+    $currentCallID,
     $familiars,
     $groupMessages,
     $messages,
@@ -28,6 +30,7 @@ import {
 import { Avatar } from "../components/Avatar";
 import { MessageComposer } from "../components/MessageComposer";
 import { MessageList } from "../components/MessageList";
+import { productFeatures } from "../lib/features";
 import { navigate, serverSettingsPath, type WebRoute } from "../lib/router";
 import { useStoreValue } from "../lib/useStoreValue";
 
@@ -43,6 +46,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     const channels = useStoreValue($channels);
     const directMessages = useStoreValue($messages);
     const groupMessages = useStoreValue($groupMessages);
+    const currentCallID = useStoreValue($currentCallID);
     const isGroup = route.kind === "channel";
     const conversationKey =
         route.kind === "channel" ? route.channelID : route.userID;
@@ -58,6 +62,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     const [editing, setEditing] = useState<Message | null>(null);
     const [replying, setReplying] = useState<Message | null>(null);
     const [sending, setSending] = useState(false);
+    const [callStarting, setCallStarting] = useState(false);
     const [error, setError] = useState("");
 
     const channel =
@@ -268,6 +273,24 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
             });
     }
 
+    async function startVoiceCall() {
+        if (route.kind !== "dm" || currentCallID || callStarting) return;
+        setError("");
+        setCallStarting(true);
+        try {
+            const { voiceCallEngine } = await import("../lib/voiceCallEngine");
+            await voiceCallEngine.startDmCall(route.userID, peer?.username);
+        } catch (cause: unknown) {
+            setError(
+                cause instanceof Error && cause.message
+                    ? cause.message
+                    : "Could not start the voice call.",
+            );
+        } finally {
+            setCallStarting(false);
+        }
+    }
+
     function deleteThread(everyone: boolean) {
         const prompt = everyone
             ? "Delete your messages for everyone and remove this local conversation?"
@@ -382,15 +405,31 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                                 </button>
                             </>
                         ) : (
-                            <button
-                                aria-expanded={menuOpen}
-                                aria-label="Conversation options"
-                                title="Conversation options"
-                                type="button"
-                                onClick={() => setMenuOpen((open) => !open)}
-                            >
-                                <Ellipsis size={19} />
-                            </button>
+                            <>
+                                {productFeatures.voiceCalling ? (
+                                    <button
+                                        aria-label="Start voice call"
+                                        disabled={
+                                            Boolean(currentCallID) ||
+                                            callStarting
+                                        }
+                                        title="Start voice call"
+                                        type="button"
+                                        onClick={() => void startVoiceCall()}
+                                    >
+                                        <Phone size={18} />
+                                    </button>
+                                ) : null}
+                                <button
+                                    aria-expanded={menuOpen}
+                                    aria-label="Conversation options"
+                                    title="Conversation options"
+                                    type="button"
+                                    onClick={() => setMenuOpen((open) => !open)}
+                                >
+                                    <Ellipsis size={19} />
+                                </button>
+                            </>
                         )}
                         {menuOpen ? (
                             <div className="conversation-menu" role="menu">

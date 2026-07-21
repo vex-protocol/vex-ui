@@ -3,6 +3,7 @@ import type { MessageReplyReference } from "@vex-chat/store";
 import {
     CornerUpLeft,
     FileText,
+    Mic,
     Paperclip,
     Pencil,
     Send,
@@ -11,6 +12,8 @@ import {
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import { formatFileSize } from "@vex-chat/store";
+
+import { VoiceMemoRecorder } from "./VoiceMemoRecorder";
 
 interface MessageComposerProps {
     contextKey: string;
@@ -43,11 +46,20 @@ export function MessageComposer({
     const [previewURL, setPreviewURL] = useState("");
     const [dragActive, setDragActive] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [voiceMemoOpen, setVoiceMemoOpen] = useState(false);
+    const [recordingError, setRecordingError] = useState("");
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const previousContext = useRef(contextKey);
     const busy = sending || submitting;
-    const canSend = Boolean(value.trim() || attachment) && !disabled && !busy;
+    const voiceMemoSupported =
+        typeof navigator.mediaDevices?.getUserMedia === "function" &&
+        typeof globalThis.MediaRecorder === "function";
+    const canSend =
+        Boolean(value.trim() || attachment) &&
+        !disabled &&
+        !busy &&
+        !voiceMemoOpen;
 
     useEffect(() => {
         resizeTextarea();
@@ -56,12 +68,16 @@ export function MessageComposer({
     useEffect(() => {
         if (previousContext.current !== contextKey) {
             previousContext.current = contextKey;
+            setVoiceMemoOpen(false);
+            setRecordingError("");
             clearAttachment();
         }
     }, [contextKey]);
 
     useEffect(() => {
-        if (editing && attachment) clearAttachment();
+        if (!editing) return;
+        setVoiceMemoOpen(false);
+        if (attachment) clearAttachment();
     }, [attachment, editing]);
 
     useEffect(
@@ -83,8 +99,9 @@ export function MessageComposer({
         const normalized = normalizeFile(file);
         setAttachmentState(normalized);
         if (
-            normalized.type.startsWith("image/") &&
-            normalized.type !== "image/svg+xml"
+            (normalized.type.startsWith("image/") &&
+                normalized.type !== "image/svg+xml") ||
+            normalized.type.startsWith("audio/")
         ) {
             setPreviewURL(URL.createObjectURL(normalized));
         }
@@ -99,7 +116,14 @@ export function MessageComposer({
     async function submit() {
         const content = value.trim();
         const pendingAttachment = attachment ?? undefined;
-        if ((!content && !pendingAttachment) || disabled || busy) return;
+        if (
+            (!content && !pendingAttachment) ||
+            disabled ||
+            busy ||
+            voiceMemoOpen
+        ) {
+            return;
+        }
         setSubmitting(true);
         try {
             const sent = await onSend(content, pendingAttachment);
@@ -114,7 +138,7 @@ export function MessageComposer({
 
     function handlePaste(event: ClipboardEvent) {
         const file = firstFile(event.clipboardData);
-        if (!file || editing) return;
+        if (!file || editing || voiceMemoOpen) return;
         event.preventDefault();
         setAttachment(file);
     }
@@ -166,9 +190,17 @@ export function MessageComposer({
                 </div>
             ) : null}
             {attachment ? (
-                <div className="composer-attachment">
-                    {previewURL ? (
+                <div
+                    className={
+                        attachment.type.startsWith("audio/")
+                            ? "composer-attachment composer-attachment--audio"
+                            : "composer-attachment"
+                    }
+                >
+                    {previewURL && attachment.type.startsWith("image/") ? (
                         <img alt="" src={previewURL} />
+                    ) : previewURL && attachment.type.startsWith("audio/") ? (
+                        <audio controls preload="metadata" src={previewURL} />
                     ) : (
                         <span className="composer-attachment__icon">
                             <FileText size={20} />
@@ -189,6 +221,30 @@ export function MessageComposer({
                     </button>
                 </div>
             ) : null}
+            {voiceMemoOpen ? (
+                <VoiceMemoRecorder
+                    onCancel={() => setVoiceMemoOpen(false)}
+                    onError={setRecordingError}
+                    onRecorded={(file) => {
+                        setRecordingError("");
+                        setVoiceMemoOpen(false);
+                        setAttachment(file);
+                    }}
+                />
+            ) : null}
+            {recordingError ? (
+                <div className="composer-recording-error" role="alert">
+                    <span>{recordingError}</span>
+                    <button
+                        aria-label="Dismiss recording error"
+                        title="Dismiss"
+                        type="button"
+                        onClick={() => setRecordingError("")}
+                    >
+                        <X size={14} />
+                    </button>
+                </div>
+            ) : null}
             <div
                 aria-label="Message composer"
                 className={
@@ -197,14 +253,20 @@ export function MessageComposer({
                 role="group"
                 onDragLeave={() => setDragActive(false)}
                 onDragOver={(event) => {
-                    if (!hasFile(event.dataTransfer) || editing) return;
+                    if (
+                        !hasFile(event.dataTransfer) ||
+                        editing ||
+                        voiceMemoOpen
+                    ) {
+                        return;
+                    }
                     event.preventDefault();
                     setDragActive(true);
                 }}
                 onDrop={(event) => {
                     const file = firstFile(event.dataTransfer);
                     setDragActive(false);
-                    if (!file || editing) return;
+                    if (!file || editing || voiceMemoOpen) return;
                     event.preventDefault();
                     setAttachment(file);
                 }}
@@ -223,7 +285,7 @@ export function MessageComposer({
                 />
                 <button
                     aria-label="Attach file"
-                    disabled={disabled || busy || editing}
+                    disabled={disabled || busy || editing || voiceMemoOpen}
                     title="Attach file"
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
@@ -255,6 +317,26 @@ export function MessageComposer({
                     }}
                     onPaste={handlePaste}
                 />
+                {voiceMemoSupported ? (
+                    <button
+                        aria-label="Record voice message"
+                        disabled={
+                            disabled ||
+                            busy ||
+                            editing ||
+                            Boolean(attachment) ||
+                            voiceMemoOpen
+                        }
+                        title="Record voice message"
+                        type="button"
+                        onClick={() => {
+                            setRecordingError("");
+                            setVoiceMemoOpen(true);
+                        }}
+                    >
+                        <Mic size={18} />
+                    </button>
+                ) : null}
                 <button
                     aria-label={editing ? "Save message" : "Send message"}
                     className="composer-send"
