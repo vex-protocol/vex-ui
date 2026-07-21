@@ -15,7 +15,6 @@ import {
 import {
     Hash,
     Inbox,
-    LogOut,
     MessageCircle,
     Plus,
     RefreshCw,
@@ -34,6 +33,7 @@ import {
 } from "./lib/config";
 import { productFeatures } from "./lib/features";
 import { authenticatePasskey, registerPasskey } from "./lib/passkey";
+import { consumePostAuthPath, rememberPostAuthPath } from "./lib/postAuthRoute";
 import {
     channelPath,
     dmPath,
@@ -43,10 +43,14 @@ import {
     type WebRoute,
 } from "./lib/router";
 import { useWebTheme } from "./lib/theme";
+import { useIncomingNotifications } from "./lib/useIncomingNotifications";
 import { useStoreValue } from "./lib/useStoreValue";
 import { AuthView } from "./views/AuthView";
 import { ConversationView } from "./views/ConversationView";
+import { GroupSetupView } from "./views/GroupSetupView";
+import { InviteView } from "./views/InviteView";
 import { ServerManagementView } from "./views/ServerManagementView";
+import { SettingsView } from "./views/SettingsView";
 
 import "./app.css";
 
@@ -97,8 +101,18 @@ export function WebApp() {
     }, [explicitAuthRoute]);
 
     useEffect(() => {
-        if (user && explicitAuthRoute) navigate("/app/home", true);
+        if (user && explicitAuthRoute) {
+            navigate(consumePostAuthPath() ?? "/app/home", true);
+        }
     }, [explicitAuthRoute, user]);
+
+    useEffect(() => {
+        if (!user && !explicitAuthRoute && route.kind !== "home") {
+            rememberPostAuthPath(window.location.pathname);
+            return;
+        }
+        if (user && !explicitAuthRoute) consumePostAuthPath();
+    }, [explicitAuthRoute, route.kind, user]);
 
     useEffect(() => {
         const resume = () => {
@@ -190,6 +204,7 @@ async function runAutoLogin(): Promise<BootState> {
 }
 
 function ConnectedShell({ route }: { route: WebRoute }) {
+    useIncomingNotifications();
     const user = useStoreValue($user);
     const servers = useStoreValue($servers);
     const channels = useStoreValue($channels);
@@ -225,6 +240,13 @@ function ConnectedShell({ route }: { route: WebRoute }) {
         "channel",
         "dm",
         "invite",
+        "servers",
+        "serverSettings",
+        "settings",
+    ].includes(route.kind);
+    const isStandaloneRoute = [
+        "invite",
+        "servers",
         "serverSettings",
         "settings",
     ].includes(route.kind);
@@ -232,9 +254,13 @@ function ConnectedShell({ route }: { route: WebRoute }) {
     return (
         <>
             <main
-                className={
-                    isDetailRoute ? "web-shell web-shell--detail" : "web-shell"
-                }
+                className={[
+                    "web-shell",
+                    isDetailRoute ? "web-shell--detail" : "",
+                    isStandaloneRoute ? "web-shell--standalone" : "",
+                ]
+                    .filter(Boolean)
+                    .join(" ")}
             >
                 <aside
                     className="web-rail"
@@ -300,6 +326,18 @@ function ConnectedShell({ route }: { route: WebRoute }) {
                             </button>
                         );
                     })}
+                    <button
+                        className={
+                            route.kind === "servers"
+                                ? "rail-item rail-add is-active"
+                                : "rail-item rail-add"
+                        }
+                        type="button"
+                        title="Create or join a group"
+                        onClick={() => navigate("/app/servers")}
+                    >
+                        <Plus size={20} />
+                    </button>
                 </aside>
 
                 <aside className="web-sidebar">
@@ -464,21 +502,14 @@ function RouteContent({
     if (route.kind === "channel" || route.kind === "dm") {
         return <ConversationView route={route} />;
     }
+    if (route.kind === "servers") {
+        return <GroupSetupView />;
+    }
+    if (route.kind === "invite") {
+        return <InviteView inviteID={route.inviteID} />;
+    }
     if (route.kind === "settings") {
-        return (
-            <section className="web-placeholder">
-                <Settings size={24} />
-                <h1>Account</h1>
-                <p>{username}</p>
-                <button
-                    className="button button--secondary"
-                    type="button"
-                    onClick={() => void vexService.logout()}
-                >
-                    <LogOut size={16} /> Sign out
-                </button>
-            </section>
-        );
+        return <SettingsView section={route.section} />;
     }
     if (route.kind === "serverSettings") {
         return <ServerManagementView serverID={route.serverID} />;
@@ -596,8 +627,18 @@ function HomeOverview({
                             <strong>{server.name}</strong>
                         </button>
                     ))}
+                    <button
+                        className="home-server-list__add"
+                        type="button"
+                        onClick={() => navigate("/app/servers")}
+                    >
+                        <span>
+                            <Plus size={17} />
+                        </span>
+                        <strong>Create or join</strong>
+                    </button>
                     {Object.keys(servers).length === 0 ? (
-                        <p>No groups yet.</p>
+                        <p>Your groups will appear here.</p>
                     ) : null}
                 </div>
             </div>

@@ -30,6 +30,7 @@ import {
     getServerOptions,
     webBootstrapConfig,
 } from "../lib/config";
+import { consumePostAuthPath } from "../lib/postAuthRoute";
 import { navigate } from "../lib/router";
 import { useStoreValue } from "../lib/useStoreValue";
 
@@ -765,6 +766,11 @@ function isCancelledCredentialRequest(error: unknown): boolean {
 }
 
 function navigateAfterAuthentication() {
+    const postAuthPath = consumePostAuthPath();
+    if (postAuthPath) {
+        navigate(postAuthPath, true);
+        return;
+    }
     const firstServer = Object.values($servers.get()).sort((a, b) =>
         a.name.localeCompare(b.name),
     )[0];
