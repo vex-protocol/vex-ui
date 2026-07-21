@@ -1,4 +1,4 @@
-import type { RootStackParamList } from "./types";
+import type { AppStackParamList, RootStackParamList } from "./types";
 
 import { createNavigationContainerRef } from "@react-navigation/native";
 
@@ -81,6 +81,17 @@ export function navigateToJoinedServer(
             ...(target.serverName ? { serverName: target.serverName } : {}),
         },
         screen: "ChannelList",
+    });
+    return true;
+}
+
+export function navigateToPasskeys(
+    params?: NonNullable<AppStackParamList["Passkeys"]>,
+): boolean {
+    if (!navigationRef.isReady()) return false;
+    navigationRef.navigate("App", {
+        ...(params ? { params } : {}),
+        screen: "Passkeys",
     });
     return true;
 }

@@ -27,6 +27,14 @@ export interface HydrationStatus {
     totalSteps: number;
 }
 
+export interface PasskeyUpgradePrompt {
+    deviceName: string;
+    reason: PasskeyUpgradeReason;
+    userID: string;
+}
+
+export type PasskeyUpgradeReason = "cross_platform_passkey" | "password_login";
+
 // Sub-status for the multi-device enrollment flow on the *new* (requesting)
 // device. Lets the AuthenticateScreen show distinct UI states between
 // "still waiting for the existing device to approve", "approval landed —
@@ -64,6 +72,9 @@ export const $signedOutIntentWritable = atom<boolean>(false);
 export const $pendingApprovalStageWritable = atom<PendingApprovalStage>("idle");
 export const $historyRecoveryStatusWritable =
     atom<HistoryRecoveryStatus>("idle");
+export const $passkeyUpgradePromptWritable = atom<null | PasskeyUpgradePrompt>(
+    null,
+);
 export const $hydrationStatusWritable = atom<HydrationStatus>({
     completedSteps: 0,
     ready: false,
@@ -86,5 +97,8 @@ export const $pendingApprovalStage = readonlyType(
 );
 export const $historyRecoveryStatus = readonlyType(
     $historyRecoveryStatusWritable,
+);
+export const $passkeyUpgradePrompt = readonlyType(
+    $passkeyUpgradePromptWritable,
 );
 export const $hydrationStatus = readonlyType($hydrationStatusWritable);

@@ -9,6 +9,7 @@
     import { productFeatures } from "./lib/features.js";
     import MembersPanel from "./lib/MembersPanel.svelte";
     import { setupNotifications } from "./lib/notifications.js";
+    import PasskeyUpgradePrompt from "./lib/PasskeyUpgradePrompt.svelte";
     import ServerBar from "./lib/ServerBar.svelte";
     import {
         channels,
@@ -219,6 +220,7 @@
             <VoiceCallOverlay />
         {/if}
     {/if}
+    <PasskeyUpgradePrompt />
 </div>
 
 <style>

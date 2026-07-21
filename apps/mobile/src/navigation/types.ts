@@ -29,7 +29,13 @@ export type AppStackParamList = {
     InvitePreview: { inviteID: string };
     JoinGroup: undefined | { inviteID?: string };
     OnboardingEmpty: undefined;
-    Passkeys: undefined;
+    Passkeys:
+        | undefined
+        | {
+              reason?: "cross_platform_passkey" | "password_login";
+              startSetup?: boolean;
+              suggestedName?: string;
+          };
     Password: undefined;
     ServerSettings: { serverID: string; serverName?: string };
     SessionDetails: undefined;

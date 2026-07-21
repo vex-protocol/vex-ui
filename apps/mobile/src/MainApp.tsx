@@ -31,6 +31,7 @@ import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { PasskeyUpgradePrompt } from "./components/PasskeyUpgradePrompt";
 import { VoiceCallOverlay } from "./components/VoiceCallOverlay";
 import { type AppUpdateState, checkForAppUpdates } from "./lib/appUpdates";
 import {
@@ -1081,6 +1082,7 @@ function MainApp() {
             >
                 <RootNavigator />
             </NavigationContainer>
+            <PasskeyUpgradePrompt />
             {productFeatures.voiceCalling ? <VoiceCallOverlay /> : null}
             {showHydrationGate && (
                 <View style={styles.hydrationGate}>
