@@ -1,7 +1,6 @@
 import type { FunctionComponent } from "preact";
 
 import {
-    $authStatus,
     $channelUnreadCounts,
     $channels,
     $dmUnreadCounts,
@@ -89,7 +88,6 @@ export function WebApp() {
     useWebTheme();
     const route = useWebRoute();
     const user = useStoreValue($user);
-    const authStatus = useStoreValue($authStatus);
     const [boot, setBoot] = useState<BootState>({ kind: "checking" });
     const bootStarted = useRef(false);
     const pendingShareExitCleanup = useRef<null | (() => void)>(null);
@@ -173,7 +171,7 @@ export function WebApp() {
 
     if (user) return <ConnectedShell route={route} />;
     if (explicitAuthRoute) return <AuthView route={route} />;
-    if (boot.kind === "checking" || authStatus === "checking") {
+    if (boot.kind === "checking") {
         return <AppLoading label="Connecting securely" />;
     }
     if (boot.kind === "error") {
