@@ -15,8 +15,8 @@ import {
 
 import {
     Hash,
-    Inbox,
     MessageCircle,
+    MessagesSquare,
     Plus,
     RefreshCw,
     Settings,
@@ -307,27 +307,16 @@ function ConnectedShell({ route }: { route: WebRoute }) {
                 >
                     <button
                         className={
-                            route.kind === "home"
-                                ? "web-rail__brand is-active"
-                                : "web-rail__brand"
-                        }
-                        type="button"
-                        title="Home"
-                        onClick={() => navigate("/app/home")}
-                    >
-                        <VexMark size={31} />
-                    </button>
-                    <button
-                        className={
-                            route.kind === "dm" || route.kind === "dms"
+                            ["dm", "dms", "home"].includes(route.kind)
                                 ? "rail-item is-active"
                                 : "rail-item"
                         }
+                        aria-label="Direct messages"
                         type="button"
                         title="Direct messages"
-                        onClick={() => navigate("/app/dms")}
+                        onClick={() => navigate("/app/home")}
                     >
-                        <Inbox size={20} />
+                        <MessagesSquare size={21} />
                         <UnreadBadge count={totalDmUnread} compact />
                     </button>
                     <span className="web-rail__divider" />
