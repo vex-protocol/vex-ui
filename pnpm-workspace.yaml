@@ -34,8 +34,11 @@ catalog:
     expo-sharing: ~55.0.18
     expo-task-manager: ~55.0.15
     expo-video: ~55.0.17
+    fake-indexeddb: 6.2.5
     highlight.js: ^11.11.1
+    idb: ^8.0.3
     kysely: ^0.28.17
+    lucide-preact: ^1.23.0
     lucide-svelte: ^1.0.1
     marked: ^15.0.12
     msgpackr: ^1.11.5

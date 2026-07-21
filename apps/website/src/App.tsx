@@ -9,6 +9,7 @@ import { RoutePanel } from "./components/RoutePanel";
 export function App(): JSX.Element {
     const currentPath =
         typeof window !== "undefined" ? window.location.pathname : "/";
+    const [WebApp, setWebApp] = useState<ComponentType | null>(null);
     const [HomePage, setHomePage] = useState<ComponentType<{
         path?: string;
     }> | null>(null);
@@ -31,6 +32,19 @@ export function App(): JSX.Element {
         path?: string;
     }> | null>(null);
     const isInviteRoute = currentPath.startsWith("/invite/");
+    const isWebAppRoute =
+        currentPath === "/app" || currentPath.startsWith("/app/");
+
+    useEffect(() => {
+        if (WebApp || !isWebAppRoute) return;
+        let cancelled = false;
+        void import("./app/WebApp").then((module) => {
+            if (!cancelled) setWebApp(() => module.WebApp);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [WebApp, isWebAppRoute]);
 
     useEffect(() => {
         if (
@@ -132,6 +146,10 @@ export function App(): JSX.Element {
         };
     }, [InviteRedirectPage, isInviteRoute]);
 
+    if (isWebAppRoute) {
+        return WebApp ? <WebApp /> : <WebAppLoading />;
+    }
+
     return (
         <ClaSessionProvider>
             <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -182,6 +200,15 @@ export function App(): JSX.Element {
                 <Footer />
             </div>
         </ClaSessionProvider>
+    );
+}
+
+function WebAppLoading(): JSX.Element {
+    return (
+        <main className="vex-web-loading" aria-live="polite">
+            <CrosshairSpinner className="text-zinc-200" />
+            <span>Opening Vex</span>
+        </main>
     );
 }
 

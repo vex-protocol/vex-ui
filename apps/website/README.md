@@ -32,6 +32,8 @@ For Vercel, set the project root directory to `apps/website`. The app keeps Vite
 
 The API routes under `api/` are Node HTTP handlers. Vercel can run them as colocated functions; other hosts should run `pnpm -F @vex-chat/website start:api` and proxy `/api/*` to that process.
 
+When using `deploy/nginx-api-proxy.conf.example`, set `VEX_WEB_TRUST_PROXY=1` in the Node API service environment. The example proxy overwrites `X-Vex-Client-IP` with its observed peer address for abuse limits. Do not enable this setting if clients can reach the Node API directly or if the proxy does not overwrite that header.
+
 ## Pages
 
 - **`/licensing`** — Commercial licensing: contact **yuki@vex.wtf**.
