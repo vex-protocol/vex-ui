@@ -37,6 +37,9 @@ export function getServerIdentity(): string {
 export function getServerHost(): string {
     const stored = localStorage.getItem(SERVER_URL_KEY);
     if (stored) return normalizeHost(stored);
+    if (isFirstPartyServerHost(window.location.hostname)) {
+        return window.location.host;
+    }
     return isDevelopmentProxy() ? window.location.host : PRODUCTION_SERVER;
 }
 
@@ -120,6 +123,12 @@ function isLocalHost(value: string): boolean {
         host === "[::1]" ||
         /^192\.168\./u.test(host) ||
         /^10\./u.test(host)
+    );
+}
+
+function isFirstPartyServerHost(hostname: string): boolean {
+    return [DEVELOPMENT_SERVER, PRODUCTION_SERVER].includes(
+        normalizeHost(hostname),
     );
 }
 
