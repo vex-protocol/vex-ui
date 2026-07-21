@@ -67,10 +67,12 @@ import {
     $historyRecoveryStatusWritable,
     $hydrationStatusWritable,
     $keyReplacedWritable,
+    $passkeyUpgradePromptWritable,
     $pendingApprovalStageWritable,
     $signedOutIntentWritable,
     $userWritable,
     type HydrationStage,
+    type PasskeyUpgradeReason,
 } from "./domains/identity.ts";
 import {
     $channelUnreadCountsWritable,
@@ -650,6 +652,7 @@ class VexService {
         deviceKey: string;
         deviceName: string;
         keyStore: KeyStore;
+        passkeyUpgradeReason?: PasskeyUpgradeReason;
         requestID: string;
         username: string;
     } = null;
@@ -668,6 +671,7 @@ class VexService {
         deviceKey: string;
         deviceName: string;
         keyStore: KeyStore;
+        passkeyUpgradeReason?: PasskeyUpgradeReason;
         requestID: string;
         username: string;
     } = null;
@@ -682,8 +686,10 @@ class VexService {
     private logoutInFlight: null | Promise<void> = null;
     private passkeyAccountSession: null | {
         deviceKey: string;
+        deviceName: string;
         keyStore: KeyStore;
         localCredentials: null | StoredCredentials;
+        passkeyUpgradeReason: null | PasskeyUpgradeReason;
         pendingApproval?: PendingPasskeyDeviceApproval;
         userID: string;
         username: string;
@@ -1537,6 +1543,10 @@ class VexService {
         };
     }
 
+    dismissPasskeyUpgradePrompt(): void {
+        $passkeyUpgradePromptWritable.set(null);
+    }
+
     async downloadFileAttachment(
         attachment: EncryptedFileAttachment,
     ): Promise<OperationResult & { data?: Uint8Array }> {
@@ -2120,6 +2130,9 @@ class VexService {
             deviceKey: d.deviceKey,
             deviceName: d.deviceName,
             keyStore: d.keyStore,
+            ...(d.passkeyUpgradeReason
+                ? { passkeyUpgradeReason: d.passkeyUpgradeReason }
+                : {}),
             requestID: d.requestID,
             username: d.username,
         });
@@ -3208,6 +3221,7 @@ class VexService {
             return { error: "Enter your handle to sign in.", ok: false };
         }
 
+        $passkeyUpgradePromptWritable.set(null);
         this.passkeyAccountSession = null;
         $signedOutIntentWritable.set(false);
         this.setAuthStatus("checking");
@@ -3242,6 +3256,8 @@ class VexService {
             const response = await driver.authenticate(
                 begin.options as PublicKeyCredentialRequestOptionsJSON,
             );
+            const passkeyUpgradeReason =
+                passkeyUpgradeReasonFromAuthenticationResponse(response);
             const finish = await client.passkeys.finishAuthentication({
                 requestID: begin.requestID,
                 response,
@@ -3253,8 +3269,10 @@ class VexService {
                     canonicalUsername.toLowerCase();
             this.passkeyAccountSession = {
                 deviceKey: privateKey,
+                deviceName: config.deviceName || "This device",
                 keyStore,
                 localCredentials: sameLocalAccount ? localCredentials : null,
+                passkeyUpgradeReason,
                 userID: finish.user.userID,
                 username: canonicalUsername,
             };
@@ -3715,6 +3733,13 @@ class VexService {
             await client.connect();
             $userWritable.set(client.me.user());
             this.setAuthStatus("authenticated");
+            if (pending.passkeyUpgradeReason) {
+                this.offerPasskeyUpgradeAfterAuthentication(
+                    client,
+                    pending.deviceName,
+                    pending.passkeyUpgradeReason,
+                );
+            }
             this.kickPopulateState();
             debugAuth("approvalWatcher:done", {
                 requestID: pending.requestID,
@@ -3786,6 +3811,13 @@ class VexService {
         await client.connect();
         $userWritable.set(client.me.user());
         this.setAuthStatus("authenticated");
+        if (session.passkeyUpgradeReason) {
+            this.offerPasskeyUpgradeAfterAuthentication(
+                client,
+                session.deviceName,
+                session.passkeyUpgradeReason,
+            );
+        }
         this.kickPopulateState();
         this.passkeyAccountSession = null;
         return { ok: true };
@@ -3982,6 +4014,7 @@ class VexService {
         options: ServerOptions,
         keyStore: KeyStore,
     ): Promise<AuthResult> {
+        $passkeyUpgradePromptWritable.set(null);
         $signedOutIntentWritable.set(false);
         this.setAuthStatus("checking");
         debugAuth("login:start", { host: options.host, username });
@@ -4034,6 +4067,7 @@ class VexService {
                         deviceKey: loadedCreds.deviceKey,
                         deviceName: config.deviceName || "This device",
                         keyStore,
+                        passkeyUpgradeReason: "password_login",
                         requestID: pending.requestID,
                         username: loadedCreds.username,
                     });
@@ -4060,6 +4094,11 @@ class VexService {
             }
             $userWritable.set(client.me.user());
             this.setAuthStatus("authenticated");
+            this.offerPasskeyUpgradeAfterAuthentication(
+                client,
+                config.deviceName,
+                "password_login",
+            );
             this.kickPopulateState();
             return { ok: true };
         };
@@ -4203,6 +4242,52 @@ class VexService {
     private markRateLimited(source: string): void {
         this.pendingRateLimitNotice = true;
         debugAuth("rate-limited", { source });
+    }
+
+    private offerPasskeyUpgradeAfterAuthentication(
+        client: Client,
+        deviceName: string,
+        reason: PasskeyUpgradeReason,
+    ): void {
+        const user = client.me.user();
+        const offer = (): void => {
+            if (
+                this.client !== client ||
+                $authStatusWritable.get() !== "authenticated" ||
+                $userWritable.get()?.userID !== user.userID
+            ) {
+                return;
+            }
+            $passkeyUpgradePromptWritable.set({
+                deviceName: deviceName.trim() || "This device",
+                reason,
+                userID: user.userID,
+            });
+        };
+
+        if (reason === "cross_platform_passkey") {
+            offer();
+            return;
+        }
+
+        const passkeysApi = (
+            client as unknown as {
+                passkeys?: { list?: () => Promise<Passkey[]> };
+            }
+        ).passkeys;
+        if (typeof passkeysApi?.list !== "function") {
+            return;
+        }
+        void passkeysApi
+            .list()
+            .then((registeredPasskeys) => {
+                if (registeredPasskeys.length === 0) {
+                    offer();
+                }
+            })
+            .catch(() => {
+                // Passkey discovery must never delay or fail a valid login.
+            });
     }
 
     private async passkeyRestorePendingDeviceInternal(
@@ -4708,6 +4793,7 @@ class VexService {
         options: ServerOptions,
         keyStore: KeyStore,
     ): Promise<AuthResult> {
+        $passkeyUpgradePromptWritable.set(null);
         $signedOutIntentWritable.set(false);
         $pendingApprovalStageWritable.set("idle");
         this.setAuthStatus("checking");
@@ -4814,6 +4900,12 @@ class VexService {
                             deviceKey: privateKey,
                             deviceName: config.deviceName || "This device",
                             keyStore,
+                            ...(intent === "enroll-device"
+                                ? {
+                                      passkeyUpgradeReason:
+                                          "password_login" as const,
+                                  }
+                                : {}),
                             requestID: pending.requestID,
                             username: registrationUsername,
                         };
@@ -4823,6 +4915,12 @@ class VexService {
                             deviceKey: privateKey,
                             deviceName: config.deviceName || "This device",
                             keyStore,
+                            ...(intent === "enroll-device"
+                                ? {
+                                      passkeyUpgradeReason:
+                                          "password_login" as const,
+                                  }
+                                : {}),
                             requestID: pending.requestID,
                             username: registrationUsername,
                         });
@@ -4867,6 +4965,13 @@ class VexService {
             debugAuth("register:connect:ok", undefined);
             $userWritable.set(client.me.user());
             this.setAuthStatus("authenticated");
+            if (intent === "enroll-device") {
+                this.offerPasskeyUpgradeAfterAuthentication(
+                    client,
+                    config.deviceName,
+                    "password_login",
+                );
+            }
 
             this.kickPopulateState();
             debugAuth("register:populateState:kick", undefined);
@@ -5084,6 +5189,13 @@ class VexService {
                 );
                 $userWritable.set(client.me.user());
                 this.setAuthStatus("authenticated");
+                if (session.passkeyUpgradeReason) {
+                    this.offerPasskeyUpgradeAfterAuthentication(
+                        client,
+                        session.deviceName,
+                        session.passkeyUpgradeReason,
+                    );
+                }
                 this.kickPopulateState();
                 this.passkeyAccountSession = null;
                 return { ok: true };
@@ -5109,6 +5221,12 @@ class VexService {
                     deviceKey: session.deviceKey,
                     deviceName,
                     keyStore,
+                    ...(session.passkeyUpgradeReason
+                        ? {
+                              passkeyUpgradeReason:
+                                  session.passkeyUpgradeReason,
+                          }
+                        : {}),
                     requestID: pending.requestID,
                     username,
                 };
@@ -5118,6 +5236,12 @@ class VexService {
                     deviceKey: session.deviceKey,
                     deviceName,
                     keyStore,
+                    ...(session.passkeyUpgradeReason
+                        ? {
+                              passkeyUpgradeReason:
+                                  session.passkeyUpgradeReason,
+                          }
+                        : {}),
                     requestID: pending.requestID,
                     username,
                 });
@@ -5199,6 +5323,7 @@ class VexService {
         $billingProductsWritable.set([]);
         $userWritable.set(null);
         $keyReplacedWritable.set(false);
+        $passkeyUpgradePromptWritable.set(null);
         $pendingApprovalStageWritable.set("idle");
         $historyRecoveryStatusWritable.set("idle");
         $hydrationStatusWritable.set({
@@ -6004,6 +6129,7 @@ class VexService {
         deviceKey,
         deviceName,
         keyStore,
+        passkeyUpgradeReason,
         requestID,
         username,
     }: {
@@ -6011,6 +6137,7 @@ class VexService {
         deviceKey: string;
         deviceName: string;
         keyStore: KeyStore;
+        passkeyUpgradeReason?: PasskeyUpgradeReason;
         requestID: string;
         username: string;
     }): void {
@@ -6020,6 +6147,7 @@ class VexService {
             deviceKey,
             deviceName,
             keyStore,
+            ...(passkeyUpgradeReason ? { passkeyUpgradeReason } : {}),
             requestID,
             username,
         };
@@ -6112,6 +6240,9 @@ class VexService {
                         deviceKey,
                         deviceName,
                         keyStore,
+                        ...(passkeyUpgradeReason
+                            ? { passkeyUpgradeReason }
+                            : {}),
                         requestID,
                         username,
                     };
@@ -6973,6 +7104,14 @@ function passkeyRequiredUsername(err: unknown): null | string {
     }
     const trimmed = username.trim();
     return trimmed.length > 0 ? trimmed : null;
+}
+
+function passkeyUpgradeReasonFromAuthenticationResponse(
+    response: Record<string, unknown>,
+): null | PasskeyUpgradeReason {
+    return response["authenticatorAttachment"] === "cross-platform"
+        ? "cross_platform_passkey"
+        : null;
 }
 
 function readErrorField(body: unknown): null | string {

@@ -19,6 +19,7 @@ export {
     $latestCallEvent as latestCallEvent,
     $messages as messages,
     $onlineLists as onlineLists,
+    $passkeyUpgradePrompt as passkeyUpgradePrompt,
     $permissions as permissions,
     $servers as servers,
     $totalChannelUnread as totalChannelUnread,

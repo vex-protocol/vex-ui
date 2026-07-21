@@ -1,6 +1,13 @@
+import type { AppScreenProps } from "../navigation/types";
 import type { Passkey } from "@vex-chat/libvex";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import {
     Alert,
     RefreshControl,
@@ -26,6 +33,7 @@ import {
     PasskeyCancelledError,
     registerPasskey,
 } from "../lib/passkey";
+import { mobileConfig } from "../lib/platform";
 import { colors, typography } from "../theme";
 
 interface AddState {
@@ -35,14 +43,22 @@ interface AddState {
 }
 
 const DEFAULT_PASSKEY_NAME_HINT = "iPhone, Yubikey, etc.";
+type Props = AppScreenProps<"Passkeys">;
 
-export function PasskeysScreen() {
+export function PasskeysScreen({ route }: Props) {
+    const suggestedName = useMemo(() => {
+        const configured =
+            route.params?.suggestedName?.trim() ??
+            mobileConfig().deviceName.trim();
+        return configured || "This device";
+    }, [route.params?.suggestedName]);
+    const autoSetupPendingRef = useRef(route.params?.startSetup === true);
     const [passkeys, setPasskeys] = useState<Passkey[]>([]);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<null | string>(null);
     const [addState, setAddState] = useState<AddState>({
         error: null,
-        name: "",
+        name: route.params?.startSetup ? suggestedName : "",
         submitting: false,
     });
     const supported = isPasskeySupported();
@@ -84,57 +100,75 @@ export function PasskeysScreen() {
         }, [refresh]),
     );
 
-    async function handleAdd(): Promise<void> {
-        const name = addState.name.trim();
-        if (!supported) {
-            setAddState((prev) => ({
-                ...prev,
-                error: "Passkeys aren't available on this device.",
-            }));
-            return;
-        }
-        if (name.length === 0) {
-            setAddState((prev) => ({
-                ...prev,
-                error: "Give the passkey a name so you can recognize it later.",
-            }));
-            return;
-        }
-        setAddState((prev) => ({ ...prev, error: null, submitting: true }));
-        try {
-            haptic("confirm");
-            const begin = await vexService.beginPasskeyRegistration(name);
-            const response = await registerPasskey(begin.options);
-            const finish = await vexService.finishPasskeyRegistration({
-                name,
-                requestID: begin.requestID,
-                response,
-            });
-            if (!finish.ok) {
+    const handleAdd = useCallback(
+        async (nameOverride?: string) => {
+            const name = (nameOverride ?? addState.name).trim();
+            if (!supported) {
                 setAddState((prev) => ({
                     ...prev,
-                    error: finish.error ?? "Could not register the passkey.",
-                    submitting: false,
+                    error: "Passkeys aren't available on this device.",
                 }));
                 return;
             }
-            setAddState({ error: null, name: "", submitting: false });
-            await refresh(true);
-        } catch (err: unknown) {
-            if (err instanceof PasskeyCancelledError) {
-                setAddState((prev) => ({ ...prev, submitting: false }));
+            if (name.length === 0) {
+                setAddState((prev) => ({
+                    ...prev,
+                    error: "Give the passkey a name so you can recognize it later.",
+                }));
                 return;
             }
-            setAddState((prev) => ({
-                ...prev,
-                error:
-                    err instanceof Error
-                        ? err.message
-                        : "Could not register the passkey.",
-                submitting: false,
-            }));
+            setAddState((prev) => ({ ...prev, error: null, submitting: true }));
+            try {
+                haptic("confirm");
+                const begin = await vexService.beginPasskeyRegistration(name);
+                const response = await registerPasskey(begin.options);
+                const finish = await vexService.finishPasskeyRegistration({
+                    name,
+                    requestID: begin.requestID,
+                    response,
+                });
+                if (!finish.ok) {
+                    setAddState((prev) => ({
+                        ...prev,
+                        error:
+                            finish.error ?? "Could not register the passkey.",
+                        submitting: false,
+                    }));
+                    return;
+                }
+                setAddState({ error: null, name: "", submitting: false });
+                await refresh(true);
+            } catch (err: unknown) {
+                if (err instanceof PasskeyCancelledError) {
+                    setAddState((prev) => ({ ...prev, submitting: false }));
+                    return;
+                }
+                setAddState((prev) => ({
+                    ...prev,
+                    error:
+                        err instanceof Error
+                            ? err.message
+                            : "Could not register the passkey.",
+                    submitting: false,
+                }));
+            }
+        },
+        [addState.name, refresh, supported],
+    );
+
+    useEffect(() => {
+        if (!autoSetupPendingRef.current) {
+            return;
         }
-    }
+        const timer = setTimeout(() => {
+            if (!autoSetupPendingRef.current) return;
+            autoSetupPendingRef.current = false;
+            void handleAdd(suggestedName);
+        }, 300);
+        return () => {
+            clearTimeout(timer);
+        };
+    }, [handleAdd, suggestedName]);
 
     function handleDelete(passkey: Passkey): void {
         haptic("destructive");
@@ -185,7 +219,9 @@ export function PasskeysScreen() {
                     <Text style={styles.kicker}>ACCOUNT RECOVERY</Text>
                     <Text style={styles.introText}>
                         {supported
-                            ? "A passkey is an optional way to restore or sign in to your account. Vex never sees its secret."
+                            ? route.params?.reason === "cross_platform_passkey"
+                                ? "Add a passkey here so this device can sign in without borrowing another authenticator. Vex never sees its secret."
+                                : "A passkey is an optional way to restore or sign in to your account. Vex never sees its secret."
                             : "This device doesn't support passkeys. iOS 16+ or Android 9+ with a screen lock is required."}
                     </Text>
                 </View>

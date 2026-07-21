@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { Passkey } from "@vex-chat/libvex";
 
-    import { onDestroy, onMount } from "svelte";
+    import { onMount } from "svelte";
     import { push } from "svelte-spa-router";
 
     import {
@@ -18,6 +18,7 @@
         openBrowserPasskeyHandoff,
     } from "../lib/browserPasskey.js";
     import { registerPasskey } from "../lib/passkey.js";
+    import { desktopConfig } from "../lib/platform.js";
     import { vexService } from "../lib/store/index.js";
     import "../settings-detail.css";
 
@@ -29,6 +30,8 @@
     let busy = $state(false);
     let browserWait: AbortController | null = $state.raw(null);
     let deleteConfirmID: null | string = $state(null);
+
+    const SETUP_INTENT_KEY = "vex-passkey-setup-intent";
 
     function sortPasskeys(next: Passkey[]): Passkey[] {
         return [...next].sort(
@@ -51,8 +54,11 @@
         }
     }
 
-    async function addPasskey(event: SubmitEvent): Promise<void> {
-        event.preventDefault();
+    async function addPasskey(
+        event?: SubmitEvent,
+        isActive: () => boolean = () => true,
+    ): Promise<void> {
+        event?.preventDefault();
         const passkeyName = name.trim();
         if (!passkeyName) {
             error = "Give the passkey a name you will recognize.";
@@ -69,6 +75,7 @@
         try {
             const begin =
                 await vexService.beginPasskeyRegistration(passkeyName);
+            if (!isActive()) return;
             const browserHandoff = getBrowserPasskeyHandoff(begin.options);
             if (browserHandoff) {
                 browserWait = controller;
@@ -170,12 +177,43 @@
     }
 
     onMount(() => {
-        void loadPasskeys();
+        let active = true;
+        const setupIntent = takeSetupIntent();
+        void (async () => {
+            await loadPasskeys();
+            if (!active || !setupIntent) return;
+            name = setupIntent.suggestedName;
+            if (error) return;
+            await addPasskey(undefined, () => active);
+        })();
+        return () => {
+            active = false;
+            browserWait?.abort();
+        };
     });
 
-    onDestroy(() => {
-        browserWait?.abort();
-    });
+    function takeSetupIntent(): null | { suggestedName: string } {
+        const fallbackName = desktopConfig().deviceName.trim() || "This device";
+        const raw = sessionStorage.getItem(SETUP_INTENT_KEY);
+        sessionStorage.removeItem(SETUP_INTENT_KEY);
+        if (!raw) return null;
+        try {
+            const parsed: unknown = JSON.parse(raw);
+            if (typeof parsed !== "object" || parsed === null) {
+                return { suggestedName: fallbackName };
+            }
+            const suggestedName = (parsed as { suggestedName?: unknown })
+                .suggestedName;
+            return {
+                suggestedName:
+                    typeof suggestedName === "string" && suggestedName.trim()
+                        ? suggestedName.trim()
+                        : fallbackName,
+            };
+        } catch {
+            return { suggestedName: fallbackName };
+        }
+    }
 </script>
 
 <div class="settings-detail">

@@ -143,7 +143,15 @@ export async function authenticatePasskey(
         // react-native-passkey returns AuthenticationResponseJSON; the
         // spire endpoint accepts it as `Record<string, unknown>` and
         // `@simplewebauthn/server` does the structural validation.
-        return result as unknown as Record<string, unknown>;
+        const response = result as unknown as Record<string, unknown>;
+        // The iOS call above explicitly requests a platform credential, but
+        // react-native-passkey does not currently populate the WebAuthn
+        // attachment field for that native response. Preserve the same signal
+        // browsers expose so post-login UX can distinguish local from hybrid
+        // or external authentication without guessing from backup flags.
+        return Platform.OS === "ios" && !response["authenticatorAttachment"]
+            ? { ...response, authenticatorAttachment: "platform" }
+            : response;
     } catch (err: unknown) {
         throw normalizePasskeyError(err);
     }

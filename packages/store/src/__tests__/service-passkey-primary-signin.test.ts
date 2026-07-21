@@ -15,6 +15,7 @@ vi.mock("@vex-chat/libvex", () => ({
     },
 }));
 
+import { $passkeyUpgradePrompt } from "../domains/identity.ts";
 import { vexService } from "../service.ts";
 
 type MockClient = {
@@ -163,6 +164,7 @@ describe("vexService passkey-primary sign-in", () => {
     beforeEach(async () => {
         vi.useRealTimers();
         await vexService.close();
+        vexService.dismissPasskeyUpgradePrompt();
         vexService.setPasskeyCeremonyDriver(null);
         libvexMock.create.mockReset();
         libvexMock.generateSecretKey.mockReset();
@@ -225,6 +227,44 @@ describe("vexService passkey-primary sign-in", () => {
         expect(client.loginWithDeviceKey).toHaveBeenCalledWith("device-blood");
         expect(saveCredentials).toHaveBeenCalledWith({ ...creds, token: "" });
         expect(client.connect).toHaveBeenCalledOnce();
+        expect($passkeyUpgradePrompt.get()).toBeNull();
+    });
+
+    test("offers a local passkey after cross-platform passkey sign-in", async () => {
+        const creds: StoredCredentials = {
+            deviceID: "device-blood",
+            deviceKey: "0".repeat(64),
+            token: "old-token",
+            username: "blood",
+        };
+        const client = makeClient();
+        const config = makeConfig();
+        const { keyStore } = makeKeyStore(creds);
+        const authenticate = vi.fn(async () => ({
+            authenticatorAttachment: "cross-platform",
+            id: "assertion",
+        }));
+        vexService.setPasskeyCeremonyDriver({
+            authenticate,
+            register: vi.fn(),
+        });
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        await vexService.authenticateAccountWithPasskey(
+            "blood",
+            config,
+            { host: "dev.vex.wtf" },
+            keyStore,
+        );
+        const finish =
+            await vexService.finishPasskeyAuthenticatedDeviceSignIn(keyStore);
+
+        expect(finish).toEqual({ ok: true });
+        expect($passkeyUpgradePrompt.get()).toEqual({
+            deviceName: "test-device",
+            reason: "cross_platform_passkey",
+            userID: "user-blood",
+        });
     });
 
     test("falls through to registration when passkey begin returns unauthorized", async () => {
@@ -271,7 +311,10 @@ describe("vexService passkey-primary sign-in", () => {
         const { keyStore, saveCredentials } = makeKeyStore(null);
         const options: ServerOptions = { host: "dev.vex.wtf" };
         vexService.setPasskeyCeremonyDriver({
-            authenticate: vi.fn(async () => ({ id: "assertion" })),
+            authenticate: vi.fn(async () => ({
+                authenticatorAttachment: "cross-platform",
+                id: "assertion",
+            })),
             register: vi.fn(),
         });
         libvexMock.create.mockResolvedValueOnce(authClient);
@@ -342,6 +385,11 @@ describe("vexService passkey-primary sign-in", () => {
             username: "blood",
         });
         expect(authClient.connect).toHaveBeenCalledOnce();
+        expect($passkeyUpgradePrompt.get()).toEqual({
+            deviceName: "test-device",
+            reason: "cross_platform_passkey",
+            userID: "user-blood",
+        });
         expect(approval).toMatchObject({
             ok: false,
             pendingDeviceApproval: true,

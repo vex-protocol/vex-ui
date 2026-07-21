@@ -15,6 +15,7 @@ vi.mock("@vex-chat/libvex", () => ({
     },
 }));
 
+import { $passkeyUpgradePrompt } from "../domains/identity.ts";
 import { vexService } from "../service.ts";
 
 type MockClient = {
@@ -36,6 +37,7 @@ type MockClient = {
         beginRegistration: ReturnType<typeof vi.fn>;
         finishAuthentication: ReturnType<typeof vi.fn>;
         finishRegistration: ReturnType<typeof vi.fn>;
+        list: ReturnType<typeof vi.fn>;
     };
     permissions: { retrieve: ReturnType<typeof vi.fn> };
     servers: {
@@ -92,6 +94,16 @@ function makeClient(): MockClient {
                 transports: [],
                 userID: "user-blood",
             })),
+            list: vi.fn(async () => [
+                {
+                    createdAt: "2026-05-22T00:00:00.000Z",
+                    lastUsedAt: null,
+                    name: "existing-passkey",
+                    passkeyID: "passkey-existing",
+                    transports: ["internal"],
+                    userID: "user-blood",
+                },
+            ]),
         },
         permissions: { retrieve: vi.fn(async () => []) },
         servers: {
@@ -118,6 +130,7 @@ function makeStorage(): MockStorage {
 describe("vexService.login decrypt-mismatch recovery", () => {
     beforeEach(async () => {
         await vexService.close();
+        vexService.dismissPasskeyUpgradePrompt();
         vexService.setPasskeyCeremonyDriver(null);
         libvexMock.create.mockReset();
         libvexMock.generateSecretKey.mockReset();
@@ -245,6 +258,115 @@ describe("vexService.login decrypt-mismatch recovery", () => {
         expect(client.login).not.toHaveBeenCalled();
         expect(client.loginWithDeviceKey).not.toHaveBeenCalled();
         expect(client.connect).not.toHaveBeenCalled();
+    });
+
+    test("offers a passkey upgrade after password login for a password-only account", async () => {
+        const creds: StoredCredentials = {
+            deviceID: "device-blood",
+            deviceKey: "0".repeat(64),
+            token: "old-token",
+            username: "blood",
+        };
+        const keyStore: KeyStore = {
+            clear: vi.fn(async () => undefined),
+            load: vi.fn(async () => creds),
+            save: vi.fn(async () => undefined),
+        };
+        const config: BootstrapConfig = {
+            createStorage: vi.fn(async () => makeStorage()),
+            deviceName: "Blood's Mac",
+        };
+        const client = makeClient();
+        client.passkeys.list.mockResolvedValueOnce([]);
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        const result = await vexService.login(
+            "blood",
+            "correct-password",
+            config,
+            { host: "dev.vex.wtf" },
+            keyStore,
+        );
+
+        expect(result).toEqual({ ok: true });
+        await vi.waitFor(() => {
+            expect($passkeyUpgradePrompt.get()).toEqual({
+                deviceName: "Blood's Mac",
+                reason: "password_login",
+                userID: "user-blood",
+            });
+        });
+    });
+
+    test("does not offer another passkey after password login when one exists", async () => {
+        const creds: StoredCredentials = {
+            deviceID: "device-blood",
+            deviceKey: "0".repeat(64),
+            token: "old-token",
+            username: "blood",
+        };
+        const keyStore: KeyStore = {
+            clear: vi.fn(async () => undefined),
+            load: vi.fn(async () => creds),
+            save: vi.fn(async () => undefined),
+        };
+        const config: BootstrapConfig = {
+            createStorage: vi.fn(async () => makeStorage()),
+            deviceName: "Blood's Mac",
+        };
+        const client = makeClient();
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        const result = await vexService.login(
+            "blood",
+            "correct-password",
+            config,
+            { host: "dev.vex.wtf" },
+            keyStore,
+        );
+
+        expect(result).toEqual({ ok: true });
+        await vi.waitFor(() => {
+            expect(client.passkeys.list).toHaveBeenCalledOnce();
+        });
+        expect($passkeyUpgradePrompt.get()).toBeNull();
+    });
+
+    test("keeps password login successful when passkey discovery fails", async () => {
+        const creds: StoredCredentials = {
+            deviceID: "device-blood",
+            deviceKey: "0".repeat(64),
+            token: "old-token",
+            username: "blood",
+        };
+        const keyStore: KeyStore = {
+            clear: vi.fn(async () => undefined),
+            load: vi.fn(async () => creds),
+            save: vi.fn(async () => undefined),
+        };
+        const config: BootstrapConfig = {
+            createStorage: vi.fn(async () => makeStorage()),
+            deviceName: "Blood's Mac",
+        };
+        const client = makeClient();
+        client.passkeys.list.mockRejectedValueOnce(
+            new Error("passkey list unavailable"),
+        );
+        libvexMock.create.mockResolvedValueOnce(client);
+
+        const result = await vexService.login(
+            "blood",
+            "correct-password",
+            config,
+            { host: "dev.vex.wtf" },
+            keyStore,
+        );
+
+        expect(result).toEqual({ ok: true });
+        await vi.waitFor(() => {
+            expect(client.passkeys.list).toHaveBeenCalledOnce();
+        });
+        expect($passkeyUpgradePrompt.get()).toBeNull();
     });
 
     test("does not expose transport details when a password is rejected", async () => {
