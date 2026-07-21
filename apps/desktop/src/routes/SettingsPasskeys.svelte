@@ -32,6 +32,7 @@
     let deleteConfirmID: null | string = $state(null);
 
     const SETUP_INTENT_KEY = "vex-passkey-setup-intent";
+    const SETUP_INTENT_EVENT = "vex-passkey-setup-intent";
 
     function sortPasskeys(next: Passkey[]): Passkey[] {
         return [...next].sort(
@@ -178,16 +179,28 @@
 
     onMount(() => {
         let active = true;
-        const setupIntent = takeSetupIntent();
-        void (async () => {
-            await loadPasskeys();
+        const initialSetupIntent = takeSetupIntent();
+        const passkeysLoaded = loadPasskeys();
+
+        async function startSetup(
+            setupIntent: null | { suggestedName: string },
+        ): Promise<void> {
+            await passkeysLoaded;
             if (!active || !setupIntent) return;
             name = setupIntent.suggestedName;
             if (error) return;
             await addPasskey(undefined, () => active);
-        })();
+        }
+
+        const handleSetupIntent = (): void => {
+            void startSetup(takeSetupIntent());
+        };
+
+        window.addEventListener(SETUP_INTENT_EVENT, handleSetupIntent);
+        void startSetup(initialSetupIntent);
         return () => {
             active = false;
+            window.removeEventListener(SETUP_INTENT_EVENT, handleSetupIntent);
             browserWait?.abort();
         };
     });

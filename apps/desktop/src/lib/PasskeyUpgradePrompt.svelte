@@ -6,6 +6,7 @@
     import { passkeyUpgradePrompt, vexService } from "./store/index.js";
 
     const SETUP_INTENT_KEY = "vex-passkey-setup-intent";
+    const SETUP_INTENT_EVENT = "vex-passkey-setup-intent";
     let closeButtonElement: HTMLButtonElement | null = $state(null);
     let primaryButtonElement: HTMLButtonElement | null = $state(null);
 
@@ -38,6 +39,7 @@
                 suggestedName: passkeyNameForDevice(prompt.deviceName),
             }),
         );
+        window.dispatchEvent(new Event(SETUP_INTENT_EVENT));
         dismiss();
         void push("/settings/passkeys");
     }
