@@ -16,7 +16,12 @@
     import { productFeatures } from "../lib/features.js";
     // Route: /messaging/:userID
     import MessageBox from "../lib/MessageBox.svelte";
-    import { familiars, messages, vexService } from "../lib/store/index.js";
+    import {
+        familiars,
+        messages,
+        user,
+        vexService,
+    } from "../lib/store/index.js";
     import {
         voiceCallEngine,
         $voiceCallState as voiceCallState,
@@ -41,7 +46,7 @@
     let menuOpen = $state(false);
 
     $effect(() => {
-        const nextKey = `dm:${targetUserID}`;
+        const nextKey = `account:${$user?.userID ?? "signed-out"}:dm:${targetUserID}`;
         if (nextKey === activeDraftKey) return;
         activeDraftKey = nextKey;
         composerValue = readComposerDraft(nextKey);

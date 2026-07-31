@@ -69,7 +69,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     const isGroup = route.kind === "channel";
     const conversationKey =
         route.kind === "channel" ? route.channelID : route.userID;
-    const contextKey = `${isGroup ? "channel" : "dm"}:${conversationKey}`;
+    const contextKey = `account:${currentUser?.userID ?? "signed-out"}:${isGroup ? "channel" : "dm"}:${conversationKey}`;
     const messages = isGroup
         ? (groupMessages[conversationKey] ?? [])
         : (directMessages[conversationKey] ?? []);

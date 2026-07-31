@@ -43,7 +43,7 @@
     let showSettings = $state(false);
 
     $effect(() => {
-        const nextKey = `channel:${channelID}`;
+        const nextKey = `account:${$user?.userID ?? "signed-out"}:channel:${channelID}`;
         if (nextKey === activeDraftKey) return;
         activeDraftKey = nextKey;
         composerValue = readComposerDraft(nextKey);
