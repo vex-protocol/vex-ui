@@ -1,19 +1,29 @@
-import type { MessageReplyReference } from "@vex-chat/store";
+import type {
+    ComposerRecoveryDraft,
+    MessageReplyReference,
+} from "@vex-chat/store";
 
 import {
+    CircleAlert,
     CornerUpLeft,
     FileText,
     Mic,
     Paperclip,
     Pencil,
+    RotateCcw,
     Send,
     X,
 } from "lucide-preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
-import { formatFileSize } from "@vex-chat/store";
+import { ComposerRecoveryQueue, formatFileSize } from "@vex-chat/store";
 
 import { VoiceMemoRecorder } from "./VoiceMemoRecorder";
+
+export interface MessageComposerSendContext {
+    preserveComposerContext: boolean;
+    replyingTo: MessageReplyReference | null;
+}
 
 interface MessageComposerProps {
     contextKey: string;
@@ -22,17 +32,21 @@ interface MessageComposerProps {
     onCancelEdit: () => void;
     onCancelReply: () => void;
     onChange: (value: string) => void;
-    onDraftActivity: () => void;
     onSend: (
         content: string,
         attachment: File | undefined,
-        draftValue: string,
+        context: MessageComposerSendContext,
     ) => Promise<boolean>;
     placeholder: string;
     replyingTo?: MessageReplyReference | null;
     sending?: boolean;
     value: string;
 }
+
+const failedSends = new ComposerRecoveryQueue<
+    File,
+    MessageReplyReference | null
+>();
 
 export function MessageComposer({
     contextKey,
@@ -41,7 +55,6 @@ export function MessageComposer({
     onCancelEdit,
     onCancelReply,
     onChange,
-    onDraftActivity,
     onSend,
     placeholder,
     replyingTo = null,
@@ -54,15 +67,16 @@ export function MessageComposer({
     const [submitting, setSubmitting] = useState(false);
     const [voiceMemoOpen, setVoiceMemoOpen] = useState(false);
     const [recordingError, setRecordingError] = useState("");
+    const [failedSendVersion, setFailedSendVersion] = useState(0);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const attachmentRef = useRef<File | null>(null);
-    const contextRef = useRef(contextKey);
     const previousContext = useRef(contextKey);
-    const valueRef = useRef(value);
-    contextRef.current = contextKey;
-    valueRef.current = value;
+    const mountedRef = useRef(true);
     const busy = sending || submitting;
+    const recoverableSends = useMemo(
+        () => failedSends.get(contextKey),
+        [contextKey, failedSendVersion],
+    );
     const voiceMemoSupported =
         typeof navigator.mediaDevices?.getUserMedia === "function" &&
         typeof globalThis.MediaRecorder === "function";
@@ -98,6 +112,13 @@ export function MessageComposer({
         [previewURL],
     );
 
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
+
     function resizeTextarea() {
         const textarea = textareaRef.current;
         if (!textarea) return;
@@ -105,12 +126,10 @@ export function MessageComposer({
         textarea.style.height = `${Math.min(textarea.scrollHeight, 144)}px`;
     }
 
-    function setAttachment(file: File, userInitiated = true) {
+    function setAttachment(file: File) {
         clearAttachment();
         const normalized = normalizeFile(file);
-        attachmentRef.current = normalized;
         setAttachmentState(normalized);
-        if (userInitiated) onDraftActivity();
         if (
             (normalized.type.startsWith("image/") &&
                 normalized.type !== "image/svg+xml") ||
@@ -123,8 +142,35 @@ export function MessageComposer({
     function clearAttachment() {
         if (previewURL) URL.revokeObjectURL(previewURL);
         setPreviewURL("");
-        attachmentRef.current = null;
         setAttachmentState(null);
+    }
+
+    function refreshRecoverableSends() {
+        if (mountedRef.current) {
+            setFailedSendVersion((version) => version + 1);
+        }
+    }
+
+    function dismissRecoverableSend(id: number) {
+        if (failedSends.remove(contextKey, id)) refreshRecoverableSends();
+    }
+
+    async function retryRecoverableSend(
+        draft: ComposerRecoveryDraft<File, MessageReplyReference | null>,
+    ) {
+        if (busy || editing) return;
+        setSubmitting(true);
+        try {
+            const sent = await onSend(draft.value.trim(), draft.attachment, {
+                preserveComposerContext: true,
+                replyingTo: draft.metadata,
+            });
+            if (sent && failedSends.remove(contextKey, draft.id)) {
+                refreshRecoverableSends();
+            }
+        } finally {
+            setSubmitting(false);
+        }
     }
 
     async function submit() {
@@ -132,6 +178,7 @@ export function MessageComposer({
         const content = value.trim();
         const pendingAttachment = attachment ?? undefined;
         const pendingContext = contextKey;
+        const pendingReply = replyingTo;
         const wasEditing = editing;
         if (
             (!content && !pendingAttachment) ||
@@ -143,7 +190,6 @@ export function MessageComposer({
         }
         setSubmitting(true);
         if (!wasEditing) {
-            valueRef.current = "";
             onChange("");
             clearAttachment();
             window.requestAnimationFrame(() => {
@@ -152,25 +198,26 @@ export function MessageComposer({
             });
         }
         try {
-            const sent = await onSend(content, pendingAttachment, pendingValue);
+            const sent = await onSend(content, pendingAttachment, {
+                preserveComposerContext: false,
+                replyingTo: pendingReply,
+            });
             if (!sent) {
-                if (!wasEditing && contextRef.current === pendingContext) {
-                    if (valueRef.current === "" && !attachmentRef.current) {
-                        valueRef.current = pendingValue;
-                        onChange(pendingValue);
-                        if (pendingAttachment) {
-                            setAttachment(pendingAttachment, false);
-                        }
-                    }
-                    window.requestAnimationFrame(() => {
-                        resizeTextarea();
-                        textareaRef.current?.focus();
+                if (!wasEditing) {
+                    failedSends.add(pendingContext, {
+                        attachment: pendingAttachment,
+                        metadata: pendingReply,
+                        value: pendingValue,
                     });
+                    refreshRecoverableSends();
                 }
+                window.requestAnimationFrame(() => {
+                    resizeTextarea();
+                    textareaRef.current?.focus();
+                });
                 return;
             }
             if (wasEditing) {
-                valueRef.current = "";
                 onChange("");
                 clearAttachment();
                 window.requestAnimationFrame(() =>
@@ -191,6 +238,38 @@ export function MessageComposer({
 
     return (
         <section className="message-composer">
+            {recoverableSends.map((draft) => (
+                <div className="composer-recovery" key={draft.id} role="status">
+                    <CircleAlert size={17} />
+                    <span>
+                        <strong>Message not sent</strong>
+                        <small>
+                            {composerRecoveryPreview(
+                                draft.value,
+                                draft.attachment,
+                            )}
+                        </small>
+                    </span>
+                    <button
+                        aria-label="Retry unsent message"
+                        disabled={busy || editing}
+                        title="Retry"
+                        type="button"
+                        onClick={() => void retryRecoverableSend(draft)}
+                    >
+                        <RotateCcw size={15} />
+                    </button>
+                    <button
+                        aria-label="Dismiss unsent message"
+                        disabled={busy}
+                        title="Dismiss"
+                        type="button"
+                        onClick={() => dismissRecoverableSend(draft.id)}
+                    >
+                        <X size={15} />
+                    </button>
+                </div>
+            ))}
             {replyingTo && !editing ? (
                 <div className="composer-context">
                     <CornerUpLeft size={15} />
@@ -261,10 +340,7 @@ export function MessageComposer({
                         disabled={busy}
                         title="Remove attachment"
                         type="button"
-                        onClick={() => {
-                            clearAttachment();
-                            onDraftActivity();
-                        }}
+                        onClick={clearAttachment}
                     >
                         <X size={15} />
                     </button>
@@ -349,8 +425,6 @@ export function MessageComposer({
                     rows={1}
                     value={value}
                     onInput={(event) => {
-                        onDraftActivity();
-                        valueRef.current = event.currentTarget.value;
                         onChange(event.currentTarget.value);
                     }}
                     onKeyDown={(event) => {
@@ -429,4 +503,13 @@ function normalizeFile(file: File): File {
         lastModified: file.lastModified,
         type: file.type,
     });
+}
+
+function composerRecoveryPreview(
+    value: string,
+    attachment: File | undefined,
+): string {
+    const text = value.trim().replace(/\s+/g, " ");
+    if (text && attachment) return `${text} - ${attachment.name}`;
+    return text || attachment?.name || "Attachment";
 }

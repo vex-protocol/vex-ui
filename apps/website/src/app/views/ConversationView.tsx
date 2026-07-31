@@ -11,7 +11,7 @@ import {
     Users,
     X,
 } from "lucide-preact";
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 
 import {
     $channels,
@@ -22,13 +22,16 @@ import {
     $servers,
     $user,
     buildMessageReplyReference,
-    createReplyExtra,
+    createReplyReferenceExtra,
     formatFileAttachmentMarkdown,
     vexService,
 } from "@vex-chat/store";
 
 import { Avatar } from "../components/Avatar";
-import { MessageComposer } from "../components/MessageComposer";
+import {
+    MessageComposer,
+    type MessageComposerSendContext,
+} from "../components/MessageComposer";
 import { MessageList } from "../components/MessageList";
 import { productFeatures } from "../lib/features";
 import { navigate, serverSettingsPath, type WebRoute } from "../lib/router";
@@ -49,11 +52,6 @@ function writeDraft(contextKey: string, value: string) {
     } else {
         drafts.delete(contextKey);
     }
-}
-
-function restoreDraft(contextKey: string, value: string) {
-    if (!value || drafts.has(contextKey)) return;
-    writeDraft(contextKey, value);
 }
 
 type ConversationRoute = Extract<WebRoute, { kind: "channel" | "dm" }>;
@@ -83,11 +81,6 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     const [sending, setSending] = useState(false);
     const [callStarting, setCallStarting] = useState(false);
     const [error, setError] = useState("");
-    const composerActivityVersionsRef = useRef(new Map<string, number>());
-    const contextKeyRef = useRef(contextKey);
-    const textRef = useRef(text);
-    contextKeyRef.current = contextKey;
-    textRef.current = text;
 
     const channel =
         route.kind === "channel"
@@ -116,7 +109,6 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
 
     useEffect(() => {
         const nextText = drafts.get(contextKey) ?? "";
-        textRef.current = nextText;
         setText(nextText);
         setEditing(null);
         setReplying(null);
@@ -164,43 +156,18 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     }, [familiars, route.kind, route.kind === "dm" ? route.userID : ""]);
 
     function updateText(next: string) {
-        textRef.current = next;
         setText(next);
         writeDraft(contextKey, next);
-    }
-
-    function markComposerActivity() {
-        const versions = composerActivityVersionsRef.current;
-        versions.set(contextKey, (versions.get(contextKey) ?? 0) + 1);
     }
 
     async function send(
         content: string,
         attachment: File | undefined,
-        draftValue: string,
+        sendContext: MessageComposerSendContext,
     ): Promise<boolean> {
         if (!currentUser || sending) return false;
-        const pendingContext = contextKey;
         const pendingEdit = editing;
-        const pendingReply = replying;
-        const pendingComposerActivity =
-            composerActivityVersionsRef.current.get(pendingContext) ?? 0;
-        const restorePendingDraft = () => {
-            if (contextKeyRef.current === pendingContext) return;
-            restoreDraft(pendingContext, draftValue);
-        };
-        const restorePendingReply = () => {
-            if (
-                !pendingReply ||
-                contextKeyRef.current !== pendingContext ||
-                (composerActivityVersionsRef.current.get(pendingContext) ??
-                    0) !== pendingComposerActivity ||
-                textRef.current !== ""
-            ) {
-                return;
-            }
-            setReplying((current) => current ?? pendingReply);
-        };
+        const pendingReply = sendContext.replyingTo;
         setSending(true);
         setError("");
         try {
@@ -220,7 +187,9 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                 return true;
             }
 
-            setReplying(null);
+            if (!sendContext.preserveComposerContext) {
+                setReplying(null);
+            }
             let body = content;
             if (attachment) {
                 const uploaded = await vexService.uploadFileAttachment({
@@ -231,8 +200,6 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                 });
                 if (!uploaded.ok || !uploaded.attachment) {
                     setError(uploaded.error ?? "Could not upload the file.");
-                    restorePendingDraft();
-                    restorePendingReply();
                     return false;
                 }
                 const markdown = formatFileAttachmentMarkdown(
@@ -242,11 +209,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
             }
 
             const extra = pendingReply
-                ? createReplyExtra(
-                      pendingReply,
-                      usernameMap[pendingReply.authorID] ??
-                          pendingReply.authorID.slice(0, 8),
-                  )
+                ? createReplyReferenceExtra(pendingReply)
                 : undefined;
             const options = extra ? { extra } : undefined;
             const result = isGroup
@@ -258,8 +221,6 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                 : await vexService.sendDM(conversationKey, body, options);
             if (!result.ok) {
                 setError(result.error ?? "Could not send the message.");
-                restorePendingDraft();
-                restorePendingReply();
                 return false;
             }
             return true;
@@ -269,8 +230,6 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                     ? cause.message
                     : "Could not send the message.",
             );
-            if (!pendingEdit) restorePendingDraft();
-            restorePendingReply();
             return false;
         } finally {
             setSending(false);
@@ -287,7 +246,6 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     function replyToMessage(message: Message) {
         setError("");
         setEditing(null);
-        markComposerActivity();
         setReplying(message);
     }
 
@@ -548,7 +506,6 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                     }}
                     onCancelReply={() => setReplying(null)}
                     onChange={updateText}
-                    onDraftActivity={markComposerActivity}
                     onSend={send}
                 />
             </div>

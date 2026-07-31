@@ -8,7 +8,6 @@
     import {
         clearComposerDraft,
         readComposerDraft,
-        restoreComposerDraft,
         writeComposerDraft,
     } from "../lib/composerDrafts.js";
     // Route: /server/:serverID/:channelID
@@ -68,16 +67,10 @@
     async function handleSend(
         content: string,
         attachment: File | undefined,
-        draftValue: string,
     ): Promise<boolean> {
         if (!$user || sending) return false;
-        const pendingDraftKey = activeDraftKey;
         const pendingEdit = editingMessage;
         const pendingChannelID = channelID;
-        const restorePendingDraft = () => {
-            if (activeDraftKey === pendingDraftKey) return;
-            restoreComposerDraft(pendingDraftKey, draftValue);
-        };
         sending = true;
         sendError = "";
         try {
@@ -106,7 +99,6 @@
             );
             if (!body.ok) {
                 sendError = body.error;
-                restorePendingDraft();
                 return false;
             }
 
@@ -116,13 +108,11 @@
             );
             if (!result.ok) {
                 sendError = result.error ?? "Failed to send";
-                restorePendingDraft();
                 return false;
             }
             return true;
         } catch (err: unknown) {
             sendError = err instanceof Error ? err.message : "Failed to send";
-            if (!pendingEdit) restorePendingDraft();
             return false;
         } finally {
             sending = false;

@@ -1,5 +1,10 @@
 // ── VexService (primary API for apps) ───────────────────────────────────────
 
+export { ComposerRecoveryQueue } from "./composer-recovery.ts";
+export type {
+    ComposerRecoveryDraft,
+    ComposerRecoveryDraftInput,
+} from "./composer-recovery.ts";
 export {
     decodeVexDbAtRestKey,
     encodeVexDbAtRestKey,
