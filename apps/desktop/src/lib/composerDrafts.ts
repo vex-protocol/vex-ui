@@ -3,12 +3,14 @@ import type { ComposerRecoveryDraft } from "@vex-chat/store";
 import { ComposerRecoveryQueue } from "@vex-chat/store";
 
 const drafts = new Map<string, string>();
+const draftVersions = new Map<string, number>();
 const MAX_DRAFTS = 100;
 const failedSends = new ComposerRecoveryQueue<File>();
 
 export type FailedComposerSend = ComposerRecoveryDraft<File>;
 
 export function clearComposerDraft(key: string): void {
+    draftVersions.set(key, (draftVersions.get(key) ?? 0) + 1);
     drafts.delete(key);
 }
 
@@ -18,6 +20,10 @@ export function dismissFailedComposerSend(key: string, id: number): boolean {
 
 export function readComposerDraft(key: string): string {
     return drafts.get(key) ?? "";
+}
+
+export function readComposerDraftVersion(key: string): number {
+    return draftVersions.get(key) ?? 0;
 }
 
 export function readFailedComposerSends(
@@ -39,6 +45,7 @@ export function rememberFailedComposerSend(
 }
 
 export function writeComposerDraft(key: string, value: string): void {
+    draftVersions.set(key, (draftVersions.get(key) ?? 0) + 1);
     if (value.length === 0) {
         drafts.delete(key);
         return;

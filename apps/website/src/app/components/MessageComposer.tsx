@@ -217,13 +217,6 @@ export function MessageComposer({
                 });
                 return;
             }
-            if (wasEditing) {
-                onChange("");
-                clearAttachment();
-                window.requestAnimationFrame(() =>
-                    textareaRef.current?.focus(),
-                );
-            }
         } finally {
             setSubmitting(false);
         }

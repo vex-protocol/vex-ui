@@ -9,6 +9,7 @@
     import {
         clearComposerDraft,
         readComposerDraft,
+        readComposerDraftVersion,
         writeComposerDraft,
     } from "../lib/composerDrafts.js";
     import { getServerUrl } from "../lib/config.js";
@@ -52,6 +53,8 @@
         attachment: File | undefined,
     ): Promise<boolean> {
         if (sending) return false;
+        const pendingDraftKey = activeDraftKey;
+        const pendingDraftVersion = readComposerDraftVersion(pendingDraftKey);
         const pendingEdit = editingMessage;
         const pendingTargetUserID = targetUserID;
         sending = true;
@@ -66,12 +69,18 @@
                 );
                 if (!result.ok) {
                     sendError = result.error ?? "Failed to edit message";
-                    composerValue = content;
-                    editingMessage = pendingEdit;
                     return false;
                 }
-                editingMessage = null;
-                composerValue = "";
+                const draftUnchanged =
+                    readComposerDraftVersion(pendingDraftKey) ===
+                    pendingDraftVersion;
+                if (draftUnchanged) {
+                    clearComposerDraft(pendingDraftKey);
+                }
+                if (draftUnchanged && activeDraftKey === pendingDraftKey) {
+                    editingMessage = null;
+                    composerValue = "";
+                }
                 return true;
             }
 
@@ -166,6 +175,7 @@
         sendError = "";
         editingMessage = message;
         composerValue = message.message;
+        writeComposerDraft(activeDraftKey, message.message);
     }
 
     function updateComposer(value: string): void {

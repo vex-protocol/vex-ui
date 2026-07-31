@@ -113,13 +113,6 @@
                 textareaEl?.focus();
                 return;
             }
-            if (wasEditing) {
-                setValue("");
-                clearAttachment();
-                if (textareaEl) textareaEl.style.height = "auto";
-                await tick();
-                textareaEl?.focus();
-            }
         } finally {
             submitting = false;
         }

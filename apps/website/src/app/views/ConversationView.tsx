@@ -11,7 +11,7 @@ import {
     Users,
     X,
 } from "lucide-preact";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import {
     $channels,
@@ -38,9 +38,11 @@ import { navigate, serverSettingsPath, type WebRoute } from "../lib/router";
 import { useStoreValue } from "../lib/useStoreValue";
 
 const drafts = new Map<string, string>();
+const draftVersions = new Map<string, number>();
 const MAX_DRAFTS = 100;
 
 function writeDraft(contextKey: string, value: string) {
+    draftVersions.set(contextKey, (draftVersions.get(contextKey) ?? 0) + 1);
     if (value) {
         drafts.delete(contextKey);
         drafts.set(contextKey, value);
@@ -81,6 +83,8 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     const [sending, setSending] = useState(false);
     const [callStarting, setCallStarting] = useState(false);
     const [error, setError] = useState("");
+    const contextKeyRef = useRef(contextKey);
+    contextKeyRef.current = contextKey;
 
     const channel =
         route.kind === "channel"
@@ -166,6 +170,8 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
         sendContext: MessageComposerSendContext,
     ): Promise<boolean> {
         if (!currentUser || sending) return false;
+        const pendingContext = contextKey;
+        const pendingDraftVersion = draftVersions.get(pendingContext) ?? 0;
         const pendingEdit = editing;
         const pendingReply = sendContext.replyingTo;
         setSending(true);
@@ -182,8 +188,21 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                     setError(result.error ?? "Could not edit the message.");
                     return false;
                 }
-                setEditing(null);
-                updateText("");
+                const draftUnchanged =
+                    (draftVersions.get(pendingContext) ?? 0) ===
+                    pendingDraftVersion;
+                if (draftUnchanged) {
+                    writeDraft(pendingContext, "");
+                }
+                if (
+                    draftUnchanged &&
+                    contextKeyRef.current === pendingContext
+                ) {
+                    setEditing((current) =>
+                        current?.mailID === pendingEdit.mailID ? null : current,
+                    );
+                    setText("");
+                }
                 return true;
             }
 
