@@ -8,6 +8,7 @@
     import {
         clearComposerDraft,
         readComposerDraft,
+        readComposerDraftVersion,
         writeComposerDraft,
     } from "../lib/composerDrafts.js";
     // Route: /server/:serverID/:channelID
@@ -42,7 +43,7 @@
     let showSettings = $state(false);
 
     $effect(() => {
-        const nextKey = `channel:${channelID}`;
+        const nextKey = `account:${$user?.userID ?? "signed-out"}:channel:${channelID}`;
         if (nextKey === activeDraftKey) return;
         activeDraftKey = nextKey;
         composerValue = readComposerDraft(nextKey);
@@ -66,28 +67,37 @@
 
     async function handleSend(
         content: string,
-        attachment?: File,
+        attachment: File | undefined,
     ): Promise<boolean> {
         if (!$user || sending) return false;
+        const pendingDraftKey = activeDraftKey;
+        const pendingDraftVersion = readComposerDraftVersion(pendingDraftKey);
+        const pendingEdit = editingMessage;
+        const pendingChannelID = channelID;
         sending = true;
         sendError = "";
         try {
-            if (editingMessage) {
-                const pendingEdit = editingMessage;
+            if (pendingEdit) {
                 const result = await vexService.editMessage(
-                    channelID,
+                    pendingChannelID,
                     pendingEdit.mailID,
                     true,
                     content,
                 );
                 if (!result.ok) {
                     sendError = result.error ?? "Failed to edit message";
-                    composerValue = content;
-                    editingMessage = pendingEdit;
                     return false;
                 }
-                editingMessage = null;
-                composerValue = "";
+                const draftUnchanged =
+                    readComposerDraftVersion(pendingDraftKey) ===
+                    pendingDraftVersion;
+                if (draftUnchanged) {
+                    clearComposerDraft(pendingDraftKey);
+                }
+                if (draftUnchanged && activeDraftKey === pendingDraftKey) {
+                    editingMessage = null;
+                    composerValue = "";
+                }
                 return true;
             }
 
@@ -102,7 +112,7 @@
             }
 
             const result = await vexService.sendGroupMessage(
-                channelID,
+                pendingChannelID,
                 body.body,
             );
             if (!result.ok) {
@@ -143,6 +153,7 @@
         sendError = "";
         editingMessage = message;
         composerValue = message.message;
+        writeComposerDraft(activeDraftKey, message.message);
     }
 
     function updateComposer(value: string): void {

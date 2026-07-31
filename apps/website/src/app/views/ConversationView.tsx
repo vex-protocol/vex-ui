@@ -11,7 +11,7 @@ import {
     Users,
     X,
 } from "lucide-preact";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import {
     $channels,
@@ -22,20 +22,39 @@ import {
     $servers,
     $user,
     buildMessageReplyReference,
-    createReplyExtra,
+    createReplyReferenceExtra,
     formatFileAttachmentMarkdown,
     vexService,
 } from "@vex-chat/store";
 
 import { Avatar } from "../components/Avatar";
-import { MessageComposer } from "../components/MessageComposer";
+import {
+    MessageComposer,
+    type MessageComposerSendContext,
+} from "../components/MessageComposer";
 import { MessageList } from "../components/MessageList";
 import { productFeatures } from "../lib/features";
 import { navigate, serverSettingsPath, type WebRoute } from "../lib/router";
 import { useStoreValue } from "../lib/useStoreValue";
 
 const drafts = new Map<string, string>();
+const draftVersions = new Map<string, number>();
 const MAX_DRAFTS = 100;
+
+function writeDraft(contextKey: string, value: string) {
+    draftVersions.set(contextKey, (draftVersions.get(contextKey) ?? 0) + 1);
+    if (value) {
+        drafts.delete(contextKey);
+        drafts.set(contextKey, value);
+        while (drafts.size > MAX_DRAFTS) {
+            const oldest = drafts.keys().next().value;
+            if (typeof oldest !== "string") break;
+            drafts.delete(oldest);
+        }
+    } else {
+        drafts.delete(contextKey);
+    }
+}
 
 type ConversationRoute = Extract<WebRoute, { kind: "channel" | "dm" }>;
 
@@ -50,7 +69,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     const isGroup = route.kind === "channel";
     const conversationKey =
         route.kind === "channel" ? route.channelID : route.userID;
-    const contextKey = `${isGroup ? "channel" : "dm"}:${conversationKey}`;
+    const contextKey = `account:${currentUser?.userID ?? "signed-out"}:${isGroup ? "channel" : "dm"}:${conversationKey}`;
     const messages = isGroup
         ? (groupMessages[conversationKey] ?? [])
         : (directMessages[conversationKey] ?? []);
@@ -64,6 +83,8 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     const [sending, setSending] = useState(false);
     const [callStarting, setCallStarting] = useState(false);
     const [error, setError] = useState("");
+    const contextKeyRef = useRef(contextKey);
+    contextKeyRef.current = contextKey;
 
     const channel =
         route.kind === "channel"
@@ -91,7 +112,8 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     const latestMessageID = messages[messages.length - 1]?.mailID;
 
     useEffect(() => {
-        setText(drafts.get(contextKey) ?? "");
+        const nextText = drafts.get(contextKey) ?? "";
+        setText(nextText);
         setEditing(null);
         setReplying(null);
         setError("");
@@ -139,28 +161,26 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
 
     function updateText(next: string) {
         setText(next);
-        if (next) {
-            drafts.delete(contextKey);
-            drafts.set(contextKey, next);
-            while (drafts.size > MAX_DRAFTS) {
-                const oldest = drafts.keys().next().value;
-                if (typeof oldest !== "string") break;
-                drafts.delete(oldest);
-            }
-        } else {
-            drafts.delete(contextKey);
-        }
+        writeDraft(contextKey, next);
     }
 
-    async function send(content: string, attachment?: File): Promise<boolean> {
+    async function send(
+        content: string,
+        attachment: File | undefined,
+        sendContext: MessageComposerSendContext,
+    ): Promise<boolean> {
         if (!currentUser || sending) return false;
+        const pendingContext = contextKey;
+        const pendingDraftVersion = draftVersions.get(pendingContext) ?? 0;
+        const pendingEdit = editing;
+        const pendingReply = sendContext.replyingTo;
         setSending(true);
         setError("");
         try {
-            if (editing) {
+            if (pendingEdit) {
                 const result = await vexService.editMessage(
                     conversationKey,
-                    editing.mailID,
+                    pendingEdit.mailID,
                     isGroup,
                     content,
                 );
@@ -168,11 +188,27 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                     setError(result.error ?? "Could not edit the message.");
                     return false;
                 }
-                setEditing(null);
-                updateText("");
+                const draftUnchanged =
+                    (draftVersions.get(pendingContext) ?? 0) ===
+                    pendingDraftVersion;
+                if (draftUnchanged) {
+                    writeDraft(pendingContext, "");
+                }
+                if (
+                    draftUnchanged &&
+                    contextKeyRef.current === pendingContext
+                ) {
+                    setEditing((current) =>
+                        current?.mailID === pendingEdit.mailID ? null : current,
+                    );
+                    setText("");
+                }
                 return true;
             }
 
+            if (!sendContext.preserveComposerContext) {
+                setReplying(null);
+            }
             let body = content;
             if (attachment) {
                 const uploaded = await vexService.uploadFileAttachment({
@@ -191,12 +227,8 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                 body = body ? `${body}\n\n${markdown}` : markdown;
             }
 
-            const extra = replying
-                ? createReplyExtra(
-                      replying,
-                      usernameMap[replying.authorID] ??
-                          replying.authorID.slice(0, 8),
-                  )
+            const extra = pendingReply
+                ? createReplyReferenceExtra(pendingReply)
                 : undefined;
             const options = extra ? { extra } : undefined;
             const result = isGroup
@@ -210,8 +242,6 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                 setError(result.error ?? "Could not send the message.");
                 return false;
             }
-            setReplying(null);
-            updateText("");
             return true;
         } catch (cause: unknown) {
             setError(
@@ -457,6 +487,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                 <MessageList
                     contextKey={contextKey}
                     currentUserID={currentUser?.userID ?? ""}
+                    key={contextKey}
                     messages={messages}
                     usernames={usernameMap}
                     onDeleteForEveryone={deleteForEveryone}

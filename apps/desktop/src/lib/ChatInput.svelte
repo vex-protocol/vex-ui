@@ -1,7 +1,22 @@
 <script lang="ts">
     import { tick } from "svelte";
 
-    import { FileText, Paperclip, Pencil, Send, X } from "@lucide/svelte";
+    import {
+        CircleAlert,
+        FileText,
+        Paperclip,
+        Pencil,
+        RotateCcw,
+        Send,
+        X,
+    } from "@lucide/svelte";
+
+    import {
+        dismissFailedComposerSend,
+        type FailedComposerSend,
+        readFailedComposerSends,
+        rememberFailedComposerSend,
+    } from "./composerDrafts.js";
 
     let {
         contextKey,
@@ -19,7 +34,7 @@
         editing?: boolean;
         onCancelEdit?: () => void;
         onChange?: (value: string) => void;
-        onSend: (content: string, attachment?: File) => unknown;
+        onSend: (content: string, attachment: File | undefined) => unknown;
         placeholder?: string;
         sending?: boolean;
         value?: string;
@@ -33,8 +48,17 @@
     let dragActive = $state(false);
     let submitting = $state(false);
     let attachmentContext: string | undefined = $state(undefined);
+    let failedSendRevision = $state(0);
     const value = $derived(controlledValue ?? draftValue);
     const busy = $derived(sending === true || submitting);
+    const recoveryContextKey = $derived(contextKey ?? "chat-input:default");
+    const recoverableSends = $derived.by(() => {
+        void failedSendRevision;
+        return readFailedComposerSends(recoveryContextKey);
+    });
+    const inputLocked = $derived(
+        disabled === true || (editing === true && busy),
+    );
 
     function setValue(next: string): void {
         if (controlledValue !== undefined) {
@@ -59,20 +83,63 @@
     }
 
     async function send(): Promise<void> {
+        const pendingValue = value;
         const trimmed = value.trim();
         const pendingAttachment = attachment ?? undefined;
+        const pendingContext = recoveryContextKey;
+        const wasEditing = editing === true;
         if ((!trimmed && !pendingAttachment) || disabled || busy) return;
         submitting = true;
-        try {
-            const sent = await onSend(trimmed, pendingAttachment);
-            if (sent === false) return;
+        if (!wasEditing) {
             setValue("");
             clearAttachment();
             if (textareaEl) textareaEl.style.height = "auto";
             await tick();
             textareaEl?.focus();
+        }
+        try {
+            const sent = await onSend(trimmed, pendingAttachment);
+            if (sent === false) {
+                if (!wasEditing) {
+                    rememberFailedComposerSend(
+                        pendingContext,
+                        pendingValue,
+                        pendingAttachment,
+                    );
+                    failedSendRevision += 1;
+                }
+                await tick();
+                autoResize();
+                textareaEl?.focus();
+                return;
+            }
         } finally {
             submitting = false;
+        }
+    }
+
+    async function retryRecoverableSend(
+        draft: FailedComposerSend,
+    ): Promise<void> {
+        if (busy || editing) return;
+        const pendingContext = recoveryContextKey;
+        submitting = true;
+        try {
+            const sent = await onSend(draft.value.trim(), draft.attachment);
+            if (
+                sent !== false &&
+                dismissFailedComposerSend(pendingContext, draft.id)
+            ) {
+                failedSendRevision += 1;
+            }
+        } finally {
+            submitting = false;
+        }
+    }
+
+    function dismissRecoverableSend(id: number): void {
+        if (dismissFailedComposerSend(recoveryContextKey, id)) {
+            failedSendRevision += 1;
         }
     }
 
@@ -176,9 +243,47 @@
         if (contentType === "image/webp") return "webp";
         return "bin";
     }
+
+    function recoveryPreview(draft: FailedComposerSend): string {
+        const text = draft.value.trim().replace(/\s+/g, " ");
+        if (text && draft.attachment) {
+            return `${text} - ${draft.attachment.name}`;
+        }
+        return text || draft.attachment?.name || "Attachment";
+    }
 </script>
 
 <div class="chat-input">
+    {#each recoverableSends as draft (draft.id)}
+        <div class="chat-input__recovery" role="status">
+            <CircleAlert size={17} />
+            <span class="chat-input__recovery-copy">
+                <strong>Message not sent</strong>
+                <small>{recoveryPreview(draft)}</small>
+            </span>
+            <button
+                class="chat-input__recovery-action"
+                onclick={() => {
+                    void retryRecoverableSend(draft);
+                }}
+                disabled={busy || editing}
+                title="Retry"
+                aria-label="Retry unsent message"
+            >
+                <RotateCcw size={15} />
+            </button>
+            <button
+                class="chat-input__recovery-action"
+                onclick={() => dismissRecoverableSend(draft.id)}
+                disabled={busy}
+                title="Dismiss"
+                aria-label="Dismiss unsent message"
+            >
+                <X size={15} />
+            </button>
+        </div>
+    {/each}
+
     {#if editing}
         <div class="chat-input__editing">
             <span class="chat-input__editing-icon"><Pencil size={15} /></span>
@@ -238,7 +343,7 @@
             {value}
             rows={1}
             {placeholder}
-            disabled={disabled || busy}
+            disabled={inputLocked}
             onkeydown={handleKeyDown}
             onpaste={handlePaste}
             oninput={(event) => {
@@ -288,6 +393,58 @@
         padding: 8px 18px 14px;
         background: var(--bg-primary);
         flex-shrink: 0;
+    }
+
+    .chat-input__recovery {
+        min-height: 46px;
+        display: grid;
+        grid-template-columns: 22px minmax(0, 1fr) 28px 28px;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        margin-bottom: 6px;
+        border: 1px solid rgb(215 76 76 / 38%);
+        border-radius: 6px;
+        color: #ff9f9f;
+        background: rgb(121 36 36 / 13%);
+    }
+
+    .chat-input__recovery-copy {
+        min-width: 0;
+        display: grid;
+        gap: 1px;
+    }
+
+    .chat-input__recovery-copy strong,
+    .chat-input__recovery-copy small {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .chat-input__recovery-copy strong {
+        color: #ffb0b0;
+        font-size: 11px;
+    }
+
+    .chat-input__recovery-copy small {
+        color: var(--text-faint);
+        font-size: 10px;
+    }
+
+    .chat-input__recovery-action {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        padding: 0;
+        border-radius: 4px;
+        color: var(--text-muted);
+    }
+
+    .chat-input__recovery-action:not(:disabled):hover {
+        color: var(--text-primary);
+        background: var(--bg-hover);
     }
 
     .chat-input__preview {

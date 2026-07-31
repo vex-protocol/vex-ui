@@ -841,7 +841,6 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 15px 18px 12px;
-    scroll-behavior: smooth;
 }
 
 .message-list__empty {
@@ -1561,6 +1560,7 @@
     background: var(--bg-primary);
 }
 
+.composer-recovery,
 .composer-context,
 .composer-attachment {
     min-height: 46px;
@@ -1576,6 +1576,14 @@
     background: var(--bg-surface);
 }
 
+.composer-recovery {
+    grid-template-columns: 22px minmax(0, 1fr) 28px 28px;
+    border-color: rgb(215 76 76 / 38%);
+    color: #ff9f9f;
+    background: rgb(121 36 36 / 13%);
+}
+
+.composer-recovery > span,
 .composer-context > span,
 .composer-attachment > span:not(.composer-attachment__icon) {
     min-width: 0;
@@ -1583,6 +1591,8 @@
     gap: 1px;
 }
 
+.composer-recovery strong,
+.composer-recovery small,
 .composer-context strong,
 .composer-context small,
 .composer-attachment strong,
@@ -1592,18 +1602,25 @@
     white-space: nowrap;
 }
 
+.composer-recovery strong,
 .composer-context strong,
 .composer-attachment strong {
     color: var(--text-secondary);
     font-size: 11px;
 }
 
+.composer-recovery strong {
+    color: #ffb0b0;
+}
+
+.composer-recovery small,
 .composer-context small,
 .composer-attachment small {
     color: var(--text-faint);
     font-size: 10px;
 }
 
+.composer-recovery > button,
 .composer-context > button,
 .composer-attachment > button {
     width: 28px;
@@ -1615,6 +1632,11 @@
     border-radius: 4px;
     color: var(--text-muted);
     background: transparent;
+}
+
+.composer-recovery > button:not(:disabled):hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
 }
 
 .composer-attachment {

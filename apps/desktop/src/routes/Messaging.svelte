@@ -9,13 +9,19 @@
     import {
         clearComposerDraft,
         readComposerDraft,
+        readComposerDraftVersion,
         writeComposerDraft,
     } from "../lib/composerDrafts.js";
     import { getServerUrl } from "../lib/config.js";
     import { productFeatures } from "../lib/features.js";
     // Route: /messaging/:userID
     import MessageBox from "../lib/MessageBox.svelte";
-    import { familiars, messages, vexService } from "../lib/store/index.js";
+    import {
+        familiars,
+        messages,
+        user,
+        vexService,
+    } from "../lib/store/index.js";
     import {
         voiceCallEngine,
         $voiceCallState as voiceCallState,
@@ -40,7 +46,7 @@
     let menuOpen = $state(false);
 
     $effect(() => {
-        const nextKey = `dm:${targetUserID}`;
+        const nextKey = `account:${$user?.userID ?? "signed-out"}:dm:${targetUserID}`;
         if (nextKey === activeDraftKey) return;
         activeDraftKey = nextKey;
         composerValue = readComposerDraft(nextKey);
@@ -49,28 +55,37 @@
 
     async function handleSend(
         content: string,
-        attachment?: File,
+        attachment: File | undefined,
     ): Promise<boolean> {
         if (sending) return false;
+        const pendingDraftKey = activeDraftKey;
+        const pendingDraftVersion = readComposerDraftVersion(pendingDraftKey);
+        const pendingEdit = editingMessage;
+        const pendingTargetUserID = targetUserID;
         sending = true;
         sendError = "";
         try {
-            if (editingMessage) {
-                const pendingEdit = editingMessage;
+            if (pendingEdit) {
                 const result = await vexService.editMessage(
-                    targetUserID,
+                    pendingTargetUserID,
                     pendingEdit.mailID,
                     false,
                     content,
                 );
                 if (!result.ok) {
                     sendError = result.error ?? "Failed to edit message";
-                    composerValue = content;
-                    editingMessage = pendingEdit;
                     return false;
                 }
-                editingMessage = null;
-                composerValue = "";
+                const draftUnchanged =
+                    readComposerDraftVersion(pendingDraftKey) ===
+                    pendingDraftVersion;
+                if (draftUnchanged) {
+                    clearComposerDraft(pendingDraftKey);
+                }
+                if (draftUnchanged && activeDraftKey === pendingDraftKey) {
+                    editingMessage = null;
+                    composerValue = "";
+                }
                 return true;
             }
 
@@ -84,7 +99,10 @@
                 return false;
             }
 
-            const result = await vexService.sendDM(targetUserID, body.body);
+            const result = await vexService.sendDM(
+                pendingTargetUserID,
+                body.body,
+            );
             if (!result.ok) {
                 sendError = result.error ?? "Failed to send";
                 return false;
@@ -162,6 +180,7 @@
         sendError = "";
         editingMessage = message;
         composerValue = message.message;
+        writeComposerDraft(activeDraftKey, message.message);
     }
 
     function updateComposer(value: string): void {

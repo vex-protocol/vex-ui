@@ -1,19 +1,29 @@
-import type { MessageReplyReference } from "@vex-chat/store";
+import type {
+    ComposerRecoveryDraft,
+    MessageReplyReference,
+} from "@vex-chat/store";
 
 import {
+    CircleAlert,
     CornerUpLeft,
     FileText,
     Mic,
     Paperclip,
     Pencil,
+    RotateCcw,
     Send,
     X,
 } from "lucide-preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
-import { formatFileSize } from "@vex-chat/store";
+import { ComposerRecoveryQueue, formatFileSize } from "@vex-chat/store";
 
 import { VoiceMemoRecorder } from "./VoiceMemoRecorder";
+
+export interface MessageComposerSendContext {
+    preserveComposerContext: boolean;
+    replyingTo: MessageReplyReference | null;
+}
 
 interface MessageComposerProps {
     contextKey: string;
@@ -22,12 +32,21 @@ interface MessageComposerProps {
     onCancelEdit: () => void;
     onCancelReply: () => void;
     onChange: (value: string) => void;
-    onSend: (content: string, attachment?: File) => Promise<boolean>;
+    onSend: (
+        content: string,
+        attachment: File | undefined,
+        context: MessageComposerSendContext,
+    ) => Promise<boolean>;
     placeholder: string;
     replyingTo?: MessageReplyReference | null;
     sending?: boolean;
     value: string;
 }
+
+const failedSends = new ComposerRecoveryQueue<
+    File,
+    MessageReplyReference | null
+>();
 
 export function MessageComposer({
     contextKey,
@@ -48,10 +67,16 @@ export function MessageComposer({
     const [submitting, setSubmitting] = useState(false);
     const [voiceMemoOpen, setVoiceMemoOpen] = useState(false);
     const [recordingError, setRecordingError] = useState("");
+    const [failedSendVersion, setFailedSendVersion] = useState(0);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const previousContext = useRef(contextKey);
+    const mountedRef = useRef(true);
     const busy = sending || submitting;
+    const recoverableSends = useMemo(
+        () => failedSends.get(contextKey),
+        [contextKey, failedSendVersion],
+    );
     const voiceMemoSupported =
         typeof navigator.mediaDevices?.getUserMedia === "function" &&
         typeof globalThis.MediaRecorder === "function";
@@ -87,6 +112,13 @@ export function MessageComposer({
         [previewURL],
     );
 
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
+
     function resizeTextarea() {
         const textarea = textareaRef.current;
         if (!textarea) return;
@@ -113,9 +145,41 @@ export function MessageComposer({
         setAttachmentState(null);
     }
 
+    function refreshRecoverableSends() {
+        if (mountedRef.current) {
+            setFailedSendVersion((version) => version + 1);
+        }
+    }
+
+    function dismissRecoverableSend(id: number) {
+        if (failedSends.remove(contextKey, id)) refreshRecoverableSends();
+    }
+
+    async function retryRecoverableSend(
+        draft: ComposerRecoveryDraft<File, MessageReplyReference | null>,
+    ) {
+        if (busy || editing) return;
+        setSubmitting(true);
+        try {
+            const sent = await onSend(draft.value.trim(), draft.attachment, {
+                preserveComposerContext: true,
+                replyingTo: draft.metadata,
+            });
+            if (sent && failedSends.remove(contextKey, draft.id)) {
+                refreshRecoverableSends();
+            }
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
     async function submit() {
+        const pendingValue = value;
         const content = value.trim();
         const pendingAttachment = attachment ?? undefined;
+        const pendingContext = contextKey;
+        const pendingReply = replyingTo;
+        const wasEditing = editing;
         if (
             (!content && !pendingAttachment) ||
             disabled ||
@@ -125,12 +189,34 @@ export function MessageComposer({
             return;
         }
         setSubmitting(true);
-        try {
-            const sent = await onSend(content, pendingAttachment);
-            if (!sent) return;
+        if (!wasEditing) {
             onChange("");
             clearAttachment();
-            window.requestAnimationFrame(() => textareaRef.current?.focus());
+            window.requestAnimationFrame(() => {
+                resizeTextarea();
+                textareaRef.current?.focus();
+            });
+        }
+        try {
+            const sent = await onSend(content, pendingAttachment, {
+                preserveComposerContext: false,
+                replyingTo: pendingReply,
+            });
+            if (!sent) {
+                if (!wasEditing) {
+                    failedSends.add(pendingContext, {
+                        attachment: pendingAttachment,
+                        metadata: pendingReply,
+                        value: pendingValue,
+                    });
+                    refreshRecoverableSends();
+                }
+                window.requestAnimationFrame(() => {
+                    resizeTextarea();
+                    textareaRef.current?.focus();
+                });
+                return;
+            }
         } finally {
             setSubmitting(false);
         }
@@ -145,6 +231,38 @@ export function MessageComposer({
 
     return (
         <section className="message-composer">
+            {recoverableSends.map((draft) => (
+                <div className="composer-recovery" key={draft.id} role="status">
+                    <CircleAlert size={17} />
+                    <span>
+                        <strong>Message not sent</strong>
+                        <small>
+                            {composerRecoveryPreview(
+                                draft.value,
+                                draft.attachment,
+                            )}
+                        </small>
+                    </span>
+                    <button
+                        aria-label="Retry unsent message"
+                        disabled={busy || editing}
+                        title="Retry"
+                        type="button"
+                        onClick={() => void retryRecoverableSend(draft)}
+                    >
+                        <RotateCcw size={15} />
+                    </button>
+                    <button
+                        aria-label="Dismiss unsent message"
+                        disabled={busy}
+                        title="Dismiss"
+                        type="button"
+                        onClick={() => dismissRecoverableSend(draft.id)}
+                    >
+                        <X size={15} />
+                    </button>
+                </div>
+            ))}
             {replyingTo && !editing ? (
                 <div className="composer-context">
                     <CornerUpLeft size={15} />
@@ -294,12 +412,14 @@ export function MessageComposer({
                 </button>
                 <textarea
                     aria-label="Message input"
-                    disabled={disabled || busy}
+                    disabled={disabled || (editing && busy)}
                     placeholder={placeholder}
                     ref={textareaRef}
                     rows={1}
                     value={value}
-                    onInput={(event) => onChange(event.currentTarget.value)}
+                    onInput={(event) => {
+                        onChange(event.currentTarget.value);
+                    }}
                     onKeyDown={(event) => {
                         if (event.key === "Escape") {
                             if (editing) onCancelEdit();
@@ -376,4 +496,13 @@ function normalizeFile(file: File): File {
         lastModified: file.lastModified,
         type: file.type,
     });
+}
+
+function composerRecoveryPreview(
+    value: string,
+    attachment: File | undefined,
+): string {
+    const text = value.trim().replace(/\s+/g, " ");
+    if (text && attachment) return `${text} - ${attachment.name}`;
+    return text || attachment?.name || "Attachment";
 }
