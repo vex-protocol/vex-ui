@@ -65,6 +65,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     const [callStarting, setCallStarting] = useState(false);
     const [error, setError] = useState("");
     const contextKeyRef = useRef(contextKey);
+    const composerActivityRef = useRef(0);
     const textRef = useRef(text);
     contextKeyRef.current = contextKey;
     textRef.current = text;
@@ -163,10 +164,12 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
         if (!currentUser || sending) return false;
         const pendingContext = contextKey;
         const pendingReply = replying;
+        const pendingComposerActivity = composerActivityRef.current;
         const restorePendingReply = () => {
             if (
                 !pendingReply ||
                 contextKeyRef.current !== pendingContext ||
+                composerActivityRef.current !== pendingComposerActivity ||
                 textRef.current !== ""
             ) {
                 return;
@@ -212,11 +215,11 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                 body = body ? `${body}\n\n${markdown}` : markdown;
             }
 
-            const extra = replying
+            const extra = pendingReply
                 ? createReplyExtra(
-                      replying,
-                      usernameMap[replying.authorID] ??
-                          replying.authorID.slice(0, 8),
+                      pendingReply,
+                      usernameMap[pendingReply.authorID] ??
+                          pendingReply.authorID.slice(0, 8),
                   )
                 : undefined;
             const options = extra ? { extra } : undefined;
@@ -256,6 +259,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     function replyToMessage(message: Message) {
         setError("");
         setEditing(null);
+        composerActivityRef.current += 1;
         setReplying(message);
     }
 
@@ -516,6 +520,9 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                     }}
                     onCancelReply={() => setReplying(null)}
                     onChange={updateText}
+                    onDraftActivity={() => {
+                        composerActivityRef.current += 1;
+                    }}
                     onSend={send}
                 />
             </div>

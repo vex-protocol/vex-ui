@@ -22,6 +22,7 @@ interface MessageComposerProps {
     onCancelEdit: () => void;
     onCancelReply: () => void;
     onChange: (value: string) => void;
+    onDraftActivity: () => void;
     onSend: (content: string, attachment?: File) => Promise<boolean>;
     placeholder: string;
     replyingTo?: MessageReplyReference | null;
@@ -36,6 +37,7 @@ export function MessageComposer({
     onCancelEdit,
     onCancelReply,
     onChange,
+    onDraftActivity,
     onSend,
     placeholder,
     replyingTo = null,
@@ -99,11 +101,12 @@ export function MessageComposer({
         textarea.style.height = `${Math.min(textarea.scrollHeight, 144)}px`;
     }
 
-    function setAttachment(file: File) {
+    function setAttachment(file: File, userInitiated = true) {
         clearAttachment();
         const normalized = normalizeFile(file);
         attachmentRef.current = normalized;
         setAttachmentState(normalized);
+        if (userInitiated) onDraftActivity();
         if (
             (normalized.type.startsWith("image/") &&
                 normalized.type !== "image/svg+xml") ||
@@ -152,7 +155,7 @@ export function MessageComposer({
                         valueRef.current = pendingValue;
                         onChange(pendingValue);
                         if (pendingAttachment) {
-                            setAttachment(pendingAttachment);
+                            setAttachment(pendingAttachment, false);
                         }
                     }
                     window.requestAnimationFrame(() => {
@@ -254,7 +257,10 @@ export function MessageComposer({
                         disabled={busy}
                         title="Remove attachment"
                         type="button"
-                        onClick={clearAttachment}
+                        onClick={() => {
+                            clearAttachment();
+                            onDraftActivity();
+                        }}
                     >
                         <X size={15} />
                     </button>
@@ -339,6 +345,7 @@ export function MessageComposer({
                     rows={1}
                     value={value}
                     onInput={(event) => {
+                        onDraftActivity();
                         valueRef.current = event.currentTarget.value;
                         onChange(event.currentTarget.value);
                     }}
