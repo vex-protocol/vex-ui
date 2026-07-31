@@ -17,7 +17,7 @@ catalog:
     "@vex-chat/libvex": 10.0.0
     "@vex-chat/spire": 5.0.0
     "@vex-chat/types": 4.3.3
-    dompurify: ^3.4.11
+    dompurify: ^3.4.12
     expo-application: 55.0.14
     expo-audio: ~55.0.14
     expo-background-fetch: ~55.0.15
@@ -59,6 +59,7 @@ catalogMode: strict
 minimumReleaseAge: 10080
 
 minimumReleaseAgeExclude:
+    - brace-expansion
     - "@vex-chat/libvex"
     - "@vex-chat/types"
     - "@vex-chat/crypto"
