@@ -9,6 +9,11 @@ export function readComposerDraft(key: string): string {
     return drafts.get(key) ?? "";
 }
 
+export function restoreComposerDraft(key: string, value: string): void {
+    if (!key || value.length === 0 || drafts.has(key)) return;
+    writeComposerDraft(key, value);
+}
+
 export function writeComposerDraft(key: string, value: string): void {
     if (value.length === 0) {
         drafts.delete(key);

@@ -19,7 +19,11 @@
         editing?: boolean;
         onCancelEdit?: () => void;
         onChange?: (value: string) => void;
-        onSend: (content: string, attachment?: File) => unknown;
+        onSend: (
+            content: string,
+            attachment: File | undefined,
+            draftValue: string,
+        ) => unknown;
         placeholder?: string;
         sending?: boolean;
         value?: string;
@@ -77,7 +81,7 @@
             textareaEl?.focus();
         }
         try {
-            const sent = await onSend(trimmed, pendingAttachment);
+            const sent = await onSend(trimmed, pendingAttachment, pendingValue);
             if (sent === false) {
                 if (!wasEditing && contextKey === pendingContext) {
                     if (value === "" && !attachment) {

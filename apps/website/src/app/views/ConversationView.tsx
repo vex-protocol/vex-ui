@@ -37,6 +37,25 @@ import { useStoreValue } from "../lib/useStoreValue";
 const drafts = new Map<string, string>();
 const MAX_DRAFTS = 100;
 
+function writeDraft(contextKey: string, value: string) {
+    if (value) {
+        drafts.delete(contextKey);
+        drafts.set(contextKey, value);
+        while (drafts.size > MAX_DRAFTS) {
+            const oldest = drafts.keys().next().value;
+            if (typeof oldest !== "string") break;
+            drafts.delete(oldest);
+        }
+    } else {
+        drafts.delete(contextKey);
+    }
+}
+
+function restoreDraft(contextKey: string, value: string) {
+    if (!value || drafts.has(contextKey)) return;
+    writeDraft(contextKey, value);
+}
+
 type ConversationRoute = Extract<WebRoute, { kind: "channel" | "dm" }>;
 
 export function ConversationView({ route }: { route: ConversationRoute }) {
@@ -64,8 +83,8 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     const [sending, setSending] = useState(false);
     const [callStarting, setCallStarting] = useState(false);
     const [error, setError] = useState("");
+    const composerActivityVersionsRef = useRef(new Map<string, number>());
     const contextKeyRef = useRef(contextKey);
-    const composerActivityRef = useRef(0);
     const textRef = useRef(text);
     contextKeyRef.current = contextKey;
     textRef.current = text;
@@ -147,29 +166,35 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     function updateText(next: string) {
         textRef.current = next;
         setText(next);
-        if (next) {
-            drafts.delete(contextKey);
-            drafts.set(contextKey, next);
-            while (drafts.size > MAX_DRAFTS) {
-                const oldest = drafts.keys().next().value;
-                if (typeof oldest !== "string") break;
-                drafts.delete(oldest);
-            }
-        } else {
-            drafts.delete(contextKey);
-        }
+        writeDraft(contextKey, next);
     }
 
-    async function send(content: string, attachment?: File): Promise<boolean> {
+    function markComposerActivity() {
+        const versions = composerActivityVersionsRef.current;
+        versions.set(contextKey, (versions.get(contextKey) ?? 0) + 1);
+    }
+
+    async function send(
+        content: string,
+        attachment: File | undefined,
+        draftValue: string,
+    ): Promise<boolean> {
         if (!currentUser || sending) return false;
         const pendingContext = contextKey;
+        const pendingEdit = editing;
         const pendingReply = replying;
-        const pendingComposerActivity = composerActivityRef.current;
+        const pendingComposerActivity =
+            composerActivityVersionsRef.current.get(pendingContext) ?? 0;
+        const restorePendingDraft = () => {
+            if (contextKeyRef.current === pendingContext) return;
+            restoreDraft(pendingContext, draftValue);
+        };
         const restorePendingReply = () => {
             if (
                 !pendingReply ||
                 contextKeyRef.current !== pendingContext ||
-                composerActivityRef.current !== pendingComposerActivity ||
+                (composerActivityVersionsRef.current.get(pendingContext) ??
+                    0) !== pendingComposerActivity ||
                 textRef.current !== ""
             ) {
                 return;
@@ -179,10 +204,10 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
         setSending(true);
         setError("");
         try {
-            if (editing) {
+            if (pendingEdit) {
                 const result = await vexService.editMessage(
                     conversationKey,
-                    editing.mailID,
+                    pendingEdit.mailID,
                     isGroup,
                     content,
                 );
@@ -206,6 +231,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                 });
                 if (!uploaded.ok || !uploaded.attachment) {
                     setError(uploaded.error ?? "Could not upload the file.");
+                    restorePendingDraft();
                     restorePendingReply();
                     return false;
                 }
@@ -232,6 +258,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                 : await vexService.sendDM(conversationKey, body, options);
             if (!result.ok) {
                 setError(result.error ?? "Could not send the message.");
+                restorePendingDraft();
                 restorePendingReply();
                 return false;
             }
@@ -242,6 +269,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                     ? cause.message
                     : "Could not send the message.",
             );
+            if (!pendingEdit) restorePendingDraft();
             restorePendingReply();
             return false;
         } finally {
@@ -259,7 +287,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     function replyToMessage(message: Message) {
         setError("");
         setEditing(null);
-        composerActivityRef.current += 1;
+        markComposerActivity();
         setReplying(message);
     }
 
@@ -520,9 +548,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                     }}
                     onCancelReply={() => setReplying(null)}
                     onChange={updateText}
-                    onDraftActivity={() => {
-                        composerActivityRef.current += 1;
-                    }}
+                    onDraftActivity={markComposerActivity}
                     onSend={send}
                 />
             </div>

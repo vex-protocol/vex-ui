@@ -9,6 +9,7 @@
     import {
         clearComposerDraft,
         readComposerDraft,
+        restoreComposerDraft,
         writeComposerDraft,
     } from "../lib/composerDrafts.js";
     import { getServerUrl } from "../lib/config.js";
@@ -49,15 +50,21 @@
 
     async function handleSend(
         content: string,
-        attachment?: File,
+        attachment: File | undefined,
+        draftValue: string,
     ): Promise<boolean> {
         if (sending) return false;
+        const pendingDraftKey = activeDraftKey;
+        const pendingEdit = editingMessage;
         const pendingTargetUserID = targetUserID;
+        const restorePendingDraft = () => {
+            if (activeDraftKey === pendingDraftKey) return;
+            restoreComposerDraft(pendingDraftKey, draftValue);
+        };
         sending = true;
         sendError = "";
         try {
-            if (editingMessage) {
-                const pendingEdit = editingMessage;
+            if (pendingEdit) {
                 const result = await vexService.editMessage(
                     pendingTargetUserID,
                     pendingEdit.mailID,
@@ -82,6 +89,7 @@
             );
             if (!body.ok) {
                 sendError = body.error;
+                restorePendingDraft();
                 return false;
             }
 
@@ -91,11 +99,13 @@
             );
             if (!result.ok) {
                 sendError = result.error ?? "Failed to send";
+                restorePendingDraft();
                 return false;
             }
             return true;
         } catch (err: unknown) {
             sendError = err instanceof Error ? err.message : "Failed to send";
+            if (!pendingEdit) restorePendingDraft();
             return false;
         } finally {
             sending = false;

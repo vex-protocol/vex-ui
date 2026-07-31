@@ -23,7 +23,11 @@ interface MessageComposerProps {
     onCancelReply: () => void;
     onChange: (value: string) => void;
     onDraftActivity: () => void;
-    onSend: (content: string, attachment?: File) => Promise<boolean>;
+    onSend: (
+        content: string,
+        attachment: File | undefined,
+        draftValue: string,
+    ) => Promise<boolean>;
     placeholder: string;
     replyingTo?: MessageReplyReference | null;
     sending?: boolean;
@@ -148,7 +152,7 @@ export function MessageComposer({
             });
         }
         try {
-            const sent = await onSend(content, pendingAttachment);
+            const sent = await onSend(content, pendingAttachment, pendingValue);
             if (!sent) {
                 if (!wasEditing && contextRef.current === pendingContext) {
                     if (valueRef.current === "" && !attachmentRef.current) {
