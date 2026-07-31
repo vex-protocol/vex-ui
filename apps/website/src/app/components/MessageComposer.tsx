@@ -50,7 +50,12 @@ export function MessageComposer({
     const [recordingError, setRecordingError] = useState("");
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const attachmentRef = useRef<File | null>(null);
+    const contextRef = useRef(contextKey);
     const previousContext = useRef(contextKey);
+    const valueRef = useRef(value);
+    contextRef.current = contextKey;
+    valueRef.current = value;
     const busy = sending || submitting;
     const voiceMemoSupported =
         typeof navigator.mediaDevices?.getUserMedia === "function" &&
@@ -97,6 +102,7 @@ export function MessageComposer({
     function setAttachment(file: File) {
         clearAttachment();
         const normalized = normalizeFile(file);
+        attachmentRef.current = normalized;
         setAttachmentState(normalized);
         if (
             (normalized.type.startsWith("image/") &&
@@ -110,12 +116,16 @@ export function MessageComposer({
     function clearAttachment() {
         if (previewURL) URL.revokeObjectURL(previewURL);
         setPreviewURL("");
+        attachmentRef.current = null;
         setAttachmentState(null);
     }
 
     async function submit() {
+        const pendingValue = value;
         const content = value.trim();
         const pendingAttachment = attachment ?? undefined;
+        const pendingContext = contextKey;
+        const wasEditing = editing;
         if (
             (!content && !pendingAttachment) ||
             disabled ||
@@ -125,12 +135,41 @@ export function MessageComposer({
             return;
         }
         setSubmitting(true);
-        try {
-            const sent = await onSend(content, pendingAttachment);
-            if (!sent) return;
+        if (!wasEditing) {
+            valueRef.current = "";
             onChange("");
             clearAttachment();
-            window.requestAnimationFrame(() => textareaRef.current?.focus());
+            window.requestAnimationFrame(() => {
+                resizeTextarea();
+                textareaRef.current?.focus();
+            });
+        }
+        try {
+            const sent = await onSend(content, pendingAttachment);
+            if (!sent) {
+                if (!wasEditing && contextRef.current === pendingContext) {
+                    if (valueRef.current === "" && !attachmentRef.current) {
+                        valueRef.current = pendingValue;
+                        onChange(pendingValue);
+                        if (pendingAttachment) {
+                            setAttachment(pendingAttachment);
+                        }
+                    }
+                    window.requestAnimationFrame(() => {
+                        resizeTextarea();
+                        textareaRef.current?.focus();
+                    });
+                }
+                return;
+            }
+            if (wasEditing) {
+                valueRef.current = "";
+                onChange("");
+                clearAttachment();
+                window.requestAnimationFrame(() =>
+                    textareaRef.current?.focus(),
+                );
+            }
         } finally {
             setSubmitting(false);
         }
@@ -294,12 +333,15 @@ export function MessageComposer({
                 </button>
                 <textarea
                     aria-label="Message input"
-                    disabled={disabled || busy}
+                    disabled={disabled || (editing && busy)}
                     placeholder={placeholder}
                     ref={textareaRef}
                     rows={1}
                     value={value}
-                    onInput={(event) => onChange(event.currentTarget.value)}
+                    onInput={(event) => {
+                        valueRef.current = event.currentTarget.value;
+                        onChange(event.currentTarget.value);
+                    }}
                     onKeyDown={(event) => {
                         if (event.key === "Escape") {
                             if (editing) onCancelEdit();

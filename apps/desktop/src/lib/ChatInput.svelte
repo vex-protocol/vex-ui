@@ -35,6 +35,9 @@
     let attachmentContext: string | undefined = $state(undefined);
     const value = $derived(controlledValue ?? draftValue);
     const busy = $derived(sending === true || submitting);
+    const inputLocked = $derived(
+        disabled === true || (editing === true && busy),
+    );
 
     function setValue(next: string): void {
         if (controlledValue !== undefined) {
@@ -59,18 +62,43 @@
     }
 
     async function send(): Promise<void> {
+        const pendingValue = value;
         const trimmed = value.trim();
         const pendingAttachment = attachment ?? undefined;
+        const pendingContext = contextKey;
+        const wasEditing = editing === true;
         if ((!trimmed && !pendingAttachment) || disabled || busy) return;
         submitting = true;
-        try {
-            const sent = await onSend(trimmed, pendingAttachment);
-            if (sent === false) return;
+        if (!wasEditing) {
             setValue("");
             clearAttachment();
             if (textareaEl) textareaEl.style.height = "auto";
             await tick();
             textareaEl?.focus();
+        }
+        try {
+            const sent = await onSend(trimmed, pendingAttachment);
+            if (sent === false) {
+                if (!wasEditing && contextKey === pendingContext) {
+                    if (value === "" && !attachment) {
+                        setValue(pendingValue);
+                        if (pendingAttachment) {
+                            setAttachment(pendingAttachment);
+                        }
+                    }
+                    await tick();
+                    autoResize();
+                    textareaEl?.focus();
+                }
+                return;
+            }
+            if (wasEditing) {
+                setValue("");
+                clearAttachment();
+                if (textareaEl) textareaEl.style.height = "auto";
+                await tick();
+                textareaEl?.focus();
+            }
         } finally {
             submitting = false;
         }
@@ -238,7 +266,7 @@
             {value}
             rows={1}
             {placeholder}
-            disabled={disabled || busy}
+            disabled={inputLocked}
             onkeydown={handleKeyDown}
             onpaste={handlePaste}
             oninput={(event) => {

@@ -11,7 +11,13 @@ import {
     SmilePlus,
     Trash2,
 } from "lucide-preact";
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import {
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "preact/hooks";
 
 import {
     chunkMessages,
@@ -83,7 +89,7 @@ export function MessageList({
     );
     const hiddenCount = Math.max(0, messages.length - visibleMessages.length);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (previousContext.current !== contextKey) {
             previousContext.current = contextKey;
             previousMessageCount.current = 0;
@@ -91,19 +97,35 @@ export function MessageList({
             setVisibleLimit(MESSAGE_PAGE_SIZE);
             setReactionPicker("");
             setActionMenu("");
-            window.requestAnimationFrame(() => scrollToBottom());
         }
+        scrollToBottom(true);
     }, [contextKey]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         const grew = messages.length > previousMessageCount.current;
         previousMessageCount.current = messages.length;
-        if (grew) window.requestAnimationFrame(() => scrollToBottom());
+        if (grew) scrollToBottom();
     }, [messages.length]);
 
-    function scrollToBottom() {
+    useEffect(() => {
         const container = containerRef.current;
-        if (container && autoScroll.current) {
+        if (!container) return;
+        const keepLatestVisible = () => scrollToBottom();
+        container.addEventListener("load", keepLatestVisible, true);
+        container.addEventListener("loadedmetadata", keepLatestVisible, true);
+        return () => {
+            container.removeEventListener("load", keepLatestVisible, true);
+            container.removeEventListener(
+                "loadedmetadata",
+                keepLatestVisible,
+                true,
+            );
+        };
+    }, [contextKey]);
+
+    function scrollToBottom(force = false) {
+        const container = containerRef.current;
+        if (container && (force || autoScroll.current)) {
             container.scrollTop = container.scrollHeight;
         }
     }

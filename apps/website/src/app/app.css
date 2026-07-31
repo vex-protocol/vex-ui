@@ -841,7 +841,6 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 15px 18px 12px;
-    scroll-behavior: smooth;
 }
 
 .message-list__empty {

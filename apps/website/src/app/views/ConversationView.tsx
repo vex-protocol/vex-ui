@@ -11,7 +11,7 @@ import {
     Users,
     X,
 } from "lucide-preact";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import {
     $channels,
@@ -64,6 +64,10 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     const [sending, setSending] = useState(false);
     const [callStarting, setCallStarting] = useState(false);
     const [error, setError] = useState("");
+    const contextKeyRef = useRef(contextKey);
+    const textRef = useRef(text);
+    contextKeyRef.current = contextKey;
+    textRef.current = text;
 
     const channel =
         route.kind === "channel"
@@ -91,7 +95,9 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     const latestMessageID = messages[messages.length - 1]?.mailID;
 
     useEffect(() => {
-        setText(drafts.get(contextKey) ?? "");
+        const nextText = drafts.get(contextKey) ?? "";
+        textRef.current = nextText;
+        setText(nextText);
         setEditing(null);
         setReplying(null);
         setError("");
@@ -138,6 +144,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
     }, [familiars, route.kind, route.kind === "dm" ? route.userID : ""]);
 
     function updateText(next: string) {
+        textRef.current = next;
         setText(next);
         if (next) {
             drafts.delete(contextKey);
@@ -154,6 +161,18 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
 
     async function send(content: string, attachment?: File): Promise<boolean> {
         if (!currentUser || sending) return false;
+        const pendingContext = contextKey;
+        const pendingReply = replying;
+        const restorePendingReply = () => {
+            if (
+                !pendingReply ||
+                contextKeyRef.current !== pendingContext ||
+                textRef.current !== ""
+            ) {
+                return;
+            }
+            setReplying((current) => current ?? pendingReply);
+        };
         setSending(true);
         setError("");
         try {
@@ -173,6 +192,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                 return true;
             }
 
+            setReplying(null);
             let body = content;
             if (attachment) {
                 const uploaded = await vexService.uploadFileAttachment({
@@ -183,6 +203,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                 });
                 if (!uploaded.ok || !uploaded.attachment) {
                     setError(uploaded.error ?? "Could not upload the file.");
+                    restorePendingReply();
                     return false;
                 }
                 const markdown = formatFileAttachmentMarkdown(
@@ -208,10 +229,9 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                 : await vexService.sendDM(conversationKey, body, options);
             if (!result.ok) {
                 setError(result.error ?? "Could not send the message.");
+                restorePendingReply();
                 return false;
             }
-            setReplying(null);
-            updateText("");
             return true;
         } catch (cause: unknown) {
             setError(
@@ -219,6 +239,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                     ? cause.message
                     : "Could not send the message.",
             );
+            restorePendingReply();
             return false;
         } finally {
             setSending(false);
@@ -457,6 +478,7 @@ export function ConversationView({ route }: { route: ConversationRoute }) {
                 <MessageList
                     contextKey={contextKey}
                     currentUserID={currentUser?.userID ?? ""}
+                    key={contextKey}
                     messages={messages}
                     usernames={usernameMap}
                     onDeleteForEveryone={deleteForEveryone}

@@ -69,13 +69,14 @@
         attachment?: File,
     ): Promise<boolean> {
         if (!$user || sending) return false;
+        const pendingChannelID = channelID;
         sending = true;
         sendError = "";
         try {
             if (editingMessage) {
                 const pendingEdit = editingMessage;
                 const result = await vexService.editMessage(
-                    channelID,
+                    pendingChannelID,
                     pendingEdit.mailID,
                     true,
                     content,
@@ -102,7 +103,7 @@
             }
 
             const result = await vexService.sendGroupMessage(
-                channelID,
+                pendingChannelID,
                 body.body,
             );
             if (!result.ok) {

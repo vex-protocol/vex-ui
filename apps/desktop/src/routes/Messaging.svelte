@@ -52,13 +52,14 @@
         attachment?: File,
     ): Promise<boolean> {
         if (sending) return false;
+        const pendingTargetUserID = targetUserID;
         sending = true;
         sendError = "";
         try {
             if (editingMessage) {
                 const pendingEdit = editingMessage;
                 const result = await vexService.editMessage(
-                    targetUserID,
+                    pendingTargetUserID,
                     pendingEdit.mailID,
                     false,
                     content,
@@ -84,7 +85,10 @@
                 return false;
             }
 
-            const result = await vexService.sendDM(targetUserID, body.body);
+            const result = await vexService.sendDM(
+                pendingTargetUserID,
+                body.body,
+            );
             if (!result.ok) {
                 sendError = result.error ?? "Failed to send";
                 return false;
