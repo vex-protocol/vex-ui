@@ -298,11 +298,13 @@
         top: calc(100% + 6px);
         right: 8px;
         left: 8px;
-        padding: 5px;
+        padding: 6px;
         border: 1px solid var(--border-strong);
-        border-radius: 7px;
+        border-radius: var(--radius-md);
         background: var(--bg-elevated);
         box-shadow: var(--shadow-menu);
+        animation: vex-pop 180ms var(--ease-out);
+        transform-origin: top right;
     }
 
     .channel-sidebar__menu button {
@@ -311,10 +313,10 @@
         display: flex;
         align-items: center;
         gap: 9px;
-        padding: 0 9px;
-        border-radius: 5px;
+        padding: 0 10px;
+        border-radius: var(--radius-sm);
         color: var(--text-secondary);
-        font-size: 12px;
+        font-size: 12.5px;
         font-weight: 600;
         text-align: left;
     }
@@ -341,8 +343,9 @@
         justify-content: space-between;
         padding: 10px 12px 4px 14px;
         color: var(--text-faint);
+        font-family: var(--font-mono);
         font-size: 10px;
-        font-weight: 700;
+        letter-spacing: 0.11em;
         text-transform: uppercase;
     }
 
@@ -351,7 +354,7 @@
         height: 28px;
         display: grid;
         place-items: center;
-        border-radius: 5px;
+        border-radius: var(--radius-sm);
         color: var(--text-muted);
     }
 
@@ -374,7 +377,7 @@
         align-items: center;
         gap: 7px;
         padding: 0 9px;
-        border-radius: 6px;
+        border-radius: var(--radius-sm);
         color: var(--text-muted);
         text-align: left;
     }
@@ -387,6 +390,7 @@
     .channel-sidebar__channel--active {
         background: var(--bg-selected);
         color: var(--text-primary);
+        box-shadow: inset 2px 0 0 var(--accent);
     }
 
     .channel-sidebar__channel > span {
@@ -406,9 +410,10 @@
         place-items: center;
         padding: 0 4px;
         border-radius: 9px;
-        background: var(--unread-bg);
-        color: var(--unread-text);
-        font-size: 9px;
+        background: var(--accent);
+        color: var(--on-accent);
+        font-family: var(--font-mono);
+        font-size: 9.5px;
     }
 
     .channel-sidebar__create {
