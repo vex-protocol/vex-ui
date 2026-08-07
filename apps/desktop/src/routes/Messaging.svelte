@@ -363,12 +363,16 @@
 
     .dm-pane__identity strong {
         font-family: var(--font-heading);
-        font-size: 14px;
+        font-size: 14.5px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
     }
 
     .dm-pane__identity small {
         color: var(--text-faint);
+        font-family: var(--font-mono);
         font-size: 10px;
+        letter-spacing: 0.04em;
     }
 
     .dm-pane__actions {
@@ -403,11 +407,13 @@
         top: calc(100% + 6px);
         right: 12px;
         width: 250px;
-        padding: 5px;
+        padding: 6px;
         border: 1px solid var(--border-strong);
-        border-radius: 7px;
+        border-radius: var(--radius-md);
         background: var(--bg-elevated);
         box-shadow: var(--shadow-menu);
+        animation: vex-pop 180ms var(--ease-out);
+        transform-origin: top right;
     }
 
     .dm-pane__menu button {
@@ -416,10 +422,10 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 0 9px;
-        border-radius: 5px;
+        padding: 0 10px;
+        border-radius: var(--radius-sm);
         color: var(--text-secondary);
-        font-size: 12px;
+        font-size: 12.5px;
         font-weight: 600;
         text-align: left;
     }

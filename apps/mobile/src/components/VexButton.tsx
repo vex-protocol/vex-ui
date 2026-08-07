@@ -40,7 +40,19 @@ export function VexButton({
     const isFilled = isPrimary || isDanger;
 
     return (
-        <View style={[styles.frame, glow && styles.glow, style]}>
+        <View
+            style={[
+                styles.frame,
+                glow && {
+                    elevation: 12,
+                    shadowColor: isDanger ? colors.error : accent.accent,
+                    shadowOffset: { height: 8, width: 0 },
+                    shadowOpacity: 0.42,
+                    shadowRadius: 18,
+                },
+                style,
+            ]}
+        >
             <TouchableOpacity
                 activeOpacity={0.7}
                 disabled={disabled || loading}
@@ -93,12 +105,12 @@ export function VexButton({
 const styles = StyleSheet.create({
     button: {
         alignItems: "center",
-        borderRadius: 7,
+        borderRadius: 10,
         borderWidth: 1,
         flexDirection: "row",
         gap: 8,
         justifyContent: "center",
-        minHeight: 46,
+        minHeight: 48,
         paddingHorizontal: 24,
         paddingVertical: 12,
     },
@@ -111,14 +123,7 @@ const styles = StyleSheet.create({
     },
     frame: {
         alignSelf: "stretch",
-        borderRadius: 7,
-    },
-    glow: {
-        elevation: 12,
-        shadowColor: colors.rail,
-        shadowOffset: { height: 6, width: 0 },
-        shadowOpacity: 0.32,
-        shadowRadius: 18,
+        borderRadius: 10,
     },
     outline: {
         backgroundColor: colors.transparent,

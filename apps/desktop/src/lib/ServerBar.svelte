@@ -125,24 +125,29 @@
         flex: 0 0 48px;
         display: grid;
         place-items: center;
-        border-radius: 8px;
+        border-radius: 14px;
         color: var(--text-muted);
     }
 
     .server-rail__button {
         background: var(--bg-surface);
         transition:
-            background 140ms ease,
-            color 140ms ease;
+            background 140ms var(--ease-out),
+            border-radius 160ms var(--ease-out),
+            color 140ms var(--ease-out),
+            transform 140ms var(--ease-out);
     }
 
     .server-rail__button:hover {
         background: var(--bg-hover);
+        border-radius: 18px;
         color: var(--text-primary);
+        transform: translateY(-1px);
     }
 
     .server-rail__button--active {
         background: var(--bg-selected);
+        border-radius: 18px;
         color: var(--text-primary);
     }
 
@@ -152,24 +157,25 @@
         position: absolute;
         left: -10px;
         width: 3px;
-        height: 28px;
+        height: 30px;
         border-radius: 0 3px 3px 0;
         background: var(--accent);
+        box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 65%, transparent);
     }
 
     .server-rail__server :global(.server-icon) {
         transition:
-            filter 140ms ease,
-            transform 140ms ease;
+            filter 140ms var(--ease-out),
+            transform 140ms var(--ease-out);
     }
 
     .server-rail__server:hover :global(.server-icon) {
-        filter: brightness(1.1);
+        filter: brightness(1.12);
         transform: translateY(-1px);
     }
 
     .server-rail__server--active :global(.server-icon) {
-        box-shadow: 0 0 0 2px var(--border-strong);
+        box-shadow: 0 0 0 2px var(--accent-border);
     }
 
     .server-rail__divider {
@@ -203,10 +209,10 @@
         padding: 0 4px;
         border: 2px solid var(--bg-tertiary);
         border-radius: 9px;
-        background: var(--unread-bg);
-        color: var(--unread-text);
+        background: var(--accent);
+        color: var(--on-accent);
+        font-family: var(--font-mono);
         font-size: 10px;
-        font-weight: 700;
         line-height: 1;
     }
 

@@ -1055,7 +1055,7 @@ function MainApp() {
                         background: colors.bg,
                         border: colors.borderSubtle,
                         card: colors.card,
-                        notification: colors.unread,
+                        notification: accent.accent,
                         primary: accent.accentMuted,
                         text: colors.textSecondary,
                     },
