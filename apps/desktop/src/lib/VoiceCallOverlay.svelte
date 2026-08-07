@@ -221,10 +221,11 @@
     .voice-panel,
     .voice-error {
         pointer-events: auto;
-        border: 1px solid var(--border);
-        border-radius: 8px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-lg);
         background: var(--bg-secondary);
-        box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+        box-shadow: var(--shadow-pop);
+        animation: vex-pop 220ms var(--ease-out);
     }
 
     .voice-panel {
@@ -247,6 +248,7 @@
     .voice-panel__title {
         overflow: hidden;
         color: var(--text-primary);
+        font-family: var(--font-heading);
         font-size: 14px;
         font-weight: 700;
         text-overflow: ellipsis;
@@ -256,7 +258,9 @@
     .voice-panel__subtitle {
         margin-top: 3px;
         color: var(--text-secondary);
-        font-size: 12px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.03em;
     }
 
     .voice-panel__actions {
@@ -269,12 +273,15 @@
         min-width: 58px;
         height: 34px;
         padding: 0 12px;
-        border: 1px solid var(--border);
-        border-radius: 4px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-sm);
         background: var(--bg-surface);
         color: var(--text-primary);
         font-size: 12px;
-        font-weight: 700;
+        font-weight: 600;
+        transition:
+            background-color 120ms var(--ease-out),
+            transform 100ms var(--ease-out);
     }
 
     .voice-button:hover:not(:disabled) {

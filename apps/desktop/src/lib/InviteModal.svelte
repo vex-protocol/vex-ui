@@ -133,30 +133,36 @@
     }
 
     .modal-backdrop {
-        background: rgba(0, 0, 0, 0.6);
+        background: rgba(0, 0, 0, 0.66);
+        backdrop-filter: blur(6px);
         border: 0;
         inset: 0;
         padding: 0;
         position: absolute;
+        animation: vex-fade 180ms var(--ease-out);
     }
 
     .modal {
         background: var(--bg-primary);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 24px;
-        width: 400px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-xl);
+        box-shadow: var(--shadow-pop);
+        padding: 26px;
+        width: 420px;
         max-width: 90vw;
         display: flex;
         flex-direction: column;
-        gap: 14px;
+        gap: 15px;
         position: relative;
         z-index: 1;
+        animation: vex-pop 240ms var(--ease-out);
     }
 
     .modal__title {
-        font-size: 18px;
+        font-family: var(--font-heading);
+        font-size: 19px;
         font-weight: 700;
+        letter-spacing: -0.015em;
         color: var(--text-primary);
         margin: 0;
     }
@@ -164,20 +170,32 @@
     .invite__create-btn {
         background: var(--accent);
         color: var(--on-accent);
-        padding: 8px 16px;
-        border-radius: 4px;
-        font-size: 13px;
+        min-height: 40px;
+        padding: 0 16px;
+        border-radius: var(--radius-md);
+        font-size: 12.5px;
         font-weight: 600;
         align-self: flex-start;
-        transition: opacity 0.15s;
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.16),
+            0 8px 20px -8px color-mix(in srgb, var(--accent) 55%, transparent);
+        transition:
+            background-color 140ms var(--ease-out),
+            transform 100ms var(--ease-out);
     }
 
     .invite__create-btn:hover:not(:disabled) {
-        opacity: 0.9;
+        background: var(--accent-hover);
     }
+
+    .invite__create-btn:active:not(:disabled) {
+        transform: translateY(1px);
+    }
+
     .invite__create-btn:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+        box-shadow: none;
     }
 
     .invite__error {
@@ -197,7 +215,7 @@
         list-style: none;
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 7px;
         max-height: 200px;
         overflow-y: auto;
     }
@@ -208,13 +226,15 @@
         gap: 8px;
         background: var(--bg-surface);
         border: 1px solid var(--border);
-        border-radius: 4px;
-        padding: 6px 10px;
+        border-radius: var(--radius-md);
+        padding: 7px 8px 7px 12px;
     }
 
     .invite__code {
         flex: 1;
+        font-family: var(--font-mono);
         font-size: 12px;
+        letter-spacing: 0.02em;
         color: var(--text-primary);
         overflow: hidden;
         text-overflow: ellipsis;
@@ -223,14 +243,18 @@
 
     .invite__copy-btn {
         flex-shrink: 0;
-        padding: 4px 10px;
-        border-radius: 3px;
+        min-height: 30px;
+        padding: 0 12px;
+        border-radius: var(--radius-sm);
         font-size: 12px;
         font-weight: 600;
         background: var(--bg-hover);
         color: var(--text-secondary);
         border: 1px solid var(--border);
-        transition: background 0.1s;
+        transition:
+            background-color 120ms var(--ease-out),
+            border-color 120ms var(--ease-out),
+            color 120ms var(--ease-out);
     }
 
     .invite__copy-btn:hover {
@@ -246,9 +270,10 @@
     }
 
     .modal__btn {
-        padding: 7px 16px;
-        border-radius: 4px;
-        font-size: 14px;
+        min-height: 38px;
+        padding: 0 16px;
+        border-radius: var(--radius-md);
+        font-size: 12.5px;
         font-weight: 600;
         cursor: pointer;
     }
@@ -256,10 +281,11 @@
     .modal__btn--cancel {
         background: transparent;
         color: var(--text-secondary);
-        border: 1px solid var(--border);
+        border: 1px solid var(--border-strong);
     }
 
     .modal__btn--cancel:hover {
         background: var(--bg-hover);
+        color: var(--text-primary);
     }
 </style>

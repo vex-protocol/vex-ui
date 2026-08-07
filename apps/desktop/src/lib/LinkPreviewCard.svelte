@@ -133,13 +133,17 @@
         text-align: left;
         background: var(--bg-surface);
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: var(--radius-md);
         color: inherit;
         cursor: pointer;
+        transition:
+            background 140ms var(--ease-out),
+            border-color 140ms var(--ease-out);
     }
 
     .link-preview:hover {
         background: var(--bg-hover);
+        border-color: var(--border-strong);
     }
 
     .link-preview__body {
@@ -204,8 +208,10 @@
 
     .link-preview__url {
         overflow: hidden;
-        color: var(--accent);
-        font-size: 11px;
+        color: var(--accent-text);
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        letter-spacing: 0.02em;
         text-overflow: ellipsis;
         white-space: nowrap;
     }

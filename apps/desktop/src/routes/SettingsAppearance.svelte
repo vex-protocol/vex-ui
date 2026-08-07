@@ -111,7 +111,7 @@
         gap: 3px;
         padding: 3px;
         border: 1px solid var(--border);
-        border-radius: 7px;
+        border-radius: var(--radius-md);
         background: var(--bg-secondary);
     }
 
@@ -122,10 +122,13 @@
         justify-content: center;
         gap: 7px;
         padding: 0 14px;
-        border-radius: 5px;
+        border-radius: var(--radius-sm);
         color: var(--text-muted);
-        font-size: 12px;
-        font-weight: 700;
+        font-size: 12.5px;
+        font-weight: 600;
+        transition:
+            background-color 140ms var(--ease-out),
+            color 140ms var(--ease-out);
     }
 
     .theme-segments__option:hover {
@@ -136,6 +139,9 @@
     .theme-segments__option--active {
         color: var(--on-accent);
         background: var(--accent);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.16),
+            0 6px 16px -8px color-mix(in srgb, var(--accent) 55%, transparent);
     }
 
     .theme-segments__option--active:hover {
@@ -158,17 +164,23 @@
         gap: 7px;
         padding: 9px;
         border: 1px solid var(--border);
-        border-radius: 7px;
+        border-radius: var(--radius-md);
         background: var(--bg-secondary);
         color: var(--text-muted);
-        font-size: 11px;
-        font-weight: 700;
+        font-size: 11.5px;
+        font-weight: 600;
+        transition:
+            background-color 140ms var(--ease-out),
+            border-color 140ms var(--ease-out),
+            color 140ms var(--ease-out),
+            transform 140ms var(--ease-out);
     }
 
     .accent-swatch:hover {
         border-color: var(--border-strong);
         background: var(--bg-hover);
         color: var(--text-primary);
+        transform: translateY(-1px);
     }
 
     .accent-swatch--active {
