@@ -320,8 +320,9 @@
         inset: 0;
         width: 100%;
         height: 100%;
-        background: rgba(0, 0, 0, 0.72);
-        backdrop-filter: blur(3px);
+        background: rgba(0, 0, 0, 0.66);
+        backdrop-filter: blur(6px);
+        animation: vex-fade 180ms var(--ease-out);
     }
 
     .group-dialog {
@@ -330,17 +331,18 @@
         width: min(480px, 100%);
         overflow: hidden;
         border: 1px solid var(--border-strong);
-        border-radius: 8px;
+        border-radius: var(--radius-xl);
         background: var(--bg-primary);
-        box-shadow: var(--shadow-menu);
+        box-shadow: var(--shadow-pop);
+        animation: vex-pop 240ms var(--ease-out);
     }
 
     .group-dialog__header {
-        height: 70px;
+        height: 72px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 20px;
+        padding: 0 22px;
         border-bottom: 1px solid var(--border);
         background: var(--bg-secondary);
     }
@@ -348,15 +350,18 @@
     .group-dialog__header span {
         display: block;
         margin-bottom: 3px;
-        color: var(--text-faint);
+        color: var(--accent-text);
+        font-family: var(--font-mono);
         font-size: 10px;
-        font-weight: 700;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
     }
 
     .group-dialog__header h2 {
         font-family: var(--font-heading);
         font-size: 19px;
+        font-weight: 700;
+        letter-spacing: -0.015em;
     }
 
     .group-dialog__close {
@@ -364,7 +369,7 @@
         height: 34px;
         display: grid;
         place-items: center;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         color: var(--text-muted);
     }
 
@@ -438,9 +443,12 @@
         gap: 5px;
         overflow: hidden;
         border: 1px dashed var(--border-strong);
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         background: var(--bg-surface);
         color: var(--text-faint);
+        transition:
+            border-color 140ms var(--ease-out),
+            color 140ms var(--ease-out);
     }
 
     .group-dialog__icon:hover {
@@ -449,8 +457,10 @@
     }
 
     .group-dialog__icon span {
-        font-size: 10px;
-        font-weight: 700;
+        font-family: var(--font-mono);
+        font-size: 9.5px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
     }
 
     .group-dialog__icon--image {
@@ -472,8 +482,9 @@
         display: block;
         margin-bottom: 7px;
         color: var(--text-muted);
+        font-family: var(--font-mono);
         font-size: 10px;
-        font-weight: 700;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
     }
 
@@ -500,11 +511,15 @@
     }
 
     .group-dialog__actions button {
-        min-height: 38px;
-        padding: 0 15px;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 700;
+        min-height: 40px;
+        padding: 0 16px;
+        border-radius: var(--radius-md);
+        font-size: 12.5px;
+        font-weight: 600;
+        transition:
+            background-color 140ms var(--ease-out),
+            box-shadow 140ms var(--ease-out),
+            transform 100ms var(--ease-out);
     }
 
     .group-dialog__cancel {
@@ -519,14 +534,22 @@
     .group-dialog__submit {
         background: var(--accent);
         color: var(--on-accent);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.16),
+            0 8px 20px -8px color-mix(in srgb, var(--accent) 55%, transparent);
     }
 
     .group-dialog__submit:hover:not(:disabled) {
         background: var(--accent-hover);
     }
 
+    .group-dialog__submit:active:not(:disabled) {
+        transform: translateY(1px);
+    }
+
     .group-dialog__submit:disabled {
         opacity: 0.45;
+        box-shadow: none;
     }
 
     .visually-hidden {

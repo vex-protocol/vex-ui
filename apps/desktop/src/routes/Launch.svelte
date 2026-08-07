@@ -134,15 +134,22 @@
     }
 
     .launch__actions button {
-        padding: 0.5rem 1rem;
-        border: 1px solid var(--border);
+        min-height: 40px;
+        padding: 0 18px;
+        border: 1px solid var(--border-strong);
         background: var(--bg-secondary);
         color: var(--text-primary);
-        border-radius: 4px;
+        border-radius: var(--radius-md);
+        font-size: 13px;
+        font-weight: 600;
         cursor: pointer;
+        transition:
+            background-color 140ms var(--ease-out),
+            border-color 140ms var(--ease-out);
     }
 
     .launch__actions button:hover {
-        background: var(--bg-tertiary);
+        background: var(--bg-hover);
+        border-color: var(--border-strong);
     }
 </style>

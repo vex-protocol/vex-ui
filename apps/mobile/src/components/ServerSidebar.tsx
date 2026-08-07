@@ -24,7 +24,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useStore } from "@nanostores/react";
 
 import { haptic } from "../lib/haptics";
-import { colors, useAccentColors } from "../theme";
+import { colors, fontFamilies, useAccentColors } from "../theme";
 
 import { Avatar } from "./Avatar";
 import { ServerIcon } from "./ServerIcon";
@@ -165,13 +165,13 @@ export function ServerSidebar({
                                 <View
                                     style={[
                                         styles.homeBadge,
-                                        { backgroundColor: colors.unread },
+                                        { backgroundColor: accent.accent },
                                     ]}
                                 >
                                     <Text
                                         style={[
                                             styles.homeBadgeText,
-                                            { color: colors.unreadText },
+                                            { color: accent.onAccent },
                                         ]}
                                     >
                                         {formatUnreadCount(totalDmUnread)}
@@ -228,7 +228,7 @@ export function ServerSidebar({
                                                     styles.serverBadge,
                                                     {
                                                         backgroundColor:
-                                                            colors.unread,
+                                                            accent.accent,
                                                     },
                                                 ]}
                                             >
@@ -236,7 +236,7 @@ export function ServerSidebar({
                                                     style={[
                                                         styles.dmBadgeText,
                                                         {
-                                                            color: colors.unreadText,
+                                                            color: accent.onAccent,
                                                         },
                                                     ]}
                                                 >
@@ -343,7 +343,7 @@ export function ServerSidebar({
                                                             styles.dmBadge,
                                                             {
                                                                 backgroundColor:
-                                                                    colors.unread,
+                                                                    accent.accent,
                                                             },
                                                         ]}
                                                     >
@@ -351,7 +351,7 @@ export function ServerSidebar({
                                                             style={[
                                                                 styles.dmBadgeText,
                                                                 {
-                                                                    color: colors.unreadText,
+                                                                    color: accent.onAccent,
                                                                 },
                                                             ]}
                                                         >
@@ -411,7 +411,7 @@ export function ServerSidebar({
                                                         styles.channelBadge,
                                                         {
                                                             backgroundColor:
-                                                                colors.unread,
+                                                                accent.accent,
                                                         },
                                                     ]}
                                                 >
@@ -419,7 +419,7 @@ export function ServerSidebar({
                                                         style={[
                                                             styles.dmBadgeText,
                                                             {
-                                                                color: colors.unreadText,
+                                                                color: accent.onAccent,
                                                             },
                                                         ]}
                                                     >
@@ -500,9 +500,9 @@ function formatUnreadCount(count: number): string {
 const styles = StyleSheet.create({
     activePill: {
         borderRadius: 2,
-        height: 28,
+        height: 30,
         opacity: 0,
-        width: 4,
+        width: 3,
     },
     activePillVisible: {
         opacity: 1,
@@ -511,7 +511,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.surfaceLight,
         borderColor: colors.borderSubtle,
-        borderRadius: 8,
+        borderRadius: 17,
         borderWidth: 1,
         height: 56,
         justifyContent: "center",
@@ -542,7 +542,7 @@ const styles = StyleSheet.create({
         paddingVertical: 2,
     },
     channelItem: {
-        borderRadius: 8,
+        borderRadius: 9,
         paddingHorizontal: 10,
         paddingVertical: 8,
     },
@@ -601,8 +601,9 @@ const styles = StyleSheet.create({
         paddingVertical: 2,
     },
     dmBadgeText: {
+        fontFamily: fontFamilies.mono,
         fontSize: 10,
-        fontWeight: "700",
+        letterSpacing: 0.2,
     },
     dmMeta: {
         flex: 1,
@@ -645,14 +646,15 @@ const styles = StyleSheet.create({
         right: -3,
     },
     homeBadgeText: {
+        fontFamily: fontFamilies.mono,
         fontSize: 10,
-        fontWeight: "700",
+        letterSpacing: 0.2,
     },
     homeBtn: {
         alignItems: "center",
         backgroundColor: colors.surfaceLight,
         borderColor: colors.borderSubtle,
-        borderRadius: 8,
+        borderRadius: 17,
         borderWidth: 1,
         height: 56,
         justifyContent: "center",
@@ -660,6 +662,7 @@ const styles = StyleSheet.create({
     },
     homeBtnActive: {
         backgroundColor: colors.selected,
+        borderRadius: 19,
     },
     profileAuthDot: {
         backgroundColor: colors.mutedDark,
@@ -689,7 +692,9 @@ const styles = StyleSheet.create({
     },
     profileStatus: {
         color: colors.mutedDark,
-        fontSize: 11,
+        fontFamily: fontFamilies.mono,
+        fontSize: 10,
+        letterSpacing: 1,
         marginTop: 1,
         textTransform: "uppercase",
     },
@@ -735,7 +740,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.surfaceLight,
         borderColor: colors.borderSubtle,
-        borderRadius: 8,
+        borderRadius: 17,
         borderWidth: 1,
         height: 56,
         justifyContent: "center",
@@ -744,6 +749,7 @@ const styles = StyleSheet.create({
     },
     serverBtnActive: {
         backgroundColor: colors.selected,
+        borderRadius: 19,
     },
     serverList: {
         flex: 1,

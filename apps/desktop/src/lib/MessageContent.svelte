@@ -122,19 +122,22 @@
         align-items: center;
         max-width: min(400px, 100%);
         margin: 4px 0;
-        padding: 8px 12px;
+        padding: 9px 13px;
         border: 1px solid var(--border);
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         background: var(--bg-surface);
         color: inherit;
         cursor: pointer;
-        gap: 8px;
+        gap: 9px;
         text-align: left;
-        transition: background 0.1s;
+        transition:
+            background 140ms var(--ease-out),
+            border-color 140ms var(--ease-out);
     }
 
     .message-content__file:hover:not(:disabled) {
         background: var(--bg-hover);
+        border-color: var(--border-strong);
     }
 
     .message-content__file:disabled {
@@ -157,7 +160,7 @@
 
     .message-content__file-name {
         overflow: hidden;
-        color: var(--accent);
+        color: var(--accent-text);
         font-size: 13px;
         font-weight: 600;
         text-overflow: ellipsis;
