@@ -18,7 +18,6 @@ import {
     EyeOff,
     KeyRound,
     LoaderCircle,
-    Server,
     ShieldCheck,
     UserRound,
     X,
@@ -600,44 +599,9 @@ function AuthHeader({
 function AuthLayout({ children }: { children: ComponentChildren }) {
     return (
         <main className="auth-page">
-            <aside className="auth-brand">
-                <VexMark label size={40} />
-                <div className="auth-brand__copy">
-                    <span className="auth-brand__eyebrow">
-                        End-to-end encrypted
-                    </span>
-                    <h2>Messaging you can verify, not just trust.</h2>
-                    <p>
-                        Vex is an open, self-hostable protocol for private
-                        communication. No third parties. No logging. No
-                        surveillance.
-                    </p>
-                </div>
-                <ul className="auth-brand__points">
-                    <li>
-                        <ShieldCheck size={15} />
-                        <span>Zero-knowledge encryption, on every device</span>
-                    </li>
-                    <li>
-                        <Server size={15} />
-                        <span>Your relay, your keys, your policy surface</span>
-                    </li>
-                    <li>
-                        <KeyRound size={15} />
-                        <span>Passkey-first accounts, no phone number</span>
-                    </li>
-                </ul>
-                <span className="auth-brand__foot">
-                    VEX · SECURE MESSAGING PROTOCOL
-                </span>
-            </aside>
-            <section className="auth-panel">
-                <div className="auth-card">
-                    <span className="auth-card__mark">
-                        <VexMark label size={34} />
-                    </span>
-                    {children}
-                </div>
+            <section className="auth-card">
+                <VexMark label size={38} />
+                {children}
             </section>
         </main>
     );

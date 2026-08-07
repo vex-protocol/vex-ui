@@ -6,7 +6,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
 import { VexLogo } from "../components/VexLogo";
-import { colors, fontFamilies, typography, useAccentColors } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 type Props = AuthScreenProps<"Welcome">;
 
@@ -78,9 +78,8 @@ const styles = StyleSheet.create({
     footer: {
         ...typography.body,
         color: "rgba(255,255,255,0.48)",
-        fontFamily: fontFamilies.mono,
-        fontSize: 10,
-        letterSpacing: 1.4,
+        fontSize: 11,
+        letterSpacing: 0,
         lineHeight: 16,
         marginTop: 26,
         textAlign: "center",

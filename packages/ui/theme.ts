@@ -48,62 +48,61 @@ export interface NeutralTokens {
     unreadText: string;
 }
 
-export const defaultAccentPresetID: AccentPresetID = "red";
+export const defaultAccentPresetID: AccentPresetID = "blue";
 
 // These base colors all maintain at least 4.5:1 contrast with white so the
 // selected accent remains safe for buttons, badges, and compact controls.
-// The default is the Vex brand red used across the product identity.
 const defaultAccentPreset: AccentPreset = {
-    color: "#E70000",
+    color: "#2563EB",
     id: defaultAccentPresetID,
-    label: "Red",
+    label: "Blue",
 };
 
 export const accentPresets: readonly AccentPreset[] = [
     defaultAccentPreset,
-    { color: "#2563EB", id: "blue", label: "Blue" },
     { color: "#0E7490", id: "cyan", label: "Cyan" },
     { color: "#15803D", id: "green", label: "Green" },
     { color: "#A16207", id: "gold", label: "Gold" },
     { color: "#C2410C", id: "orange", label: "Orange" },
     { color: "#BE185D", id: "pink", label: "Pink" },
     { color: "#7E22CE", id: "purple", label: "Purple" },
+    { color: "#B91C1C", id: "red", label: "Red" },
 ];
 
 const darkNeutralTokens: NeutralTokens = {
-    background: "#0C0E12",
-    border: "#242C37",
-    borderStrong: "#3A4452",
-    elevated: "#202732",
-    hover: "#29313D",
+    background: "#0D0F12",
+    border: "#252B33",
+    borderStrong: "#3B4450",
+    elevated: "#222730",
+    hover: "#272D36",
     overlay: "rgba(0, 0, 0, 0.72)",
-    panel: "#12161C",
-    rail: "#07090C",
-    selected: "#323B49",
-    surface: "#191F28",
-    text: "#F4F6F9",
-    textFaint: "#848C99",
-    textMuted: "#98A1AF",
-    textSecondary: "#DCE1E8",
-    unread: "#39424F",
-    unreadText: "#F4F6F9",
+    panel: "#13161B",
+    rail: "#080A0D",
+    selected: "#2E3540",
+    surface: "#1A1E24",
+    text: "#F7F8FA",
+    textFaint: "#7D8794",
+    textMuted: "#A8B0BC",
+    textSecondary: "#E3E6EA",
+    unread: "#353D49",
+    unreadText: "#F7F8FA",
 };
 
 const lightNeutralTokens: NeutralTokens = {
     background: "#FFFFFF",
-    border: "#D6DBE2",
-    borderStrong: "#B6BEC9",
+    border: "#D3D8DF",
+    borderStrong: "#B8C0CA",
     elevated: "#FFFFFF",
-    hover: "#E8EBF0",
+    hover: "#E8EBEF",
     overlay: "rgba(17, 19, 24, 0.48)",
-    panel: "#F1F3F6",
-    rail: "#E5E8ED",
-    selected: "#DBE0E8",
-    surface: "#F7F8FA",
-    text: "#101318",
-    textFaint: "#626B77",
-    textMuted: "#4E5763",
-    textSecondary: "#262C34",
+    panel: "#F1F3F5",
+    rail: "#E5E8EC",
+    selected: "#DDE2E8",
+    surface: "#F8F9FB",
+    text: "#111318",
+    textFaint: "#666F7A",
+    textMuted: "#555D68",
+    textSecondary: "#2A2F36",
     unread: "#3F4752",
     unreadText: "#FFFFFF",
 };
@@ -137,15 +136,15 @@ export function accentTokensFor(
     };
 }
 
+export function neutralTokensFor(scheme: ColorScheme = "dark"): NeutralTokens {
+    return scheme === "dark" ? darkNeutralTokens : lightNeutralTokens;
+}
+
 export function isAccentPresetID(value: unknown): value is AccentPresetID {
     return (
         typeof value === "string" &&
         (accentPresetIDs as readonly string[]).includes(value)
     );
-}
-
-export function neutralTokensFor(scheme: ColorScheme = "dark"): NeutralTokens {
-    return scheme === "dark" ? darkNeutralTokens : lightNeutralTokens;
 }
 
 function channel(first: number, second: number, amount: number): string {

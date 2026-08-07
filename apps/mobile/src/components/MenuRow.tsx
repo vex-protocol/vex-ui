@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
     },
     iconBadge: {
         alignItems: "center",
-        borderRadius: 9,
+        borderRadius: 7,
         borderWidth: 1,
         height: 34,
         justifyContent: "center",
@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
     sectionRows: {
         backgroundColor: colors.surface,
         borderColor: colors.borderSubtle,
-        borderRadius: 12,
+        borderRadius: 8,
         borderWidth: 1,
         overflow: "hidden",
     },

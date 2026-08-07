@@ -201,10 +201,10 @@
     .message-embed {
         max-width: min(520px, 100%);
         margin: 4px 0;
-        padding: 11px 13px;
+        padding: 10px 12px;
         border: 1px solid var(--border);
         border-left: 3px solid #8ab4ff;
-        border-radius: var(--radius-md);
+        border-radius: 6px;
         background: color-mix(in srgb, var(--bg-surface) 82%, transparent);
     }
 
@@ -286,9 +286,8 @@
 
     .message-embed__field-label {
         color: var(--text-muted);
-        font-family: var(--font-mono);
-        font-size: 9.5px;
-        letter-spacing: 0.1em;
+        font-size: 10px;
+        font-weight: 700;
         text-transform: uppercase;
     }
 
@@ -298,7 +297,7 @@
     }
 
     .message-embed__field-value--mono {
-        font-family: var(--font-mono);
+        font-family: "SF Mono", "Fira Code", monospace;
     }
 
     .message-embed__blocks,
@@ -320,18 +319,14 @@
     }
 
     .message-embed__action {
-        min-height: 32px;
-        padding: 6px 12px;
+        padding: 6px 10px;
         border: 1px solid var(--border-strong);
-        border-radius: var(--radius-sm);
+        border-radius: 6px;
         background: var(--bg-surface);
         color: var(--text-secondary);
         cursor: pointer;
         font-size: 12px;
-        font-weight: 600;
-        transition:
-            background-color 120ms var(--ease-out),
-            color 120ms var(--ease-out);
+        font-weight: 700;
     }
 
     .message-embed__action:hover {

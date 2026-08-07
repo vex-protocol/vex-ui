@@ -455,7 +455,7 @@
         margin-bottom: 6px;
         background: var(--bg-surface);
         border: 1px solid var(--border);
-        border-radius: var(--radius-md);
+        border-radius: 6px;
     }
 
     .chat-input__editing {
@@ -464,9 +464,9 @@
         gap: 8px;
         padding: 8px 10px;
         margin-bottom: 6px;
-        background: var(--accent-soft);
-        border: 1px solid var(--accent-border);
-        border-radius: var(--radius-md);
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
     }
 
     .chat-input__editing-icon {
@@ -550,15 +550,15 @@
         align-items: flex-end;
         background: var(--bg-surface);
         border: 1px solid var(--border-strong);
-        border-radius: 12px;
+        border-radius: 8px;
         transition:
-            border-color 140ms var(--ease-out),
-            box-shadow 140ms var(--ease-out);
+            border-color 0.15s,
+            box-shadow 0.15s;
     }
 
     .chat-input__wrap:focus-within {
         border-color: var(--accent);
-        box-shadow: 0 0 0 3px var(--accent-soft);
+        box-shadow: 0 0 0 2px var(--accent-soft);
     }
 
     .chat-input__wrap--drag {
@@ -575,7 +575,7 @@
         background: transparent;
         border: none;
         color: var(--text-primary);
-        font-size: 14px;
+        font-size: 13px;
         font-family: inherit;
         max-height: 144px;
         overflow-y: auto;
@@ -621,37 +621,25 @@
     .chat-input__send {
         width: 34px;
         height: 34px;
-        border-radius: 9px;
+        border-radius: 7px;
         background: var(--accent);
         color: var(--on-accent);
         display: flex;
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.16),
-            0 6px 16px -6px color-mix(in srgb, var(--accent) 60%, transparent);
         transition:
-            background 140ms var(--ease-out),
-            box-shadow 140ms var(--ease-out),
-            transform 140ms var(--ease-out);
+            background 0.15s,
+            transform 0.15s;
     }
 
     .chat-input__send:not(:disabled):hover {
         background: var(--accent-hover);
         transform: translateY(-1px);
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.18),
-            0 8px 20px -6px color-mix(in srgb, var(--accent) 70%, transparent);
-    }
-
-    .chat-input__send:not(:disabled):active {
-        transform: translateY(0);
     }
 
     .chat-input__send:disabled {
         opacity: 0.3;
         cursor: not-allowed;
-        box-shadow: none;
     }
 </style>

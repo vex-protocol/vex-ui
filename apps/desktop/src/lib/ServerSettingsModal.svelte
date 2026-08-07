@@ -769,9 +769,8 @@
         inset: 0;
         width: 100%;
         height: 100%;
-        background: rgba(0, 0, 0, 0.66);
-        backdrop-filter: blur(6px);
-        animation: vex-fade 180ms var(--ease-out);
+        background: rgba(0, 0, 0, 0.72);
+        backdrop-filter: blur(3px);
     }
 
     .settings {
@@ -783,10 +782,9 @@
         flex-direction: column;
         overflow: hidden;
         border: 1px solid var(--border-strong);
-        border-radius: var(--radius-xl);
+        border-radius: 8px;
         background: var(--bg-primary);
-        box-shadow: var(--shadow-pop);
-        animation: vex-pop 240ms var(--ease-out);
+        box-shadow: var(--shadow-menu);
     }
 
     .settings__header {
@@ -817,10 +815,9 @@
     .settings__eyebrow {
         display: block;
         margin-bottom: 2px;
-        color: var(--accent-text);
-        font-family: var(--font-mono);
+        color: var(--text-faint);
         font-size: 10px;
-        letter-spacing: 0.12em;
+        font-weight: 700;
         text-transform: uppercase;
     }
 
@@ -840,15 +837,12 @@
 
     .settings__tab {
         width: 100%;
-        padding: 9px 11px;
-        border-radius: var(--radius-md);
+        padding: 9px 10px;
+        border-radius: 6px;
         color: var(--text-muted);
         font-size: 13px;
         font-weight: 600;
         text-align: left;
-        transition:
-            background-color 120ms var(--ease-out),
-            color 120ms var(--ease-out);
     }
 
     .settings__tab:hover {
@@ -859,7 +853,6 @@
     .settings__tab--active {
         background: var(--bg-selected);
         color: var(--text-primary);
-        box-shadow: inset 2px 0 0 var(--accent);
     }
 
     .settings__content {
@@ -877,8 +870,6 @@
         margin-bottom: 4px;
         font-family: var(--font-heading);
         font-size: 22px;
-        font-weight: 700;
-        letter-spacing: -0.02em;
     }
 
     .section-heading p,
@@ -941,9 +932,8 @@
         display: block;
         margin-bottom: 7px;
         color: var(--text-muted);
-        font-family: var(--font-mono);
-        font-size: 10.5px;
-        letter-spacing: 0.1em;
+        font-size: 11px;
+        font-weight: 700;
         text-transform: uppercase;
     }
 
@@ -955,22 +945,17 @@
     }
 
     .button {
-        min-height: 38px;
+        min-height: 36px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         gap: 7px;
-        padding: 0 14px;
+        padding: 0 13px;
         border: 1px solid transparent;
-        border-radius: var(--radius-md);
-        font-size: 12.5px;
-        font-weight: 600;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 700;
         white-space: nowrap;
-        transition:
-            background-color 140ms var(--ease-out),
-            border-color 140ms var(--ease-out),
-            color 140ms var(--ease-out),
-            transform 100ms var(--ease-out);
     }
 
     .button:disabled,
@@ -981,17 +966,10 @@
     .button--primary {
         background: var(--accent);
         color: var(--on-accent);
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.16),
-            0 8px 20px -8px color-mix(in srgb, var(--accent) 55%, transparent);
     }
 
     .button--primary:hover:not(:disabled) {
         background: var(--accent-hover);
-    }
-
-    .button--primary:active:not(:disabled) {
-        transform: translateY(1px);
     }
 
     .button--secondary {
@@ -1089,17 +1067,14 @@
         gap: 6px;
         padding-left: 10px;
         border: 1px solid var(--border-strong);
-        border-radius: var(--radius-md);
+        border-radius: 6px;
         background: var(--bg-surface);
         color: var(--text-faint);
-        transition:
-            border-color 140ms var(--ease-out),
-            box-shadow 140ms var(--ease-out);
     }
 
     .input-with-icon:focus-within {
         border-color: var(--accent);
-        box-shadow: 0 0 0 3px var(--accent-soft);
+        box-shadow: 0 0 0 2px var(--accent-soft);
     }
 
     .input-with-icon input {

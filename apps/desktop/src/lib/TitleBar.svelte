@@ -68,11 +68,10 @@
     }
 
     .titlebar__app-name {
-        font-family: var(--font-heading);
         font-size: 13px;
-        font-weight: 700;
+        font-weight: 600;
         color: var(--accent);
-        letter-spacing: 0.02em;
+        letter-spacing: 0;
     }
 
     .titlebar__controls {

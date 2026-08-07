@@ -66,10 +66,10 @@
     .member {
         display: flex;
         align-items: center;
-        gap: 9px;
-        padding: 5px 6px;
-        border-radius: var(--radius-sm);
-        transition: background 120ms var(--ease-out);
+        gap: 8px;
+        padding: 4px;
+        border-radius: 4px;
+        transition: background 0.1s;
     }
 
     .member:hover {

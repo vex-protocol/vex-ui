@@ -58,7 +58,7 @@
         align-items: center;
         justify-content: center;
         overflow: hidden;
-        border-radius: calc(var(--server-icon-size) * 0.28);
+        border-radius: 8px;
         background: var(--bg-elevated);
         color: var(--text-secondary);
     }
@@ -74,7 +74,6 @@
         font-family: var(--font-heading);
         font-size: max(10px, calc(var(--server-icon-size) * 0.32));
         font-weight: 700;
-        letter-spacing: 0.02em;
         line-height: 1;
     }
 </style>

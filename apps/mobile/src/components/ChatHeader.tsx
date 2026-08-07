@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
 
-import { colors, fontFamilies, typography } from "../theme";
+import { colors, typography } from "../theme";
 
 const TOPBAR_LEFT_GUTTER = 52;
 const TOPBAR_HEIGHT = 56;
@@ -172,18 +172,14 @@ const styles = StyleSheet.create({
     subtitle: {
         ...typography.body,
         color: colors.mutedDark,
-        fontFamily: fontFamilies.mono,
         fontSize: 10,
-        letterSpacing: 0.4,
         lineHeight: 13,
     },
     title: {
         ...typography.button,
         color: colors.text,
         flexShrink: 1,
-        fontFamily: fontFamilies.heading,
         fontSize: 15,
-        letterSpacing: -0.2,
         lineHeight: 19,
     },
     titleBlock: {

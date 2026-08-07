@@ -167,10 +167,8 @@
         width: 100%;
         height: 100%;
         border: 0;
-        background: rgba(0, 0, 0, 0.66);
-        backdrop-filter: blur(6px);
+        background: rgba(0, 0, 0, 0.72);
         cursor: default;
-        animation: vex-fade 180ms var(--ease-out);
     }
 
     .passkey-prompt__dialog {
@@ -179,12 +177,11 @@
         display: flex;
         flex-direction: column;
         gap: 20px;
-        padding: 26px;
+        padding: 24px;
         border: 1px solid var(--border-strong);
-        border-radius: var(--radius-xl);
+        border-radius: 8px;
         background: var(--bg-elevated);
-        box-shadow: var(--shadow-pop);
-        animation: vex-pop 240ms var(--ease-out);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.48);
     }
 
     .passkey-prompt__close {
@@ -196,7 +193,7 @@
         display: grid;
         place-items: center;
         border: 0;
-        border-radius: var(--radius-md);
+        border-radius: 6px;
         color: var(--text-muted);
         background: transparent;
     }
@@ -207,14 +204,14 @@
     }
 
     .passkey-prompt__icon {
-        width: 48px;
-        height: 48px;
+        width: 46px;
+        height: 46px;
         display: grid;
         place-items: center;
-        border: 1px solid var(--accent-border);
-        border-radius: var(--radius-lg);
-        color: var(--accent-text);
-        background: var(--accent-soft);
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        color: var(--text-secondary);
+        background: var(--bg-hover);
     }
 
     .passkey-prompt__copy {
@@ -225,20 +222,16 @@
     }
 
     .passkey-prompt__eyebrow {
-        color: var(--accent-text);
-        font-family: var(--font-mono);
-        font-size: 10.5px;
-        letter-spacing: 0.13em;
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 700;
         text-transform: uppercase;
     }
 
     .passkey-prompt__copy h2 {
         margin: 0;
         color: var(--text-primary);
-        font-family: var(--font-heading);
         font-size: 24px;
-        font-weight: 700;
-        letter-spacing: -0.02em;
         line-height: 1.2;
     }
 
@@ -256,21 +249,16 @@
     }
 
     .passkey-prompt__button {
-        min-height: 42px;
+        min-height: 40px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         gap: 8px;
-        padding: 9px 16px;
+        padding: 9px 15px;
         border: 1px solid transparent;
-        border-radius: var(--radius-md);
+        border-radius: 6px;
         font-size: 13px;
-        font-weight: 600;
-        transition:
-            background-color 140ms var(--ease-out),
-            box-shadow 140ms var(--ease-out),
-            color 140ms var(--ease-out),
-            transform 100ms var(--ease-out);
+        font-weight: 650;
     }
 
     .passkey-prompt__button--secondary {
@@ -288,16 +276,9 @@
         border-color: var(--accent);
         color: var(--on-accent);
         background: var(--accent);
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.16),
-            0 8px 20px -8px color-mix(in srgb, var(--accent) 55%, transparent);
     }
 
     .passkey-prompt__button--primary:hover {
-        background: var(--accent-hover);
-    }
-
-    .passkey-prompt__button--primary:active {
-        transform: translateY(1px);
+        filter: brightness(1.08);
     }
 </style>

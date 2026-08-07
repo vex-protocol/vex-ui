@@ -45,17 +45,14 @@
 
 .settings-detail__heading span {
     color: var(--text-faint);
-    font-family: var(--font-mono);
-    font-size: 9.5px;
-    letter-spacing: 0.12em;
+    font-size: 9px;
+    font-weight: 700;
     text-transform: uppercase;
 }
 
 .settings-detail__heading h1 {
     font-family: var(--font-heading);
-    font-size: 14.5px;
-    font-weight: 700;
-    letter-spacing: -0.01em;
+    font-size: 14px;
     line-height: 18px;
 }
 
@@ -149,19 +146,17 @@
 }
 
 .settings-detail__field label {
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-    font-size: 10.5px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
 }
 
 .settings-detail__field input {
-    min-height: 44px;
-    padding: 9px 12px;
+    min-height: 42px;
+    padding: 9px 11px;
     border-color: var(--border-strong);
     background: var(--bg-surface);
-    font-size: 13.5px;
+    font-size: 13px;
 }
 
 .settings-detail__check {
@@ -197,23 +192,18 @@
 }
 
 .settings-detail__button {
-    min-height: 38px;
+    min-height: 36px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 7px;
-    padding: 0 14px;
+    padding: 0 13px;
     border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
+    border-radius: 6px;
     background: var(--bg-surface);
     color: var(--text-secondary);
-    font-size: 12.5px;
-    font-weight: 600;
-    transition:
-        background-color 140ms var(--ease-out),
-        border-color 140ms var(--ease-out),
-        color 140ms var(--ease-out),
-        transform 100ms var(--ease-out);
+    font-size: 12px;
+    font-weight: 700;
 }
 
 .settings-detail__button:hover:not(:disabled) {
@@ -225,17 +215,10 @@
     border-color: var(--accent);
     background: var(--accent);
     color: var(--on-accent);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.16),
-        0 8px 20px -8px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .settings-detail__button--primary:hover:not(:disabled) {
     background: var(--accent-hover);
-}
-
-.settings-detail__button--primary:active:not(:disabled) {
-    transform: translateY(1px);
 }
 
 .settings-detail__button--danger {

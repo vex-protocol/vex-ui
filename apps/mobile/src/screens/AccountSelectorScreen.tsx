@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
     },
     deviceLine: {
         ...typography.body,
-        color: colors.muted,
+        color: "rgba(255,255,255,0.55)",
         fontFamily: fontFamilies.mono,
         fontSize: 12,
         marginTop: 3,
@@ -360,7 +360,6 @@ const styles = StyleSheet.create({
     errorBox: {
         backgroundColor: colors.dangerBg,
         borderColor: colors.dangerBorder,
-        borderRadius: 10,
         borderWidth: 1,
         marginBottom: 12,
         paddingHorizontal: 12,
@@ -434,7 +433,7 @@ const styles = StyleSheet.create({
     },
     subtitle: {
         ...typography.body,
-        color: colors.muted,
+        color: "rgba(255,255,255,0.52)",
         lineHeight: 20,
         textAlign: "center",
     },

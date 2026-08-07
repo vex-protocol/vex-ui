@@ -989,15 +989,12 @@
         display: flex;
         align-items: center;
         gap: 9px;
-        padding: 0 11px;
-        border-radius: var(--radius-md);
+        padding: 0 10px;
+        border-radius: 6px;
         color: var(--text-muted);
         font-size: 13px;
         font-weight: 600;
         text-align: left;
-        transition:
-            background-color 120ms var(--ease-out),
-            color 120ms var(--ease-out);
     }
 
     .settings-nav__item:hover {
@@ -1008,7 +1005,6 @@
     .settings-nav__item--active {
         background: var(--bg-selected);
         color: var(--text-primary);
-        box-shadow: inset 2px 0 0 var(--accent);
     }
 
     .settings-page__body {
@@ -1040,7 +1036,6 @@
         font-family: var(--font-heading);
         font-size: 18px;
         font-weight: 700;
-        letter-spacing: -0.015em;
     }
 
     .settings-row {
@@ -1087,21 +1082,15 @@
     }
 
     .settings-btn {
-        min-height: 34px;
         padding: 6px 14px;
-        border-radius: var(--radius-md);
-        font-size: 12.5px;
+        border-radius: 4px;
+        font-size: 13px;
         font-weight: 600;
         white-space: nowrap;
         background: var(--bg-surface);
         color: var(--text-primary);
-        border: 1px solid var(--border-strong);
+        border: 1px solid var(--border);
         flex-shrink: 0;
-        transition:
-            background-color 140ms var(--ease-out),
-            border-color 140ms var(--ease-out),
-            color 140ms var(--ease-out),
-            transform 100ms var(--ease-out);
     }
 
     .settings-btn:hover:not(:disabled) {
@@ -1136,18 +1125,12 @@
         background: var(--accent);
         color: var(--on-accent);
         border-color: var(--accent);
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.16),
-            0 6px 16px -8px color-mix(in srgb, var(--accent) 55%, transparent);
     }
 
     .settings-btn--primary {
         background: var(--accent);
         color: var(--on-accent);
         border-color: var(--accent);
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.16),
-            0 6px 16px -8px color-mix(in srgb, var(--accent) 55%, transparent);
     }
 
     .settings-btn--primary:hover:not(:disabled) {
@@ -1240,13 +1223,13 @@
 
     .device-badge {
         display: inline-block;
-        font-family: var(--font-mono);
-        font-size: 9.5px;
-        letter-spacing: 0.08em;
+        font-size: 10px;
+        font-weight: 700;
         text-transform: uppercase;
-        padding: 2px 7px;
+        letter-spacing: 0;
+        padding: 1px 6px;
         margin-left: 6px;
-        border-radius: 4px;
+        border-radius: 3px;
         background: var(--unread-bg);
         color: var(--unread-text);
         vertical-align: middle;
@@ -1263,14 +1246,15 @@
     .device-code {
         align-self: flex-start;
         margin-top: 6px;
-        padding: 6px 10px;
-        border: 1px solid var(--accent-border);
-        border-radius: var(--radius-md);
+        padding: 5px 9px;
+        border: 1px solid var(--accent);
+        border-radius: 4px;
         color: var(--text-primary);
-        background: var(--accent-soft);
-        font-family: var(--font-mono);
+        background: color-mix(in srgb, var(--accent) 10%, transparent);
+        font-family: monospace;
         font-size: 16px;
-        letter-spacing: 0.12em;
+        font-weight: 700;
+        letter-spacing: 0;
     }
 
     @media (max-width: 700px) {

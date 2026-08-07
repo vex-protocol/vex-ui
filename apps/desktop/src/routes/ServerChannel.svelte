@@ -267,7 +267,7 @@
         flex: 0 0 32px;
         display: grid;
         place-items: center;
-        border-radius: var(--radius-md);
+        border-radius: 6px;
         background: var(--bg-surface);
         color: var(--text-faint);
     }
@@ -289,16 +289,12 @@
     .channel-pane__title-copy strong {
         color: var(--text-primary);
         font-family: var(--font-heading);
-        font-size: 14.5px;
-        font-weight: 700;
-        letter-spacing: -0.01em;
+        font-size: 14px;
     }
 
     .channel-pane__title-copy small {
         color: var(--text-faint);
-        font-family: var(--font-mono);
         font-size: 10px;
-        letter-spacing: 0.04em;
     }
 
     .channel-pane__actions {
@@ -315,7 +311,7 @@
         justify-content: center;
         gap: 5px;
         padding: 0 8px;
-        border-radius: var(--radius-sm);
+        border-radius: 6px;
         color: var(--text-muted);
     }
 
@@ -326,8 +322,8 @@
     }
 
     .channel-pane__actions button span {
-        font-family: var(--font-mono);
         font-size: 10px;
+        font-weight: 700;
     }
 
     .channel-pane__error {

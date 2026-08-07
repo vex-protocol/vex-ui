@@ -43,9 +43,7 @@
         class="avatar avatar--fallback"
         style="width:{resolvedSize}px;height:{resolvedSize}px;font-size:{Math.round(
             resolvedSize * 0.4,
-        )}px;background:linear-gradient(135deg, hsl({avatarHue(
-            userID,
-        )}, 48%, 46%), hsl({avatarHue(userID) + 18}, 52%, 30%))"
+        )}px;background:hsl({avatarHue(userID)},45%,40%)"
         aria-label={name ?? userID}
     >
         {initials(userID, name)}
@@ -65,9 +63,8 @@
         align-items: center;
         justify-content: center;
         color: #fff;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+        font-weight: 700;
+        letter-spacing: 0;
         user-select: none;
     }
 </style>

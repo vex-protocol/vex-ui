@@ -140,15 +140,7 @@
     {#each chunks as chunk (chunk.messages[0]?.mailID ?? chunk.firstTime + chunk.authorID)}
         <div class="message-chunk">
             <div class="message-chunk__avatar">
-                <Avatar
-                    userID={chunk.authorID}
-                    name={usernameMap[chunk.authorID] ??
-                        (chunk.authorID === $user?.userID
-                            ? $user.username
-                            : undefined)}
-                    size={36}
-                    {serverUrl}
-                />
+                <Avatar userID={chunk.authorID} size={36} {serverUrl} />
             </div>
             <div class="message-chunk__body">
                 <div class="message-chunk__meta">
@@ -310,18 +302,17 @@
         max-width: 960px;
         display: grid;
         grid-template-columns: 36px minmax(0, 1fr);
-        column-gap: 12px;
-        padding: 8px 10px 6px;
-        border-radius: var(--radius-md);
-        transition: background 120ms var(--ease-out);
+        column-gap: 11px;
+        padding: 8px 7px 5px;
+        border-radius: 5px;
     }
 
     .message-chunk + .message-chunk {
-        margin-top: 5px;
+        margin-top: 4px;
     }
 
     .message-chunk:hover {
-        background: color-mix(in srgb, var(--bg-hover) 26%, transparent);
+        background: color-mix(in srgb, var(--bg-hover) 18%, transparent);
     }
 
     .message-chunk__avatar {
@@ -351,18 +342,16 @@
     }
 
     .message-chunk__time {
+        font-size: 10px;
         color: var(--text-faint);
-        font-family: var(--font-mono);
-        font-size: 10.5px;
-        letter-spacing: 0.03em;
     }
 
     .message {
         position: relative;
         min-height: 21px;
         padding: 0 72px 0 0;
-        font-size: 14px;
-        line-height: 1.55;
+        font-size: 13.5px;
+        line-height: 1.5;
         color: var(--text-secondary);
         word-break: break-word;
     }
@@ -373,23 +362,21 @@
 
     .message__actions {
         position: absolute;
-        top: -8px;
+        top: -2px;
         right: 0;
         display: none;
         align-items: center;
         gap: 2px;
         padding: 3px;
         background: var(--bg-elevated);
-        border: 1px solid var(--border-strong);
-        border-radius: var(--radius-md);
-        box-shadow: var(--shadow-menu);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
     }
 
     .message:hover .message__actions,
     .message:focus-within .message__actions {
         display: flex;
-        animation: vex-pop 140ms var(--ease-out);
-        transform-origin: top right;
     }
 
     .message__action {
@@ -401,7 +388,7 @@
         height: 26px;
         display: grid;
         place-items: center;
-        border-radius: var(--radius-sm);
+        border-radius: 4px;
     }
 
     .message__action:hover {
@@ -479,29 +466,26 @@
 
     .message :global(code) {
         background: var(--bg-surface);
-        border: 1px solid var(--border);
-        border-radius: 5px;
-        padding: 1px 6px;
-        font-family: var(--font-mono);
-        font-size: 12.5px;
+        border-radius: 3px;
+        padding: 1px 5px;
+        font-family: "SF Mono", "Fira Code", monospace;
+        font-size: 13px;
         color: var(--text-primary);
     }
 
     .message :global(pre) {
         background: var(--bg-tertiary);
         border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        padding: 12px 15px;
+        border-radius: 6px;
+        padding: 10px 14px;
         overflow-x: auto;
         margin: 6px 0;
     }
 
     .message :global(pre code) {
         background: none;
-        border: 0;
         padding: 0;
-        font-size: 12.5px;
-        line-height: 1.55;
+        font-size: 13px;
     }
 
     .message :global(.hljs) {

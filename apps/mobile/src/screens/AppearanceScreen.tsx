@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     swatch: {
         alignItems: "center",
         borderColor: colors.borderSubtle,
-        borderRadius: 12,
+        borderRadius: 8,
         borderWidth: 1,
         flexBasis: "22%",
         flexGrow: 1,
@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
     swatchGrid: {
         backgroundColor: colors.surface,
         borderColor: colors.borderSubtle,
-        borderRadius: 14,
+        borderRadius: 8,
         borderWidth: 1,
         flexDirection: "row",
         flexWrap: "wrap",

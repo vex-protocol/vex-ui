@@ -118,17 +118,14 @@
 
     .inbox-home__topbar span {
         color: var(--text-faint);
-        font-family: var(--font-mono);
-        font-size: 9.5px;
-        letter-spacing: 0.12em;
+        font-size: 9px;
+        font-weight: 700;
         text-transform: uppercase;
     }
 
     .inbox-home__topbar strong {
         font-family: var(--font-heading);
-        font-size: 14.5px;
-        font-weight: 700;
-        letter-spacing: -0.01em;
+        font-size: 14px;
     }
 
     .inbox-home__topbar :global(svg) {
@@ -162,18 +159,16 @@
     }
 
     .inbox-home__intro h1 {
-        margin-bottom: 9px;
+        margin-bottom: 8px;
         font-family: var(--font-heading);
-        font-size: 30px;
-        font-weight: 700;
-        letter-spacing: -0.025em;
-        line-height: 1.12;
+        font-size: 28px;
+        line-height: 1.15;
     }
 
     .inbox-home__intro p {
         max-width: 500px;
         color: var(--text-muted);
-        font-size: 13.5px;
+        font-size: 13px;
         line-height: 1.65;
     }
 
@@ -187,14 +182,12 @@
         display: flex;
         align-items: center;
         gap: 13px;
-        padding: 11px 6px;
+        padding: 11px 4px;
         border-bottom: 1px solid var(--border);
         text-align: left;
-        transition: background 120ms var(--ease-out);
     }
 
     .inbox-home__actions button:hover {
-        background: color-mix(in srgb, var(--bg-hover) 30%, transparent);
         color: var(--text-primary);
     }
 

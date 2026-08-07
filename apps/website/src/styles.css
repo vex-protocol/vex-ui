@@ -2,6 +2,13 @@ html {
     font-size: 100%;
 }
 
+@media (min-width: 1024px) {
+    html {
+        /* desktop-only scale-down to mimic ~90% browser zoom */
+        font-size: 90%;
+    }
+}
+
 *,
 *::before,
 *::after {
@@ -19,8 +26,8 @@ body,
 body {
     margin: 0;
     width: 100%;
-    background-color: rgb(12 14 18);
-    color: rgb(244 246 249);
+    background-color: rgb(9 9 11);
+    color: rgb(244 244 245);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-family:
@@ -54,8 +61,8 @@ button,
     align-items: center;
     justify-content: center;
     gap: 12px;
-    color: #dce1e8;
-    background: #0c0e12;
+    color: #e3e6ea;
+    background: #0d0f12;
     font:
         500 14px/1.4 Inter,
         ui-sans-serif,

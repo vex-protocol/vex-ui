@@ -92,9 +92,8 @@ const styles = StyleSheet.create({
     name: { ...typography.body, color: colors.muted, flex: 1, fontSize: 14 },
     row: {
         alignItems: "center",
-        backgroundColor: colors.surfaceLight,
-        borderColor: colors.borderSubtle,
-        borderRadius: 10,
+        backgroundColor: "rgba(255,255,255,0.02)",
+        borderColor: "rgba(255,255,255,0.08)",
         borderWidth: 1,
         flexDirection: "row",
         gap: 8,

@@ -107,7 +107,7 @@ export function Avatar({
             style={[
                 containerStyle,
                 styles.fallback,
-                { backgroundColor: `hsl(${avatarHue(userID)}, 48%, 36%)` },
+                { backgroundColor: `hsl(${avatarHue(userID)}, 45%, 40%)` },
             ]}
         >
             <Text
@@ -133,11 +133,7 @@ const styles = StyleSheet.create({
     },
     fallbackText: {
         color: "#fff",
-        fontWeight: "600",
-        letterSpacing: 0.3,
-        textShadowColor: "rgba(0,0,0,0.28)",
-        textShadowOffset: { height: 1, width: 0 },
-        textShadowRadius: 2,
+        fontWeight: "700",
     },
     image: {
         backgroundColor: colors.surfaceLight,

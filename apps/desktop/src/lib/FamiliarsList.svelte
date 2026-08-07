@@ -181,18 +181,15 @@
 
     .dm-sidebar__header span {
         color: var(--text-faint);
-        font-family: var(--font-mono);
-        font-size: 9.5px;
-        letter-spacing: 0.12em;
+        font-size: 9px;
+        font-weight: 700;
         text-transform: uppercase;
     }
 
     .dm-sidebar__header strong {
         overflow: hidden;
         font-family: var(--font-heading);
-        font-size: 14.5px;
-        font-weight: 700;
-        letter-spacing: -0.01em;
+        font-size: 14px;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
@@ -208,19 +205,15 @@
         align-items: center;
         gap: 6px;
         margin: 8px 9px 2px;
-        padding: 0 10px;
+        padding: 0 9px;
         border: 1px solid var(--border);
-        border-radius: var(--radius-md);
+        border-radius: 6px;
         background: var(--bg-surface);
         color: var(--text-faint);
-        transition:
-            border-color 140ms var(--ease-out),
-            box-shadow 140ms var(--ease-out);
     }
 
     .dm-sidebar__search:focus-within {
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px var(--accent-soft);
+        border-color: var(--border-strong);
     }
 
     .dm-sidebar__search input {
@@ -251,9 +244,8 @@
     .dm-sidebar__section-label {
         padding: 12px 14px 5px;
         color: var(--text-faint);
-        font-family: var(--font-mono);
         font-size: 10px;
-        letter-spacing: 0.11em;
+        font-weight: 700;
         text-transform: uppercase;
     }
 
@@ -333,10 +325,9 @@
         place-items: center;
         padding: 0 4px;
         border-radius: 9px;
-        background: var(--accent);
-        color: var(--on-accent);
-        font-family: var(--font-mono);
-        font-size: 9.5px;
+        background: var(--unread-bg);
+        color: var(--unread-text);
+        font-size: 9px;
     }
 
     .dm-sidebar__empty {

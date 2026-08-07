@@ -316,17 +316,15 @@
 
     .members-panel__title {
         font-family: var(--font-heading);
-        font-size: 13.5px;
+        font-size: 13px;
         font-weight: 700;
-        letter-spacing: -0.01em;
         color: var(--text-secondary);
     }
 
     .members-panel__eyebrow {
         color: var(--text-faint);
-        font-family: var(--font-mono);
-        font-size: 9.5px;
-        letter-spacing: 0.12em;
+        font-size: 9px;
+        font-weight: 700;
         text-transform: uppercase;
     }
 
@@ -337,12 +335,12 @@
     }
 
     .members-panel__section-label {
-        padding: 12px 6px 5px;
-        color: var(--text-faint);
-        font-family: var(--font-mono);
-        font-size: 10px;
-        letter-spacing: 0.11em;
+        font-size: 11px;
+        font-weight: 700;
         text-transform: uppercase;
+        letter-spacing: 0;
+        color: var(--text-muted);
+        padding: 12px 4px 4px;
     }
 
     .members-panel__error {

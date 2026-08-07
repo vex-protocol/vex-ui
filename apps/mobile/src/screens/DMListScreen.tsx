@@ -30,7 +30,7 @@ import { useStore } from "@nanostores/react";
 import { Avatar } from "../components/Avatar";
 import { ChatHeader } from "../components/ChatHeader";
 import { VexField } from "../components/VexField";
-import { colors, fontFamilies, typography, useAccentColors } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 const FRIENDS_DRAWER_WIDTH = 232;
 const ONLINE_WINDOW_MS = 15 * 60 * 1000;
@@ -276,13 +276,13 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
                     <View
                         style={[
                             styles.friendUnreadDot,
-                            { backgroundColor: accent.accent },
+                            { backgroundColor: colors.unread },
                         ]}
                     >
                         <Text
                             style={[
                                 styles.friendUnreadText,
-                                { color: accent.onAccent },
+                                { color: colors.unreadText },
                             ]}
                         >
                             {unread > 99 ? "99+" : unread}
@@ -335,13 +335,13 @@ export function DMListScreen({ navigation }: AppScreenProps<"DMList">) {
                     <View
                         style={[
                             styles.unreadBadge,
-                            { backgroundColor: accent.accent },
+                            { backgroundColor: colors.unread },
                         ]}
                     >
                         <Text
                             style={[
                                 styles.unreadText,
-                                { color: accent.onAccent },
+                                { color: colors.unreadText },
                             ]}
                         >
                             {unread > 99 ? "99+" : unread}
@@ -512,7 +512,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.surfaceLight,
         borderColor: colors.borderSubtle,
-        borderRadius: 10,
+        borderRadius: 6,
         borderWidth: 1,
         flexDirection: "row",
         gap: 8,
@@ -585,9 +585,8 @@ const styles = StyleSheet.create({
         paddingVertical: 2,
     },
     friendUnreadText: {
-        fontFamily: fontFamilies.mono,
         fontSize: 10,
-        letterSpacing: 0.2,
+        fontWeight: "700",
     },
     noFriendsText: {
         ...typography.body,
@@ -621,7 +620,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.surfaceLight,
         borderColor: colors.borderSubtle,
-        borderRadius: 10,
+        borderRadius: 6,
         borderWidth: 1,
         flexDirection: "row",
         gap: 10,
@@ -636,13 +635,13 @@ const styles = StyleSheet.create({
     row: {
         alignItems: "center",
         backgroundColor: colors.transparent,
-        borderRadius: 10,
+        borderRadius: 6,
         flexDirection: "row",
         gap: 12,
         marginBottom: 2,
         marginHorizontal: 16,
         paddingHorizontal: 12,
-        paddingVertical: 11,
+        paddingVertical: 10,
     },
     rowContent: {
         flex: 1,
@@ -655,12 +654,12 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.input,
         borderColor: colors.borderSubtle,
-        borderRadius: 12,
+        borderRadius: 6,
         borderWidth: 1,
         flexDirection: "row",
         gap: 8,
-        minHeight: 44,
-        paddingHorizontal: 13,
+        minHeight: 42,
+        paddingHorizontal: 12,
         paddingVertical: 10,
     },
     searchInput: {
@@ -699,9 +698,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 6,
     },
     unreadText: {
-        fontFamily: fontFamilies.mono,
         fontSize: 11,
-        letterSpacing: 0.2,
+        fontWeight: "700",
     },
     username: {
         ...typography.button,

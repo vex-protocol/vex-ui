@@ -34,9 +34,9 @@ describe("accent theme", () => {
         }
     });
 
-    it("uses the Vex brand red as the default", () => {
-        expect(defaultAccentPresetID).toBe("red");
-        expect(accentTokensFor(defaultAccentPresetID).accent).toBe("#E70000");
+    it("uses blue as the default", () => {
+        expect(defaultAccentPresetID).toBe("blue");
+        expect(accentTokensFor(defaultAccentPresetID).accent).toBe("#2563EB");
     });
 
     it("rejects unknown persisted values", () => {
@@ -75,7 +75,7 @@ describe("accent theme", () => {
 
     it("uses a near-black dark workspace with distinct interactive surfaces", () => {
         const tokens = neutralTokensFor("dark");
-        expect(tokens.background).toBe("#0C0E12");
+        expect(tokens.background).toBe("#0D0F12");
         expect(contrast(tokens.surface, tokens.background)).toBeGreaterThan(
             1.1,
         );

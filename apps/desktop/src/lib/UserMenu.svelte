@@ -130,7 +130,7 @@
         align-items: center;
         gap: 8px;
         padding: 4px;
-        border-radius: var(--radius-md);
+        border-radius: 6px;
         text-align: left;
     }
 
@@ -219,35 +219,30 @@
         right: 8px;
         bottom: calc(100% + 7px);
         left: 8px;
-        padding: 6px;
+        padding: 5px;
         border: 1px solid var(--border-strong);
-        border-radius: var(--radius-md);
+        border-radius: 7px;
         background: var(--bg-elevated);
         box-shadow: var(--shadow-menu);
-        animation: vex-pop 180ms var(--ease-out);
-        transform-origin: bottom left;
     }
 
     .account-menu__popover-name {
         display: flex;
         flex-direction: column;
         gap: 2px;
-        padding: 8px 10px 9px;
+        padding: 8px 9px 9px;
     }
 
     .account-menu__popover-name strong {
         overflow: hidden;
-        font-size: 12.5px;
-        font-weight: 600;
+        font-size: 12px;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
 
     .account-menu__popover-name span {
         color: var(--text-faint);
-        font-family: var(--font-mono);
         font-size: 10px;
-        letter-spacing: 0.04em;
     }
 
     .account-menu__popover button {
@@ -256,10 +251,10 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 0 10px;
-        border-radius: var(--radius-sm);
+        padding: 0 8px;
+        border-radius: 5px;
         color: var(--text-secondary);
-        font-size: 12.5px;
+        font-size: 12px;
         font-weight: 600;
         text-align: left;
     }

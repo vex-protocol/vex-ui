@@ -25,7 +25,7 @@ import { ScreenLayout } from "../components/ScreenLayout";
 import { VexButton } from "../components/VexButton";
 import { matchingCodeForSignKey } from "../lib/deviceApprovalCode";
 import { isPasskeySupported } from "../lib/passkey";
-import { colors, fontFamilies, typography, useAccentColors } from "../theme";
+import { colors, typography, useAccentColors } from "../theme";
 
 type Props = AuthScreenProps<"Authenticate">;
 
@@ -473,7 +473,6 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.dangerBg,
         borderColor: colors.dangerBorder,
-        borderRadius: 12,
         borderWidth: 1,
         height: 64,
         justifyContent: "center",
@@ -482,7 +481,6 @@ const styles = StyleSheet.create({
     cellText: {
         ...typography.headingSmall,
         color: colors.text,
-        fontFamily: fontFamilies.mono,
         fontSize: 28,
         letterSpacing: 0,
     },
@@ -511,7 +509,6 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: colors.dangerBg,
         borderColor: colors.dangerBorder,
-        borderRadius: 12,
         borderWidth: 1,
         gap: 6,
         paddingHorizontal: 16,
@@ -573,7 +570,7 @@ const styles = StyleSheet.create({
     methodPanel: {
         backgroundColor: colors.surface,
         borderColor: colors.border,
-        borderRadius: 16,
+        borderRadius: 8,
         borderWidth: 1,
         gap: 14,
         maxWidth: 360,
@@ -614,7 +611,6 @@ const styles = StyleSheet.create({
         ...typography.body,
         backgroundColor: colors.dangerBg,
         borderColor: colors.dangerBorder,
-        borderRadius: 10,
         borderWidth: 1,
         color: colors.error,
         paddingHorizontal: 12,
@@ -624,7 +620,6 @@ const styles = StyleSheet.create({
         alignItems: "center",
         backgroundColor: "rgba(255,255,255,0.02)",
         borderColor: "rgba(255,255,255,0.08)",
-        borderRadius: 12,
         borderWidth: 1,
         flexDirection: "row",
         gap: 12,
