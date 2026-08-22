@@ -21,19 +21,19 @@
         "license:check": "npx @onebeyond/license-checker scan --allowOnly MIT ISC BSD-2-Clause BSD-3-Clause Apache-2.0 0BSD MPL-2.0 CC0-1.0 CC-BY-4.0 Unlicense BlueOak-1.0.0 Python-2.0 Zlib PSF-2.0 Artistic-2.0 AGPL-3.0-or-later WTFPL --ignoreRootPackageLicense --disableReport"
     },
     "devDependencies": {
-        "@sveltejs/vite-plugin-svelte": "^6.2.1",
+        "@sveltejs/vite-plugin-svelte": "^7.3.0",
         "@tauri-apps/cli": "catalog:",
         "@tsconfig/svelte": "^5.0.6",
         "@types/node": "catalog:",
         "@vex-chat/eslint-config": "workspace:*",
         "@vex-chat/libvex": "catalog:",
-        "eslint-plugin-svelte": "^3.17.0",
+        "eslint-plugin-svelte": "^3.23.0",
         "prettier-plugin-svelte": "^3.5.1",
         "svelte": "catalog:",
-        "svelte-check": "^4.3.4",
+        "svelte-check": "^4.7.6",
         "svelte-eslint-parser": "^1.6.0",
         "typescript": "catalog:",
-        "vite": "^7.3.5"
+        "vite": "^8.2.1"
     },
     "dependencies": {
         "@lucide/svelte": "catalog:",
