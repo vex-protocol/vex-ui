@@ -9,47 +9,47 @@ catalog:
     "@lucide/svelte": ^1.23.0
     "@nanostores/react": ^1.1.0
     "@notifee/react-native": ^9.1.8
-    "@tauri-apps/api": ^2.11.0
-    "@tauri-apps/cli": ^2.11.0
+    "@tauri-apps/api": ^2.11.1
+    "@tauri-apps/cli": ^2.11.4
     "@tauri-apps/plugin-http": ^2.5.9
-    "@types/node": ^24.10.1
+    "@types/node": ^26.2.0
     "@vex-chat/crypto": 12.0.0
     "@vex-chat/libvex": 10.0.0
     "@vex-chat/spire": 5.0.0
     "@vex-chat/types": 4.3.3
-    dompurify: ^3.4.11
-    expo-application: 55.0.14
-    expo-audio: ~55.0.14
-    expo-background-fetch: ~55.0.15
-    expo-background-task: ~55.0.17
-    expo-camera: 55.0.19
-    expo-clipboard: ~55.0.13
+    dompurify: ^3.4.13
+    expo-application: 57.0.2
+    expo-audio: ~57.0.3
+    expo-background-fetch: ~57.0.11
+    expo-background-task: ~57.0.11
+    expo-camera: 57.0.3
+    expo-clipboard: ~57.0.1
     expo-constants: ~55.0.13
-    expo-crypto: ~55.0.14
-    expo-document-picker: ~55.0.13
-    expo-file-system: ~55.0.17
-    expo-font: ~55.0.6
+    expo-crypto: ~57.0.1
+    expo-document-picker: ~57.0.1
+    expo-file-system: ~57.0.4
+    expo-font: ~57.0.1
     expo-image-manipulator: ^55.0.15
-    expo-intent-launcher: ~55.0.12
+    expo-intent-launcher: ~57.0.1
     expo-sharing: ~55.0.18
-    expo-task-manager: ~55.0.15
-    expo-video: ~55.0.17
-    highlight.js: ^11.11.1
-    kysely: ^0.28.17
+    expo-task-manager: ~57.0.11
+    expo-video: ~57.0.2
+    highlight.js: ^11.12.0
+    kysely: ^0.29.5
     lucide-svelte: ^1.0.1
     marked: ^15.0.12
-    msgpackr: ^1.11.5
+    msgpackr: ^2.0.5
     nanostores: ^1.2.0
-    react: 19.2.0
-    react-dom: 19.2.0
-    react-native-iap: 15.3.3
-    react-native-nitro-modules: 0.35.10
-    react-native-passkey: 3.3.3
-    svelte: ^5.55.7
-    typescript: ~5.9.3
-    uuid: ^14.0.0
+    react: 19.2.8
+    react-dom: 19.2.8
+    react-native-iap: 16.3.1
+    react-native-nitro-modules: 0.36.5
+    react-native-passkey: 3.6.1
+    svelte: ^5.56.9
+    typescript: ~7.0.2
+    uuid: ^14.0.2
     vitest: 4.1.0
-    zod: ^4.1.12
+    zod: ^4.4.3
 
 catalogMode: strict
 
