@@ -13,6 +13,7 @@ import {
     applyEmoji,
     formatFileSize,
     messageEmbed,
+    normalizeExternalUrl,
     parseMessageMarkdown,
     vexService,
 } from "@vex-chat/store";
@@ -78,7 +79,7 @@ function MessageMarkdownView({ node }: { node: MessageMarkdownNode }) {
                     return <code key={index}>{text}</code>;
                 }
                 if (segment.type === "link") {
-                    const url = safeExternalURL(segment.url);
+                    const url = normalizeExternalUrl(segment.url);
                     return url ? (
                         <a
                             href={url}
@@ -135,7 +136,7 @@ function MessageEmbedView({
             {embed.actions?.length ? (
                 <footer className="message-embed__actions">
                     {embed.actions.map((action, index) => {
-                        const url = safeExternalURL(action.url);
+                        const url = normalizeExternalUrl(action.url);
                         return url ? (
                             <a
                                 href={url}
@@ -369,13 +370,4 @@ function attachmentPreviewKind(
     if (normalized.startsWith("audio/")) return "audio";
     if (normalized.startsWith("video/")) return "video";
     return null;
-}
-
-function safeExternalURL(value: string): string | null {
-    try {
-        const url = new URL(value);
-        return ["http:", "https:"].includes(url.protocol) ? url.href : null;
-    } catch {
-        return null;
-    }
 }

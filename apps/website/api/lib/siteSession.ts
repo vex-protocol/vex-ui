@@ -45,7 +45,10 @@ export function open<T extends Record<string, unknown>>(
     }
     try {
         const json = Buffer.from(payload, "base64url").toString("utf8");
-        return JSON.parse(json) as T;
+        const data: unknown = JSON.parse(json);
+        return data !== null && typeof data === "object" && !Array.isArray(data)
+            ? (data as T)
+            : null;
     } catch {
         return null;
     }
@@ -54,18 +57,19 @@ export function open<T extends Record<string, unknown>>(
 export function parseCookies(
     header: string | undefined,
 ): Record<string, string> {
-    if (!header || header.length === 0) {
-        return {};
-    }
-    const out: Record<string, string> = {};
-    for (const part of header.split(";")) {
+    const out: Record<string, string> = Object.create(null);
+    for (const part of header?.split(";") ?? []) {
         const idx = part.indexOf("=");
         if (idx === -1) {
             continue;
         }
         const k = part.slice(0, idx).trim();
         const v = part.slice(idx + 1).trim();
-        out[k] = decodeURIComponent(v);
+        try {
+            out[k] = decodeURIComponent(v);
+        } catch {
+            // An unrelated malformed cookie must not break authentication.
+        }
     }
     return out;
 }
@@ -105,10 +109,11 @@ export function siteOriginFromRequest(req: IncomingMessage): string {
     const forwardedHost = pickFirstHeader(req.headers["x-forwarded-host"]);
     const host = forwardedHost || pickFirstHeader(req.headers.host);
 
-    if (host && isLocalDevHost(host)) {
+    if (host) {
         const proto =
             pickFirstHeader(req.headers["x-forwarded-proto"]) || "http";
-        return `${proto}://${host}`;
+        const localOrigin = localDevOrigin(host, proto);
+        if (localOrigin) return localOrigin;
     }
 
     const explicit = explicitSiteOrigin();
@@ -127,11 +132,16 @@ function pickFirstHeader(value: string | string[] | undefined): string {
     return "";
 }
 
-function isLocalDevHost(host: string): boolean {
-    return (
-        host.startsWith("localhost:") ||
-        host === "localhost" ||
-        host.startsWith("127.0.0.1:") ||
-        host.startsWith("[::1]:")
-    );
+function localDevOrigin(host: string, proto: string): string | null {
+    if (!["http", "https"].includes(proto) || /[\s/@\\?#]/u.test(host)) {
+        return null;
+    }
+    try {
+        const url = new URL(`${proto}://${host}`);
+        return ["127.0.0.1", "[::1]", "localhost"].includes(url.hostname)
+            ? url.origin
+            : null;
+    } catch {
+        return null;
+    }
 }

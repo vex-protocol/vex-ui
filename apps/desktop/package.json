@@ -16,6 +16,7 @@
         "vite:build": "vite build",
         "preview": "vite preview",
         "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+        "test": "vitest run",
         "lint": "eslint src/",
         "lint:fix": "eslint src/ --fix",
         "license:check": "npx @onebeyond/license-checker scan --allowOnly MIT ISC BSD-2-Clause BSD-3-Clause Apache-2.0 0BSD MPL-2.0 CC0-1.0 CC-BY-4.0 Unlicense BlueOak-1.0.0 Python-2.0 Zlib PSF-2.0 Artistic-2.0 AGPL-3.0-or-later WTFPL --ignoreRootPackageLicense --disableReport"
@@ -28,12 +29,14 @@
         "@vex-chat/eslint-config": "workspace:*",
         "@vex-chat/libvex": "catalog:",
         "eslint-plugin-svelte": "^3.17.0",
+        "jsdom": "29.1.1",
         "prettier-plugin-svelte": "^3.5.1",
         "svelte": "catalog:",
         "svelte-check": "^4.3.4",
         "svelte-eslint-parser": "^1.6.0",
         "typescript": "catalog:",
-        "vite": "^7.3.5"
+        "vite": "^7.3.5",
+        "vitest": "catalog:"
     },
     "dependencies": {
         "@lucide/svelte": "catalog:",

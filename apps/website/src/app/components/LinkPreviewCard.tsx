@@ -3,7 +3,7 @@ import type { LinkPreviewMetadata } from "@vex-chat/store";
 import { ExternalLink } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 
-import { extractLinkPreviewUrl } from "@vex-chat/store";
+import { extractLinkPreviewUrl, normalizeExternalUrl } from "@vex-chat/store";
 
 import { loadLinkPreviewForContent } from "../lib/linkPreview";
 
@@ -49,7 +49,8 @@ export function LinkPreviewCard({ content }: { content: string }) {
         };
     }, [content, shouldLoad]);
 
-    if (!preview) {
+    const url = normalizeExternalUrl(preview?.url);
+    if (!preview || !url) {
         return <span className="link-preview-sentinel" ref={sentinelRef} />;
     }
 
@@ -57,7 +58,7 @@ export function LinkPreviewCard({ content }: { content: string }) {
         <a
             aria-label={`Open ${preview.title}`}
             className="link-preview"
-            href={preview.url}
+            href={url}
             rel="noreferrer noopener"
             target="_blank"
         >

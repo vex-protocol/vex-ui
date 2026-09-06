@@ -141,11 +141,13 @@ function requestHtml(
         const resolveOnce = (value: RequestHtmlResult): void => {
             if (settled) return;
             settled = true;
+            clearTimeout(deadline);
             resolve(value);
         };
         const rejectOnce = (cause: unknown): void => {
             if (settled) return;
             settled = true;
+            clearTimeout(deadline);
             reject(cause);
         };
         const transport = url.protocol === "https:" ? https : http;
@@ -171,7 +173,7 @@ function requestHtml(
                 const status = response.statusCode ?? 0;
                 if (status >= 300 && status < 400) {
                     const location = response.headers.location;
-                    response.resume();
+                    response.destroy();
                     if (!location) {
                         rejectOnce(
                             new PreviewTargetError("Invalid preview redirect"),
@@ -182,7 +184,7 @@ function requestHtml(
                     return;
                 }
                 if (status < 200 || status >= 300) {
-                    response.resume();
+                    response.destroy();
                     rejectOnce(
                         new Error(`Preview request failed with ${status}`),
                     );
@@ -193,7 +195,7 @@ function requestHtml(
                     response.headers["content-encoding"] ?? "identity"
                 ).toLowerCase();
                 if (contentEncoding !== "identity") {
-                    response.resume();
+                    response.destroy();
                     rejectOnce(
                         new Error("Compressed previews are not allowed"),
                     );
@@ -207,7 +209,7 @@ function requestHtml(
                     !contentType.includes("text/html") &&
                     !contentType.includes("application/xhtml+xml")
                 ) {
-                    response.resume();
+                    response.destroy();
                     rejectOnce(new Error("Preview target is not HTML"));
                     return;
                 }
@@ -232,16 +234,9 @@ function requestHtml(
                         ? chunk
                         : Buffer.from(chunk);
                     const remaining = HTML_LIMIT - bytes;
-                    if (remaining <= 0) {
-                        resolveOnce({
-                            html: Buffer.concat(chunks).toString("utf8"),
-                        });
-                        response.destroy();
-                        return;
-                    }
                     chunks.push(buffer.subarray(0, remaining));
                     bytes += Math.min(buffer.length, remaining);
-                    if (buffer.length > remaining) {
+                    if (bytes === HTML_LIMIT) {
                         resolveOnce({
                             html: Buffer.concat(chunks).toString("utf8"),
                         });
@@ -256,6 +251,10 @@ function requestHtml(
                 response.on("error", rejectOnce);
             },
         );
+        // Socket inactivity timeouts alone let a peer trickle bytes forever.
+        const deadline = setTimeout(() => {
+            request.destroy(new Error("Preview request timed out"));
+        }, TIMEOUT_MS);
         request.on("timeout", () => {
             request.destroy(new Error("Preview request timed out"));
         });

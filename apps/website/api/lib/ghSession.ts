@@ -28,8 +28,11 @@ export function readGithubSession(
         session.v !== 1 ||
         typeof session.login !== "string" ||
         typeof session.id !== "number" ||
+        !Number.isSafeInteger(session.id) ||
+        session.id <= 0 ||
         typeof session.exp !== "number" ||
-        session.exp < Date.now() / 1000
+        !Number.isSafeInteger(session.exp) ||
+        session.exp <= Date.now() / 1000
     ) {
         return null;
     }

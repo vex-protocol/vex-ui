@@ -11,7 +11,7 @@ export function sanitizeNextPath(
     if (!t.startsWith("/") || t.startsWith("//")) {
         return undefined;
     }
-    if (t.includes("://") || t.includes("\\")) {
+    if (t.includes("://") || /[\\\u0000-\u0020\u007f]/u.test(t)) {
         return undefined;
     }
     const pathOnly = t.split("?")[0]?.split("#")[0] ?? "";

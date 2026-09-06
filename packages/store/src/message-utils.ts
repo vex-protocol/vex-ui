@@ -1,5 +1,7 @@
 import type { Message } from "@vex-chat/libvex";
 
+import { normalizeExternalUrl } from "./external-url.ts";
+
 // ── File attachment markdown ─────────────────────────────────────────────────
 
 export interface EncryptedFileAttachment extends FileAttachment {
@@ -249,23 +251,11 @@ export function applyMessageReactionEvent(
     event: MessageReactionEvent,
     actorUserID: string,
 ): Message[] {
-    let changed = false;
-    const nextMessages = messages.map((message) => {
-        if (message.mailID !== event.targetMailID) {
-            return message;
-        }
-        changed = true;
-        const current = message as MessageWithClientExtra;
-        return {
-            ...message,
-            extra: toggleMessageReactionExtra(
-                current.extra,
-                event.emoji,
-                actorUserID,
-            ),
-        } as Message;
-    });
-    return changed ? nextMessages : messages;
+    return mapChangedMessages(messages, (message) =>
+        message.mailID === event.targetMailID
+            ? reactToMessage(message, event, actorUserID)
+            : message,
+    );
 }
 
 export function applyMessageUpdateEvent(
@@ -273,24 +263,11 @@ export function applyMessageUpdateEvent(
     event: MessageUpdateEvent,
     actorUserID: string,
 ): Message[] {
-    let changed = false;
-    const nextMessages = messages.map((message) => {
-        if (message.mailID !== event.targetMailID) {
-            return message;
-        }
-        if (
-            message.authorID !== actorUserID ||
-            message.message === event.message
-        ) {
-            return message;
-        }
-        changed = true;
-        return {
-            ...message,
-            message: event.message,
-        };
-    });
-    return changed ? nextMessages : messages;
+    return mapChangedMessages(messages, (message) =>
+        message.mailID === event.targetMailID
+            ? updateMessage(message, event, actorUserID)
+            : message,
+    );
 }
 
 export function createDeleteBatchEventExtra(targetMailIDs: string[]): string {
@@ -399,41 +376,62 @@ export function emojiReactionLabel(emoji: MessageEmoji): string {
 }
 
 export function foldMessageEvents(messages: Message[]): Message[] {
-    let visibleMessages: Message[] = [];
+    // Index mutable slots so events touch only their targets. The timeline keeps
+    // arrival order (including duplicate IDs), without mutating input messages.
+    type MessageSlot = { message: Message | null };
+    const timeline: MessageSlot[] = [];
+    const targetsByID = new Map<string, MessageSlot[]>();
     for (const message of messages) {
-        const deleteEvent = messageDeleteEvent(message);
-        if (deleteEvent) {
-            visibleMessages = applyMessageDeleteEvent(
-                visibleMessages,
-                deleteEvent,
-                message.authorID,
-            );
+        const {
+            messageDeleteEvent: deleteEvent,
+            messageUpdateEvent: updateEvent,
+            reactionEvent,
+        } = parseMessageExtra((message as MessageWithClientExtra).extra);
+        const event = deleteEvent ?? updateEvent ?? reactionEvent;
+        if (!event) {
+            const slot = { message };
+            timeline.push(slot);
+            const targets = targetsByID.get(message.mailID);
+            if (targets) targets.push(slot);
+            else targetsByID.set(message.mailID, [slot]);
             continue;
         }
 
-        const updateEvent = messageUpdateEvent(message);
-        if (updateEvent) {
-            visibleMessages = applyMessageUpdateEvent(
-                visibleMessages,
-                updateEvent,
-                message.authorID,
-            );
-            continue;
+        const targetIDs = deleteEvent
+            ? messageDeleteEventTargetMailIDs(deleteEvent)
+            : [event.targetMailID];
+        for (const targetID of targetIDs) {
+            if (!targetID) continue;
+            const targets = targetsByID.get(targetID);
+            if (!targets) continue;
+            for (const slot of targets) {
+                if (!slot.message) continue;
+                if (deleteEvent) {
+                    if (slot.message.authorID === message.authorID) {
+                        slot.message = null;
+                    }
+                } else if (updateEvent) {
+                    slot.message = updateMessage(
+                        slot.message,
+                        updateEvent,
+                        message.authorID,
+                    );
+                } else if (reactionEvent) {
+                    slot.message = reactToMessage(
+                        slot.message,
+                        reactionEvent,
+                        message.authorID,
+                    );
+                }
+            }
+            if (deleteEvent) {
+                const remaining = targets.filter((slot) => slot.message);
+                if (remaining.length) targetsByID.set(targetID, remaining);
+                else targetsByID.delete(targetID);
+            }
         }
-
-        const reactionEvent = messageReactionEvent(message);
-        if (reactionEvent) {
-            visibleMessages = applyMessageReactionEvent(
-                visibleMessages,
-                reactionEvent,
-                message.authorID,
-            );
-            continue;
-        }
-
-        visibleMessages.push(message);
     }
-    return visibleMessages;
+    return timeline.flatMap((slot) => (slot.message ? [slot.message] : []));
 }
 
 export function foldMessageReactionEvents(messages: Message[]): Message[] {
@@ -1022,6 +1020,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function mapChangedMessages(
+    messages: Message[],
+    transform: (message: Message) => Message,
+): Message[] {
+    let changed = false;
+    const next = messages.map((message) => {
+        const updated = transform(message);
+        changed ||= updated !== message;
+        return updated;
+    });
+    return changed ? next : messages;
+}
+
 function matchBareUrlAt(text: string, index: number): null | string {
     const previous = text[index - 1];
     if (previous && /[A-Za-z0-9@._~:/?#\[\]!$&'()*+,;=%-]/.test(previous)) {
@@ -1176,8 +1187,10 @@ function parseInlineMarkdown(text: string): MarkdownInlineSegment[] {
             if (labelEnd > index + 1 && text[labelEnd + 1] === "(") {
                 const urlEnd = findMarkdownLinkEnd(text, labelEnd + 2);
                 if (urlEnd > labelEnd + 2) {
-                    const url = text.slice(labelEnd + 2, urlEnd).trim();
-                    if (url.length > 0) {
+                    const url = normalizeExternalUrl(
+                        text.slice(labelEnd + 2, urlEnd),
+                    );
+                    if (url) {
                         pushPlain(index);
                         pushSegment(segments, {
                             text: unescapeMarkdownLabel(
@@ -1195,12 +1208,13 @@ function parseInlineMarkdown(text: string): MarkdownInlineSegment[] {
         }
 
         const bareUrl = matchBareUrlAt(text, index);
-        if (bareUrl) {
+        const externalUrl = normalizeExternalUrl(bareUrl);
+        if (bareUrl && externalUrl) {
             pushPlain(index);
             pushSegment(segments, {
                 text: bareUrl,
                 type: "link",
-                url: bareUrl,
+                url: externalUrl,
             });
             index += bareUrl.length;
             cursor = index;
@@ -1302,15 +1316,16 @@ function parseMessageEmbedAction(value: unknown): MessageEmbedAction | null {
     if (
         !isRecord(value) ||
         value["type"] !== "link" ||
-        typeof value["label"] !== "string" ||
-        typeof value["url"] !== "string"
+        typeof value["label"] !== "string"
     ) {
         return null;
     }
+    const url = normalizeExternalUrl(value["url"]);
+    if (!url) return null;
     return {
         label: value["label"],
         type: "link",
-        url: value["url"],
+        url,
     };
 }
 
@@ -1641,6 +1656,21 @@ function pushTextNode(nodes: MessageMarkdownNode[], text: string): void {
     nodes.push(node);
 }
 
+function reactToMessage(
+    message: MessageWithClientExtra,
+    event: MessageReactionEvent,
+    actorUserID: string,
+): Message {
+    return {
+        ...message,
+        extra: toggleMessageReactionExtra(
+            message.extra,
+            event.emoji,
+            actorUserID,
+        ),
+    } as Message;
+}
+
 function trimCodeFenceText(value: string): string {
     return value.endsWith("\n") ? value.slice(0, -1) : value;
 }
@@ -1669,6 +1699,16 @@ function unescapeMarkdownLabel(value: string): string {
     return value.replace(/\\([\\[\]])/g, "$1");
 }
 
+function updateMessage(
+    message: Message,
+    event: MessageUpdateEvent,
+    actorUserID: string,
+): Message {
+    return message.authorID === actorUserID && message.message !== event.message
+        ? { ...message, message: event.message }
+        : message;
+}
+
 // ── Message chunking ─────────────────────────────────────────────────────────
 
 const CHUNK_GAP_MS = 5 * 60 * 1000; // 5 minutes
@@ -1679,22 +1719,17 @@ const MAX_CHUNK_SIZE = 100;
  * Starts a new chunk on: different sender, >5 min gap, or 100 message cap.
  */
 export function chunkMessages(messages: Message[]): MessageChunk[] {
-    const sorted = [...messages].sort(
-        (a, b) =>
-            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-    );
+    const sorted = messages
+        .map((message) => ({ message, time: Date.parse(message.timestamp) }))
+        .sort((a, b) => a.time - b.time);
     const chunks: MessageChunk[] = [];
+    let previousTime = NaN;
 
-    for (const msg of sorted) {
+    for (const { message: msg, time } of sorted) {
         const last = chunks[chunks.length - 1];
-        const lastMsg = last?.messages[last.messages.length - 1];
 
         const sameAuthor = last?.authorID === msg.authorID;
-        const withinGap = lastMsg
-            ? new Date(msg.timestamp).getTime() -
-                  new Date(lastMsg.timestamp).getTime() <
-              CHUNK_GAP_MS
-            : false;
+        const withinGap = time - previousTime < CHUNK_GAP_MS;
         const notFull = (last?.messages.length ?? 0) < MAX_CHUNK_SIZE;
 
         if (last && sameAuthor && withinGap && notFull) {
@@ -1706,6 +1741,7 @@ export function chunkMessages(messages: Message[]): MessageChunk[] {
                 messages: [msg],
             });
         }
+        previousTime = time;
     }
 
     return chunks;

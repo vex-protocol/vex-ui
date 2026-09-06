@@ -85,7 +85,6 @@ export type {
     PasskeyUpgradeReason,
     PendingApprovalStage,
 } from "./domains/identity.ts";
-
 export {
     $channelUnreadCounts,
     $dmUnreadCounts,
@@ -102,8 +101,6 @@ export {
     $servers,
 } from "./domains/servers.ts";
 
-// ── Utilities (pure functions, no state) ────────────────────────────────────
-
 export {
     $localMessageRetentionDays,
     $localMessageRetentionDaysWritable,
@@ -111,6 +108,10 @@ export {
     MAX_LOCAL_MESSAGE_RETENTION_DAYS,
     setLocalMessageRetentionDaysPreference,
 } from "./domains/settings.ts";
+
+// ── Utilities (pure functions, no state) ────────────────────────────────────
+
+export { normalizeExternalUrl } from "./external-url.ts";
 export { createCachedLinkPreviewLoader } from "./link-preview-cache.ts";
 export type {
     CachedLinkPreviewLoader,

@@ -171,6 +171,35 @@ describe("parseFileExtra", () => {
 });
 
 describe("message embeds", () => {
+    test("drops unsafe action links while preserving web actions", () => {
+        const extra = JSON.stringify({
+            embed: {
+                actions: [
+                    {
+                        label: "Unsafe",
+                        type: "link",
+                        url: "file:///etc/passwd",
+                    },
+                    {
+                        label: "Script",
+                        type: "link",
+                        url: "javascript:alert(1)",
+                    },
+                    {
+                        label: "Web",
+                        type: "link",
+                        url: "https://example.com/#a",
+                    },
+                ],
+                display: "decorate",
+                kind: "test",
+                title: "Links",
+            },
+        });
+        expect(parseMessageExtra(extra).embed?.actions).toEqual([
+            { label: "Web", type: "link", url: "https://example.com/#a" },
+        ]);
+    });
     test("parses encrypted media embed metadata", () => {
         const extra = JSON.stringify({
             embed: {
@@ -365,7 +394,7 @@ describe("encrypted file markdown", () => {
                     {
                         text: "vex",
                         type: "link",
-                        url: "https://vex.wtf",
+                        url: "https://vex.wtf/",
                     },
                     { text: " and ", type: "text" },
                     { text: "code", type: "code" },
@@ -393,6 +422,18 @@ describe("encrypted file markdown", () => {
                 ],
                 type: "text",
             },
+        ]);
+    });
+
+    test.each([
+        "javascript:alert(1)",
+        "data:text/html,hello",
+        "file:///etc/passwd",
+        "vex://invite/123",
+    ])("keeps unsafe markdown links as text: %s", (url) => {
+        const content = `[click](${url})`;
+        expect(parseMessageMarkdown(content)).toEqual([
+            { segments: [{ text: content, type: "text" }], type: "text" },
         ]);
     });
 
@@ -934,6 +975,80 @@ describe("message reactions", () => {
         expect(folded).toHaveLength(1);
         expect(folded[0]?.mailID).toBe("m-keep");
         expect(folded[0]?.message).toBe("after");
+    });
+
+    test("preserves event ordering, authorization and duplicate message IDs", () => {
+        const emoji = createUnicodeReactionEmoji("👍");
+        const event = (authorID: string, extra: string) =>
+            makeMessage({ authorID, extra, message: "" } as Partial<Message>);
+        const alice = makeMessage({ mailID: "same", message: "alice" });
+        const bob = makeMessage({
+            authorID: "bob",
+            mailID: "same",
+            message: "bob",
+        });
+        const later = makeMessage({ mailID: "later", message: "later" });
+        const inputs = [
+            event("alice", createDeleteEventExtra("later")),
+            alice,
+            bob,
+            event("mallory", createUpdateEventExtra("same", "forged")),
+            event("alice", createUpdateEventExtra("same", "edited")),
+            event("bob", createReactionEventExtra("same", emoji)),
+            event("alice", createDeleteEventExtra("same")),
+            later,
+            event("bob", createReactionEventExtra("same", emoji)),
+        ];
+        const before = JSON.stringify(inputs);
+
+        const folded = foldMessageEvents(inputs);
+
+        expect(folded.map((message) => message.message)).toEqual([
+            "bob",
+            "later",
+        ]);
+        expect(messageReactions(folded[0] as Message)).toEqual([]);
+        expect(folded[1]).toBe(later);
+        expect(JSON.stringify(inputs)).toBe(before);
+    });
+
+    test("matches sequential event application through a mixed history", () => {
+        const inputs: Message[] = [];
+        let expected: Message[] = [];
+        const emoji = createUnicodeReactionEmoji("🎉");
+        for (let index = 0; index < 300; index++) {
+            const authorID = index % 2 === 0 ? "alice" : "bob";
+            const targetMailID = `m-${String(index % 37)}`;
+            const next = makeMessage({ authorID, mailID: targetMailID });
+            inputs.push(next);
+            expected.push(next);
+            const extra =
+                index % 3 === 0
+                    ? createDeleteEventExtra(targetMailID)
+                    : index % 3 === 1
+                      ? createUpdateEventExtra(targetMailID, String(index))
+                      : createReactionEventExtra(targetMailID, emoji);
+            const event = makeMessage({ authorID, extra } as Partial<Message>);
+            inputs.push(event);
+            const deletion = messageDeleteEvent(event);
+            const update = messageUpdateEvent(event);
+            const reaction = messageReactionEvent(event);
+            if (deletion)
+                expected = applyMessageDeleteEvent(
+                    expected,
+                    deletion,
+                    authorID,
+                );
+            else if (update)
+                expected = applyMessageUpdateEvent(expected, update, authorID);
+            else if (reaction)
+                expected = applyMessageReactionEvent(
+                    expected,
+                    reaction,
+                    authorID,
+                );
+        }
+        expect(foldMessageEvents(inputs)).toEqual(expected);
     });
 });
 

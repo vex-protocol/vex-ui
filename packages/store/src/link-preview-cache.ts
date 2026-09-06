@@ -71,10 +71,12 @@ export function createCachedLinkPreviewLoader(
         options.writeDebounceMs ?? DEFAULT_LINK_PREVIEW_WRITE_DEBOUNCE_MS;
 
     let hydratePromise: null | Promise<void> = null;
+    let generation = 0;
     let writePromise = Promise.resolve();
     let writeTimer: null | ReturnType<typeof setTimeout> = null;
 
     function clear(): void {
+        generation++;
         cache.clear();
         inFlight.clear();
         scheduleWrite();
@@ -106,9 +108,11 @@ export function createCachedLinkPreviewLoader(
         if (!options.storage) {
             return;
         }
+        const startedGeneration = generation;
         hydratePromise ??= options.storage
             .read()
             .then((snapshot) => {
+                if (startedGeneration !== generation) return;
                 for (const [url, entry] of parseCacheSnapshot(
                     snapshot,
                     now(),
@@ -144,8 +148,10 @@ export function createCachedLinkPreviewLoader(
             return pending;
         }
 
-        const task = loadUncached(normalized).finally(() => {
-            inFlight.delete(normalized);
+        const task = loadUncached(normalized, generation).finally(() => {
+            if (inFlight.get(normalized) === task) {
+                inFlight.delete(normalized);
+            }
         });
         inFlight.set(normalized, task);
         return task;
@@ -153,8 +159,10 @@ export function createCachedLinkPreviewLoader(
 
     async function loadUncached(
         normalized: string,
+        startedGeneration: number,
     ): Promise<LinkPreviewMetadata | null> {
         await hydrate();
+        if (startedGeneration !== generation) return null;
         const hydratedHit = freshEntry(normalized);
         if (hydratedHit) {
             return hydratedHit.preview;
@@ -165,10 +173,13 @@ export function createCachedLinkPreviewLoader(
                 normalized,
                 options.fetchHtml,
             );
+            if (startedGeneration !== generation) return null;
             remember(normalized, preview, preview ? ttlMs : negativeTtlMs);
             return preview;
         } catch {
-            remember(normalized, null, negativeTtlMs);
+            if (startedGeneration === generation) {
+                remember(normalized, null, negativeTtlMs);
+            }
             return null;
         }
     }
@@ -275,8 +286,8 @@ function parseCachedPreview(
 
     const preview: LinkPreviewMetadata = { title, url };
     const description = optionalStringValue(value["description"]);
-    const faviconUrl = optionalStringValue(value["faviconUrl"]);
-    const imageUrl = optionalStringValue(value["imageUrl"]);
+    const faviconUrl = normalizeLinkPreviewUrl(value["faviconUrl"]);
+    const imageUrl = normalizeLinkPreviewUrl(value["imageUrl"]);
     const siteName = optionalStringValue(value["siteName"]);
     if (description) preview.description = description;
     if (faviconUrl) preview.faviconUrl = faviconUrl;

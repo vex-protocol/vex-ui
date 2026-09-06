@@ -1,10 +1,97 @@
-import { describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import http, { type IncomingMessage } from "node:http";
+import { PassThrough } from "node:stream";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
     isPublicPreviewAddress,
+    fetchPublicPreviewHtml,
     PreviewTargetError,
     validatePreviewURL,
 } from "./linkPreviewFetch";
+
+afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+});
+
+function mockTransport(status: number, headers: Record<string, string>) {
+    const response = Object.assign(new PassThrough(), {
+        statusCode: status,
+        headers,
+    });
+    const request = Object.assign(new EventEmitter(), {
+        destroy: vi.fn((error?: Error) => {
+            if (error) request.emit("error", error);
+            response.destroy();
+            return request;
+        }),
+    });
+    vi.spyOn(http, "get").mockImplementation(((
+        _options: unknown,
+        callback: (response: IncomingMessage) => void,
+    ) => {
+        queueMicrotask(() => callback(response as unknown as IncomingMessage));
+        return request;
+    }) as unknown as typeof http.get);
+    return { request, response };
+}
+
+describe("preview response resource limits", () => {
+    it("cancels a non-HTML response without draining an arbitrary body", async () => {
+        const { response } = mockTransport(200, {
+            "content-type": "application/octet-stream",
+        });
+        await expect(fetchPublicPreviewHtml("http://8.8.8.8/")).rejects.toThrow(
+            "not HTML",
+        );
+        expect(response.destroyed).toBe(true);
+    });
+
+    it("finishes at the exact size cap without waiting for another chunk", async () => {
+        const { response } = mockTransport(200, {
+            "content-type": "text/html",
+        });
+        const result = fetchPublicPreviewHtml("http://8.8.8.8/");
+        response.write(Buffer.alloc(512 * 1024, "x"));
+        await expect(result).resolves.toEqual({
+            finalUrl: "http://8.8.8.8/",
+            html: "x".repeat(512 * 1024),
+        });
+        expect(response.destroyed).toBe(true);
+    });
+
+    it("enforces an elapsed deadline even while the peer sends data", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const { request, response } = mockTransport(200, {
+            "content-type": "text/html",
+        });
+        const assertion = expect(
+            fetchPublicPreviewHtml("http://8.8.8.8/"),
+        ).rejects.toThrow("timed out");
+        for (let i = 0; i < 8; i++) {
+            response.write("x");
+            await vi.advanceTimersByTimeAsync(1000);
+        }
+        await assertion;
+        expect(request.destroy).toHaveBeenCalled();
+    });
+
+    it("clears the deadline after a complete response", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const { request, response } = mockTransport(200, {
+            "content-type": "text/html",
+        });
+        const result = fetchPublicPreviewHtml("http://8.8.8.8/");
+        response.end("<title>Vex</title>");
+        await expect(result).resolves.toMatchObject({
+            html: "<title>Vex</title>",
+        });
+        await vi.advanceTimersByTimeAsync(8000);
+        expect(request.destroy).not.toHaveBeenCalled();
+    });
+});
 
 describe("validatePreviewURL", () => {
     it("accepts public HTTP URLs and removes fragments", () => {

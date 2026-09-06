@@ -22,7 +22,6 @@ import {
     Alert,
     Clipboard,
     Image,
-    Linking,
     Modal,
     Pressable,
     ScrollView,
@@ -56,6 +55,7 @@ import * as Sharing from "expo-sharing";
 import { useVideoPlayer, VideoView } from "expo-video";
 
 import { bytesToBase64, writeAttachmentToCache } from "../lib/attachments";
+import { openExternalUrl } from "../lib/externalLinks";
 import { haptic } from "../lib/haptics";
 import { type CodeHighlightKind, highlightCode } from "../lib/syntaxHighlight";
 import { colors, fontFamilies, typography, useAccentColors } from "../theme";
@@ -1342,14 +1342,7 @@ function MarkdownText({
                     onPress={
                         segment.type === "link"
                             ? () => {
-                                  void Linking.openURL(segment.url).catch(
-                                      () => {
-                                          Alert.alert(
-                                              "Could not open link",
-                                              segment.url,
-                                          );
-                                      },
-                                  );
+                                  openExternalUrl(segment.url);
                               }
                             : undefined
                     }
@@ -1478,12 +1471,7 @@ function MessageEmbedCard({
                             accessibilityRole="link"
                             key={`${action.url}-${String(index)}`}
                             onPress={() => {
-                                void Linking.openURL(action.url).catch(() => {
-                                    Alert.alert(
-                                        "Could not open link",
-                                        action.url,
-                                    );
-                                });
+                                openExternalUrl(action.url);
                             }}
                             style={({ pressed }) => [
                                 styles.embedAction,
