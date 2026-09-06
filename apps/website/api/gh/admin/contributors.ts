@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { isClaAdmin } from "../../lib/adminAuth";
+import { requireAdminRequest } from "../../lib/adminRequest";
+
 import { readClaAuditEvents } from "../../lib/claAudit";
 import {
     getClabotRepoFullNames,
@@ -8,8 +9,6 @@ import {
     getClaSourceRepoFullName,
 } from "../../lib/claConfig";
 import { readQueue } from "../../lib/claQueue";
-import { getSessionSecret } from "../../lib/ghOAuthEnv";
-import { readGithubSession } from "../../lib/ghSession";
 import { sendJson } from "../../lib/nodeHttp";
 
 export type ContributorViewRow = {
@@ -38,29 +37,8 @@ export default async function handler(
     req: IncomingMessage,
     res: ServerResponse,
 ): Promise<void> {
-    if (req.method !== "GET") {
-        res.statusCode = 405;
-        res.setHeader("Allow", "GET");
-        res.end("Method Not Allowed");
-        return;
-    }
-
-    const secret = getSessionSecret();
-    if (!secret) {
-        sendJson(res, 503, { error: "not_configured" });
-        return;
-    }
-
-    const session = readGithubSession(req, secret);
-    if (!session) {
-        sendJson(res, 401, { error: "not_signed_in" });
-        return;
-    }
-
-    if (!(await isClaAdmin(session.login, session.oauth_access_token))) {
-        sendJson(res, 403, { error: "forbidden" });
-        return;
-    }
+    const session = await requireAdminRequest(req, res, "GET");
+    if (!session) return;
 
     const [q, eventsNewestFirst] = await Promise.all([
         readQueue(),
@@ -96,9 +74,10 @@ export default async function handler(
         });
     }
 
+    const resubmitAllowed = new Set(q.resubmitAllowed);
     for (const r of q.rejected) {
         const lower = r.login.toLowerCase();
-        const cleared = q.resubmitAllowed.includes(lower);
+        const cleared = resubmitAllowed.has(lower);
         const rej = rejectMeta.get(lower);
         rows.push({
             login: r.login,

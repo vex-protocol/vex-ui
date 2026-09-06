@@ -5,6 +5,92 @@ import { describe, expect, test, vi } from "vitest";
 import { createCachedLinkPreviewLoader } from "../link-preview-cache.ts";
 
 describe("createCachedLinkPreviewLoader", () => {
+    test("clear prevents a pending storage read from restoring old previews", async () => {
+        const stored = Promise.withResolvers<unknown>();
+        const write = vi.fn(async (_snapshot: LinkPreviewCacheSnapshot) => {});
+        const loader = createCachedLinkPreviewLoader({
+            fetchHtml: async () => ({ html: "" }),
+            now: () => 1_000,
+            storage: { read: () => stored.promise, write },
+        });
+        loader.clear();
+        stored.resolve({
+            entries: [
+                {
+                    expiresAt: 10_000,
+                    fetchedAt: 500,
+                    preview: { title: "Old", url: "https://example.com/" },
+                    url: "https://example.com/",
+                },
+            ],
+            version: 1,
+        });
+        await loader.hydrate();
+        await loader.flush();
+
+        expect(write).toHaveBeenLastCalledWith({ entries: [], version: 1 });
+    });
+
+    test("clear discards pending fetches without disturbing newer requests", async () => {
+        const oldFetch = Promise.withResolvers<{ html: string }>();
+        const newFetch = Promise.withResolvers<{ html: string }>();
+        const fetchHtml = vi
+            .fn()
+            .mockReturnValueOnce(oldFetch.promise)
+            .mockReturnValueOnce(newFetch.promise);
+        const write = vi.fn(async (_snapshot: LinkPreviewCacheSnapshot) => {});
+        const loader = createCachedLinkPreviewLoader({
+            fetchHtml,
+            storage: { read: async () => null, write },
+        });
+        const oldRequest = loader.loadForUrl("https://example.com/");
+        await vi.waitFor(() => expect(fetchHtml).toHaveBeenCalledTimes(1));
+        loader.clear();
+        const newRequest = loader.loadForUrl("https://example.com/");
+        await vi.waitFor(() => expect(fetchHtml).toHaveBeenCalledTimes(2));
+        oldFetch.resolve({ html: "<title>Old</title>" });
+        await expect(oldRequest).resolves.toBeNull();
+        await loader.flush();
+        expect(write).toHaveBeenLastCalledWith({ entries: [], version: 1 });
+        expect(loader.loadForUrl("https://example.com/")).toBe(newRequest);
+
+        newFetch.resolve({ html: "<title>New</title>" });
+        await expect(newRequest).resolves.toMatchObject({ title: "New" });
+        await loader.flush();
+        expect(fetchHtml).toHaveBeenCalledTimes(2);
+    });
+
+    test("drops unsafe media URLs from persisted previews", async () => {
+        const loader = createCachedLinkPreviewLoader({
+            fetchHtml: async () => ({ html: "" }),
+            now: () => 1_000,
+            storage: {
+                read: async () => ({
+                    entries: [
+                        {
+                            expiresAt: 10_000,
+                            fetchedAt: 500,
+                            preview: {
+                                faviconUrl: "file:///etc/passwd",
+                                imageUrl: "http://127.0.0.1/private",
+                                title: "Cached",
+                                url: "https://example.com/",
+                            },
+                            url: "https://example.com/",
+                        },
+                    ],
+                    version: 1,
+                }),
+                write: async () => {},
+            },
+        });
+        await expect(
+            loader.loadForUrl("https://example.com/"),
+        ).resolves.toEqual({
+            title: "Cached",
+            url: "https://example.com/",
+        });
+    });
     test("returns persisted previews without refetching", async () => {
         const snapshot: LinkPreviewCacheSnapshot = {
             entries: [

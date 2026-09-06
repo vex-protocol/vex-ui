@@ -3,8 +3,7 @@
 
     import { extractLinkPreviewUrl } from "@vex-chat/store";
 
-    import { openUrl } from "@tauri-apps/plugin-opener";
-
+    import { openExternalUrl } from "./externalLinks.js";
     import { loadLinkPreviewForContent } from "./linkPreview.js";
 
     let { content }: { content: string } = $props();
@@ -74,7 +73,7 @@
 
     function openPreview(): void {
         if (preview) {
-            openUrl(preview.url).catch(console.error);
+            openExternalUrl(preview.url);
         }
     }
 </script>

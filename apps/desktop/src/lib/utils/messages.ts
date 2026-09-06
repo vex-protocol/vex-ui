@@ -1,9 +1,10 @@
-import { applyEmoji } from "@vex-chat/store";
+import { applyEmoji, normalizeExternalUrl } from "@vex-chat/store";
 
-import { openUrl } from "@tauri-apps/plugin-opener";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
 import { marked } from "marked";
+
+import { openExternalUrl } from "../externalLinks.js";
 
 // Re-export shared utilities so existing imports keep working
 export {
@@ -30,15 +31,13 @@ marked.use({
 });
 
 /**
- * Handles clicks inside the message box. Intercepts data-external links
- * and opens them in the native browser via tauri-plugin-opener.
+ * Open only validated web links from sanitized message content.
  */
 export function handleLinkClick(e: MouseEvent): void {
-    const target = (e.target as Element).closest("[data-external]");
+    const target = e.target instanceof Element ? e.target.closest("a") : null;
     if (!target) return;
     e.preventDefault();
-    const url = target.getAttribute("data-external");
-    if (url) openUrl(url).catch(console.error);
+    openExternalUrl(target.getAttribute("href"));
 }
 
 export function renderCodeBlock(
@@ -61,18 +60,13 @@ export function renderCodeBlock(
 
 /**
  * Renders message content: emoji → markdown → sanitized HTML.
- * External links get a `data-external` attribute for native-browser interception.
  * Safe to use with {@html} in Svelte.
  */
 export function renderContent(content: string): string {
     const raw = marked.parse(content) as string;
-    // Annotate <a> tags with data-external so handleLinkClick can intercept them
-    const annotated = raw.replace(
-        /<a\s+href="([^"]+)"/g,
-        '<a href="$1" data-external="$1"',
-    );
-    return DOMPurify.sanitize(annotated, {
-        ALLOWED_ATTR: ["href", "data-external", "rel", "src", "alt", "class"],
+    const sanitized = DOMPurify.sanitize(raw, {
+        ALLOW_DATA_ATTR: false,
+        ALLOWED_ATTR: ["href", "rel", "src", "alt", "class"],
         ALLOWED_TAGS: [
             "p",
             "br",
@@ -96,7 +90,19 @@ export function renderContent(content: string): string {
             "img",
             "span",
         ],
+        RETURN_DOM: true,
     });
+    if (!(sanitized instanceof Element)) return "";
+    for (const link of sanitized.querySelectorAll("a")) {
+        const url = normalizeExternalUrl(link.getAttribute("href"));
+        if (url) {
+            link.setAttribute("href", url);
+            link.setAttribute("rel", "noreferrer noopener");
+        } else {
+            link.removeAttribute("href");
+        }
+    }
+    return sanitized.innerHTML;
 }
 
 function escapeHtml(value: string): string {

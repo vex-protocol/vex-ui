@@ -9,8 +9,7 @@
 
     import { isImageType, messageEmbed, vexService } from "@vex-chat/store";
 
-    import { openUrl } from "@tauri-apps/plugin-opener";
-
+    import { openExternalUrl } from "./externalLinks.js";
     import MessageContent from "./MessageContent.svelte";
     import MessageEmbedMedia from "./MessageEmbedMedia.svelte";
     import { renderCodeBlock } from "./utils/messages.js";
@@ -186,7 +185,7 @@
                         class="message-embed__action"
                         type="button"
                         onclick={() => {
-                            void openUrl(action.url);
+                            openExternalUrl(action.url);
                         }}
                     >
                         {action.label}

@@ -9,7 +9,12 @@ import {
 import { getSessionSecret } from "../lib/ghOAuthEnv";
 import { GH_SESSION_COOKIE, readGithubSession } from "../lib/ghSession";
 import { seal } from "../lib/siteSession";
-import { readJsonBody, sendJson, useSecureCookies } from "../lib/nodeHttp";
+import {
+    readJsonBody,
+    sendJson,
+    sendJsonBodyError,
+    useSecureCookies,
+} from "../lib/nodeHttp";
 
 const COOKIE_ACCEPTED = "cla_sdk_accepted";
 
@@ -61,8 +66,8 @@ export default async function handler(
     let body: unknown;
     try {
         body = await readJsonBody(req);
-    } catch {
-        sendJson(res, 400, { error: "invalid_json" });
+    } catch (cause) {
+        sendJsonBodyError(res, cause);
         return;
     }
 

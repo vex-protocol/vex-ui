@@ -1,18 +1,11 @@
 import type { LinkPreviewMetadata } from "@vex-chat/store";
 
 import React from "react";
-import {
-    Alert,
-    Image,
-    Linking,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
-} from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
 
+import { openExternalUrl } from "../lib/externalLinks";
 import { loadLinkPreviewForContent } from "../lib/linkPreview";
 import { colors, typography } from "../theme";
 
@@ -49,9 +42,7 @@ export function LinkPreviewCard({ content }: { content: string }) {
         <Pressable
             accessibilityRole="link"
             onPress={() => {
-                void Linking.openURL(preview.url).catch(() => {
-                    Alert.alert("Could not open link", preview.url);
-                });
+                openExternalUrl(preview.url);
             }}
             style={({ pressed }) => [
                 styles.card,
