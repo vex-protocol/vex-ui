@@ -51,10 +51,10 @@
         "eventemitter3": "5.0.4",
         "highlight.js": "catalog:",
         "kysely": "catalog:",
-        "kysely-dialect-tauri": "^1.2.1",
+        "kysely-dialect-tauri": "^2.0.1",
         "marked": "catalog:",
         "nanostores": "catalog:",
-        "svelte-spa-router": "^4.0.1",
+        "svelte-spa-router": "^5.1.1",
         "uuid": "catalog:"
     },
     "license": "AGPL-3.0-or-later"
