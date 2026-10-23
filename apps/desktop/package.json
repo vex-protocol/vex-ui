@@ -33,7 +33,7 @@
         "svelte-check": "^4.3.4",
         "svelte-eslint-parser": "^1.6.0",
         "typescript": "catalog:",
-        "vite": "^7.3.5"
+        "vite": "^7.3.7"
     },
     "dependencies": {
         "@lucide/svelte": "catalog:",
