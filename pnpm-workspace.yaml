@@ -6,50 +6,50 @@ blockExoticSubdeps: true
 
 catalog:
     "@expo/vector-icons": ^15.1.1
-    "@lucide/svelte": ^1.23.0
-    "@nanostores/react": ^1.1.0
+    "@lucide/svelte": ^1.59.0
+    "@nanostores/react": ^2.0.1
     "@notifee/react-native": ^9.1.8
-    "@tauri-apps/api": ^2.11.0
-    "@tauri-apps/cli": ^2.11.0
-    "@tauri-apps/plugin-http": ^2.5.9
-    "@types/node": ^24.10.1
+    "@tauri-apps/api": ^2.12.4
+    "@tauri-apps/cli": ^2.12.3
+    "@tauri-apps/plugin-http": ^2.8.3
+    "@types/node": ^26.6.5
     "@vex-chat/crypto": 12.0.0
     "@vex-chat/libvex": 10.0.0
     "@vex-chat/spire": 5.0.0
     "@vex-chat/types": 4.3.3
-    dompurify: ^3.4.11
-    expo-application: 55.0.14
-    expo-audio: ~55.0.14
-    expo-background-fetch: ~55.0.15
-    expo-background-task: ~55.0.17
-    expo-camera: 55.0.19
-    expo-clipboard: ~55.0.13
-    expo-constants: ~55.0.13
-    expo-crypto: ~55.0.14
-    expo-document-picker: ~55.0.13
-    expo-file-system: ~55.0.17
-    expo-font: ~55.0.6
-    expo-image-manipulator: ^55.0.15
-    expo-intent-launcher: ~55.0.12
-    expo-sharing: ~55.0.18
-    expo-task-manager: ~55.0.15
-    expo-video: ~55.0.17
-    highlight.js: ^11.11.1
-    kysely: ^0.28.17
+    dompurify: ^3.4.17
+    expo-application: 58.1.2
+    expo-audio: ~58.0.9
+    expo-background-fetch: ~58.0.11
+    expo-background-task: ~58.0.11
+    expo-camera: 58.0.10
+    expo-clipboard: ~58.0.3
+    expo-constants: ~58.0.12
+    expo-crypto: ~58.0.7
+    expo-document-picker: ~58.0.4
+    expo-file-system: ~58.0.9
+    expo-font: ~58.0.8
+    expo-image-manipulator: ^58.0.14
+    expo-intent-launcher: ~58.0.3
+    expo-sharing: ~58.0.19
+    expo-task-manager: ~58.0.12
+    expo-video: ~58.0.11
+    highlight.js: ^11.12.0
+    kysely: ^0.29.7
     lucide-svelte: ^1.0.1
-    marked: ^15.0.12
-    msgpackr: ^1.11.5
-    nanostores: ^1.2.0
-    react: 19.2.0
-    react-dom: 19.2.0
-    react-native-iap: 15.3.3
-    react-native-nitro-modules: 0.35.10
-    react-native-passkey: 3.3.3
-    svelte: ^5.55.7
-    typescript: ~5.9.3
-    uuid: ^14.0.0
-    vitest: 4.1.0
-    zod: ^4.1.12
+    marked: ^18.1.1
+    msgpackr: ^2.1.0
+    nanostores: ^1.5.5
+    react: 19.3.1
+    react-dom: 19.3.1
+    react-native-iap: 17.0.3
+    react-native-nitro-modules: 0.37.1
+    react-native-passkey: 3.6.2
+    svelte: ^5.57.2
+    typescript: ~7.0.2
+    uuid: ^14.0.3
+    vitest: 5.0.5
+    zod: ^4.6.7
 
 catalogMode: strict
 
